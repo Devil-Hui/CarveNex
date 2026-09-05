@@ -1,0 +1,35 @@
+from django.urls import path
+from .views import (
+    AfterSaleApplyView, AfterSaleDetailView, AfterSaleMyListView,
+    OrderCancelView, OrderCheckoutView, OrderConfirmView,
+    OrderDetailView, OrderListView,
+)
+from .admin_views import (
+    OrderAdminListView, OrderAdminDetailView,
+    OrderAdminShipView, OrderAdminCancelView,
+    OrderAdminChannelStatsView,
+    AfterSaleAdminListView, AfterSaleAdminReviewView,
+)
+
+urlpatterns = [
+    # Admin first (avoid capture by <str:order_no>)
+    path('admin/list/', OrderAdminListView.as_view(), name='order-admin-list'),
+    # 渠道来源统计（须在 <str:order_no> 捕获之前）
+    path('admin/channel-stats/', OrderAdminChannelStatsView.as_view(), name='order-admin-channel-stats'),
+    path('admin/aftersale/', AfterSaleAdminListView.as_view(), name='order-admin-aftersale-list'),
+    path('admin/aftersale/<str:after_sale_no>/review/', AfterSaleAdminReviewView.as_view(), name='order-admin-aftersale-review'),
+    path('admin/<str:order_no>/ship/', OrderAdminShipView.as_view(), name='order-admin-ship'),
+    path('admin/<str:order_no>/cancel/', OrderAdminCancelView.as_view(), name='order-admin-cancel'),
+    path('admin/<str:order_no>/', OrderAdminDetailView.as_view(), name='order-admin-detail'),
+
+    # Public / user
+    path('checkout/', OrderCheckoutView.as_view(), name='order-checkout'),
+    # 「我的售后单」固定路径，必须排在 <str:order_no> 之前，否则被订单号路由吞掉
+    path('aftersale/mine/', AfterSaleMyListView.as_view(), name='order-aftersale-mine'),
+    path('', OrderListView.as_view(), name='order-list'),
+    path('<str:order_no>/', OrderDetailView.as_view(), name='order-detail'),
+    path('<str:order_no>/cancel/', OrderCancelView.as_view(), name='order-cancel'),
+    path('<str:order_no>/confirm/', OrderConfirmView.as_view(), name='order-confirm'),
+    path('<str:order_no>/aftersale/', AfterSaleApplyView.as_view(), name='order-aftersale-apply'),
+    path('<str:order_no>/aftersale/detail/', AfterSaleDetailView.as_view(), name='order-aftersale-detail'),
+]
