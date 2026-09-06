@@ -427,39 +427,39 @@ USERS_SETTINGS = {
     'USERNAME_CHANGE_COOLDOWN_DAYS': 30,  # 修改用户名后需等待天数
 }
 
-# ==================== 邮件 SMTP 配置（163邮箱）====================
+# ==================== 邮件 SMTP 配置（QQ邮箱）====================
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.163.com')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.qq.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '465'))
 EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'True').lower() == 'true'
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'False').lower() == 'true'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')  # 163邮箱授权码
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'CarveNex <noreply@163.com>')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')  # QQ邮箱授权码
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'CarveNex <noreply@qq.com>')
 
-# =============== 管理后台邮箱（163）===============
-ADMIN_EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.163.com')
+# =============== 管理后台邮箱（QQ）===============
+ADMIN_EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.qq.com')
 ADMIN_EMAIL_PORT = int(os.getenv('EMAIL_PORT', '465'))
 ADMIN_EMAIL_USE_SSL = True
 ADMIN_EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 ADMIN_EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-ADMIN_DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'CarveNex <deavenhui@163.com>')
+ADMIN_DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'CarveNex <noreply@qq.com>')
 
-# =============== 用户注册邮箱（独立配置，暂留空）===============
-USER_EMAIL_HOST = os.getenv('USER_EMAIL_HOST', 'smtp.163.com')
+# =============== 用户注册邮箱（独立配置）===============
+USER_EMAIL_HOST = os.getenv('USER_EMAIL_HOST', 'smtp.qq.com')
 USER_EMAIL_PORT = int(os.getenv('USER_EMAIL_PORT', '465'))
 USER_EMAIL_USE_SSL = os.getenv('USER_EMAIL_USE_SSL', 'True').lower() == 'true'
 USER_EMAIL_USE_TLS = os.getenv('USER_EMAIL_USE_TLS', 'False').lower() == 'true'
 USER_EMAIL_HOST_USER = os.getenv('USER_EMAIL_HOST_USER', '')
 USER_EMAIL_HOST_PASSWORD = os.getenv('USER_EMAIL_HOST_PASSWORD', '')
-USER_DEFAULT_FROM_EMAIL = os.getenv('USER_DEFAULT_FROM_EMAIL', 'CarveNex <noreply@carvenex.com>')
+USER_DEFAULT_FROM_EMAIL = os.getenv('USER_DEFAULT_FROM_EMAIL', 'CarveNex <noreply@qq.com>')
 
 # =============== 多发件账号池（额度感知轮换）===============
 # 格式（JSON 数组字符串，.env 里配 EMAIL_ACCOUNTS）：
-#   [{"host":"smtp.163.com","port":465,"user":"a@163.com","password":"授权码",
-#     "from_email":"CarveNex <a@163.com>","use_ssl":true,"daily_limit":500},
-#    {"host":"smtp.163.com","port":465,"user":"b@163.com","password":"授权码",
-#     "from_email":"CarveNex <b@163.com>","use_ssl":true,"daily_limit":500}]
+#   [{"host":"smtp.qq.com","port":465,"user":"a@qq.com","password":"授权码",
+#     "from_email":"CarveNex <a@qq.com>","use_ssl":true,"daily_limit":500},
+#    {"host":"smtp.qq.com","port":465,"user":"b@qq.com","password":"授权码",
+#     "from_email":"CarveNex <b@qq.com>","use_ssl":true,"daily_limit":500}]
 # 未配置时回退为单一账号（EMAIL_HOST_USER 等，兼容旧配置）。
 import json as _json
 _EMAIL_ACCOUNTS_RAW = os.getenv('EMAIL_ACCOUNTS', '')

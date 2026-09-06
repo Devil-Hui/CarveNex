@@ -50,7 +50,7 @@ services:
       DJANGO_ENV: ${DJANGO_ENV:-test}
       # 本机即生产源站：允许 Cloudflare Tunnel 公网域名访问（api.carvenex.com）
       DJANGO_DEV_ALLOWED_HOSTS: ${DJANGO_DEV_ALLOWED_HOSTS:-api.carvenex.com}
-      # 邮件账号池（Gmail，.env 配置，用于验证码发送）
+      # 邮件账号池（QQ，.env 配置，用于验证码发送）
       EMAIL_ACCOUNTS: ${EMAIL_ACCOUNTS:-}
       DB_HOST: db
       DB_PORT: "3306"
@@ -90,7 +90,7 @@ services:
     cpus: 0.5
     environment:
       DJANGO_ENV: ${DJANGO_ENV:-test}
-      # 邮件账号池（Gmail，.env 配置，验证码异步发送需要）
+      # 邮件账号池（QQ，.env 配置，验证码异步发送需要）
       EMAIL_ACCOUNTS: ${EMAIL_ACCOUNTS:-}
       DB_HOST: db
       DB_PORT: "3306"

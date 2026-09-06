@@ -9,7 +9,6 @@
 验证码存 Redis (DB 2)，令牌为 JWT（无需 Redis）。
 """
 import logging
-import socket as _socket
 import uuid
 from datetime import datetime, timedelta, timezone as dt_timezone
 
@@ -18,36 +17,6 @@ from django.conf import settings
 from django.core.cache import caches
 from django.core.mail import send_mail
 from django.utils.crypto import get_random_string
-
-
-def _patch_gmail_proxy() -> None:
-    """Gmail SMTP（smtp.gmail.com）在国内网络不可直连。
-
-    对发往 *.gmail.com 的连接走宿主机 HTTP 代理（host.docker.internal:10808）转发；
-    其余主机保持直连。smtplib 通过 socket.create_connection 建连，此处全局 patch 一次。
-    """
-    try:
-        import socks  # PySocks
-    except ImportError:
-        return
-    _orig_create_connection = _socket.create_connection
-    _PROXY_HOST = 'host.docker.internal'
-    _PROXY_PORT = 10808
-
-    def _proxied_create_connection(address, timeout=None, source_address=None):
-        host = address[0] if isinstance(address, tuple) else str(address)
-        if 'gmail.com' in host:
-            # PySocks 的 socksocket.settimeout 在部分版本有兼容问题，建连后由 smtplib 自行管理超时
-            sock = socks.socksocket()
-            sock.set_proxy(socks.HTTP, addr=_PROXY_HOST, port=_PROXY_PORT)
-            sock.connect(address)
-            return sock
-        return _orig_create_connection(address, timeout, source_address)
-
-    _socket.create_connection = _proxied_create_connection
-
-
-_patch_gmail_proxy()
 
 
 from apps.users.models import EmailTemplate
@@ -154,13 +123,13 @@ def _send_template_with_account(account: dict, recipient: str, template_type: st
     msg.attach_alternative(rendered['html'], 'text/html')
     conn = get_connection(
         backend='django.core.mail.backends.smtp.EmailBackend',
-        host=account.get('host', 'smtp.163.com'),
+        host=account.get('host', 'smtp.qq.com'),
         port=int(account.get('port', 465)),
         username=account.get('user', ''),
         password=account.get('password', ''),
         use_ssl=bool(account.get('use_ssl', True)),
         use_tls=bool(account.get('use_tls', False)),
-        # 显式连接/读写超时：Gmail 网络不稳定时快速失败并切换账号，避免接口长时间挂起
+        # 显式连接/读写超时：网络不稳定时快速失败并切换账号，避免接口长时间挂起
         timeout=int(account.get('timeout', 3)),
     )
     msg.connection = conn
@@ -190,8 +159,7 @@ def _is_domestic_email(email: str) -> bool:
 def _deliver_template_email(recipient: str, template_type: str, context: dict) -> None:
     """多发件账号池：智能路由 + 额度感知轮换发送（通用模板发送）。
 
-    - 路由：收件人国内邮箱 → 国内账号优先（163）；国外邮箱 → 国外账号优先（Gmail），
-      各自走稳定通道（国内网络访问 Gmail 不稳定，反之亦然）
+    - 路由：账号地域与收件人地域匹配优先（当前仅 QQ 账号，国内收件人优先）
     - 跳过当日已达 daily_limit 的账号
     - 发送失败自动切换下一个账号（兜底保证送达）
     - 全部失败抛异常（调用方返回 500，不再假装成功）
