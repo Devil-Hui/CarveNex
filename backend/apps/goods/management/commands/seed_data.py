@@ -71,8 +71,37 @@ SEED_CONFIG = {
     },
     'prod': {
         'categories': [
-            # 生产环境初始为空，由运营通过 Admin 页面创建
-            # 如需预置，在此添加
+            # 生产环境初始分类 —— 与前端导航商城分类对应，运营可后续在 Admin 页面增删改
+            ('数码产品', 1, None, {'is_active': True}),
+            ('手机', 2, '数码产品', {'is_active': True}),
+            ('电脑', 2, '数码产品', {'is_active': True}),
+            ('平板', 2, '数码产品', {'is_active': True}),
+            ('智能穿戴', 2, '数码产品', {'is_active': True}),
+            ('家用电器', 1, None, {'is_active': True}),
+            ('冰箱', 2, '家用电器', {'is_active': True}),
+            ('洗衣机', 2, '家用电器', {'is_active': True}),
+            ('空调', 2, '家用电器', {'is_active': True}),
+            ('厨房电器', 2, '家用电器', {'is_active': True}),
+            ('服装', 1, None, {'is_active': True}),
+            ('男装', 2, '服装', {'is_active': True}),
+            ('女装', 2, '服装', {'is_active': True}),
+            ('童装', 2, '服装', {'is_active': True}),
+            ('运动户外', 1, None, {'is_active': True}),
+            ('运动鞋', 2, '运动户外', {'is_active': True}),
+            ('运动服饰', 2, '运动户外', {'is_active': True}),
+            ('户外装备', 2, '运动户外', {'is_active': True}),
+            ('美妆个护', 1, None, {'is_active': True}),
+            ('护肤', 2, '美妆个护', {'is_active': True}),
+            ('彩妆', 2, '美妆个护', {'is_active': True}),
+            ('个护清洁', 2, '美妆个护', {'is_active': True}),
+            ('食品生鲜', 1, None, {'is_active': True}),
+            ('休闲零食', 2, '食品生鲜', {'is_active': True}),
+            ('粮油调味', 2, '食品生鲜', {'is_active': True}),
+            ('生鲜果蔬', 2, '食品生鲜', {'is_active': True}),
+            ('家居生活', 1, None, {'is_active': True}),
+            ('家具', 2, '家居生活', {'is_active': True}),
+            ('家纺', 2, '家居生活', {'is_active': True}),
+            ('收纳整理', 2, '家居生活', {'is_active': True}),
         ],
         'brands': [],
         'tags': [],
@@ -128,6 +157,13 @@ class Command(BaseCommand):
 
         if not dry_run:
             self.stdout.write(self.style.SUCCESS(f'  → 分类: 新建 {created}, 跳过 {len(config["categories"]) - created}'))
+            # 失效分类树缓存，确保前端能立即拉到最新分类
+            try:
+                from apps.goods.services import GoodsCacheService
+                GoodsCacheService.invalidate_category_tree()
+                self.stdout.write('  → 分类树缓存已失效')
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f'  分类树缓存失效失败: {e}'))
 
         # ── 2. 品牌 ──
         self.stdout.write(f'\n[品牌] 共 {len(config["brands"])} 条')

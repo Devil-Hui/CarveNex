@@ -67,8 +67,8 @@ export interface AddMemberResult {
   errorKey?: string;
 }
 
-// 账户号格式：ZG- 前缀 + 16 位 Crockford Base32（无 I/L/O/U），与后端 apps/users/account.py 对齐
-export const ACCOUNT_NO_RE = /^ZG-[0-9A-HJ-NP-TV-Z]{16}$/;
+// 账户号格式：CN- 前缀 + 16 位 Crockford Base32（无 I/L/O/U），与后端 apps/users/account.py 对齐
+export const ACCOUNT_NO_RE = /^CN-[0-9A-HJ-NP-TV-Z]{16}$/;
 
 export function validateAddMemberInput(params: {
   rawAccountNo: string;

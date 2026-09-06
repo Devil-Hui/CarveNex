@@ -2,7 +2,7 @@
  * useUrlState — URL State（P1）
  * ───────────────────────────────────────────────────
  * 把页面筛选/分页/搜索状态同步进 query string：
- *   /admin/orders?status=paid&page=2&q=ZG123
+ *   /admin/orders?status=paid&page=2&q=CN123
  * 收益：刷新不丢筛选、浏览器 Back 有效、可复制链接/收藏/分享给同事。
  *
  * 用法：

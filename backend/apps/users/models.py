@@ -10,7 +10,7 @@ from django.utils.crypto import get_random_string
 
 
 def generate_account_no() -> str:
-    """对外账户号：ZG- 前缀 + 16 位 Crockford Base32（剔除 I L O U，避免视觉混淆）。
+    """对外账户号：CN- 前缀 + 16 位 Crockford Base32（剔除 I L O U，避免视觉混淆）。
 
     - 熵 ≈ 80 bit，不可枚举，杜绝以自增主键遍历扒取账号（IDOR）。
     - 可读、可口头/纸质传递，便于客服核对，对齐支付宝/微信「账号」观感。
@@ -18,7 +18,7 @@ def generate_account_no() -> str:
     """
     alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'  # 32 字符，无 I/L/O/U
     body = ''.join(secrets.choice(alphabet) for _ in range(16))
-    return f'ZG-{body}'
+    return f'CN-{body}'
 
 
 def validate_country_code(value):
@@ -102,7 +102,7 @@ class UserProfile(models.Model):
         editable=False,
         db_index=True,
         unique=True,
-        help_text='对外账户号（ZG- + Base32），替代暴露内部自增 id',
+        help_text='对外账户号（CN- + Base32），替代暴露内部自增 id',
     )
     # 部门（自由文本，P2 仅存储，不引入枚举管理页）
     department = models.CharField(

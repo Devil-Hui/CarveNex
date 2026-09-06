@@ -22,8 +22,8 @@ from utils.exceptions import ClientException, ErrorCodes
 
 User = get_user_model()
 
-# ZG- 前缀 + 16 位 Crockford Base32（无 I/L/O/U）
-ACCOUNT_NO_RE = re.compile(r'^ZG-[0-9A-HJ-NP-TV-Z]{16}$')
+# CN- 前缀 + 16 位 Crockford Base32（无 I/L/O/U）
+ACCOUNT_NO_RE = re.compile(r'^CN-[0-9A-HJ-NP-TV-Z]{16}$')
 
 
 def ensure_account_no(user) -> str:

@@ -27,7 +27,7 @@ const Container = styled.div`
 
   /* soft decorative serif watermark */
   &::before {
-    content: 'Z';
+    content: 'C';
     position: absolute;
     right: -2rem;
     bottom: -6rem;
@@ -275,7 +275,7 @@ export default function AdminLogin() {
   return (
     <Container>
       <Card>
-        <Brand>Zig<span>gner</span></Brand>
+        <Brand>Carve<span>Nex</span></Brand>
         <Subtitle>{t('admin.login.subtitle')}</Subtitle>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
           <LanguageSwitch position="login" />

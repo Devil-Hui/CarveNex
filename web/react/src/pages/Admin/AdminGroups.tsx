@@ -1012,7 +1012,7 @@ export default function AdminGroups() {
             <Input
               value={addMemberAccountNo}
               onChange={(e) => setAddMemberAccountNo(e.target.value)}
-              placeholder="ZG-…"
+              placeholder="CN-…"
             />
             <Hint>{t('admin.groups.addMemberHint')}</Hint>
           </FormGroup>

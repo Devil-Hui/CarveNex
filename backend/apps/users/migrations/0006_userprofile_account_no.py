@@ -61,7 +61,7 @@ class Migration(migrations.Migration):
                 default='',
                 editable=False,
                 max_length=24,
-                help_text='对外账户号（ZG- + Base32），替代暴露内部自增 id',
+                help_text='对外账户号（CN- + Base32），替代暴露内部自增 id',
             ),
         ),
         # 存量数据补填（此时尚无唯一约束）
@@ -77,7 +77,7 @@ class Migration(migrations.Migration):
                 editable=False,
                 max_length=24,
                 unique=True,
-                help_text='对外账户号（ZG- + Base32），替代暴露内部自增 id',
+                help_text='对外账户号（CN- + Base32），替代暴露内部自增 id',
             ),
         ),
     ]

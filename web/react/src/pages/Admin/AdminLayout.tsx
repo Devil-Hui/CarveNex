@@ -847,7 +847,7 @@ export default function AdminLayout() {
         {/* 桌面侧边栏 */}
         {!isMobile && (
           <Sidebar $collapsed={collapsed}>
-            <SidebarLogo>{collapsed ? 'Z' : 'CarveNex'}</SidebarLogo>
+            <SidebarLogo>{collapsed ? 'C' : 'CarveNex'}</SidebarLogo>
             {renderNav(collapsed)}
             <SidebarToggle onClick={toggleSidebar}>
               <Icon name="chevron-left" size={14} />

@@ -101,7 +101,7 @@ class PromoCodeCreateSerializer(serializers.Serializer):
         value = (value or '').strip().upper()
         import re as _re
         if value and not _re.fullmatch(r'[A-Z0-9]{1,8}', value):
-            raise serializers.ValidationError('前缀仅允许大写字母与数字（0-8 位），如 ZG、VIP')
+            raise serializers.ValidationError('前缀仅允许大写字母与数字（0-8 位），如 CN、VIP')
         return value
 
     def validate(self, attrs):

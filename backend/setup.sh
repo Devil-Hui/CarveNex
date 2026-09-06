@@ -103,6 +103,8 @@ migrate() {
 init_system() {
     mkdir -p logs  # dev compose 卷挂载会覆写容器内的 logs/, 需重建
     migrate
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Seeding initial data (categories/brands/tags)..."
+    python manage.py seed_data --env=prod || echo "[WARN] seed_data 执行失败，请检查"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Bootstrapping RBAC role-permission matrix..."
     python manage.py rbac_bootstrap
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Syncing admin-group roles to RBAC..."
