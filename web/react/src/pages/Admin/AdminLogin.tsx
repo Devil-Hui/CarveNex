@@ -184,6 +184,9 @@ export default function AdminLogin() {
   const { t } = useTranslation()
   const { isAuthenticated, login } = useAdminAuth()
   const navigate = useNavigate()
+  // 本地开发（vite dev server）跳过邮箱验证码与 Turnstile：本地收不到验证码邮件，
+  // 凭 用户名+密码+邮箱 即可登录；生产构建（import.meta.env.DEV=false）保持双因子不变。
+  const IS_DEV = import.meta.env.DEV
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [email, setEmail] = useState('')
@@ -206,7 +209,8 @@ export default function AdminLogin() {
       // 确保 csrftoken cookie 就绪（后续登录 POST 需要 CSRF 校验）
       await ensureCSRFCookie().catch(() => {})
       // 走 request.ts（带 VITE_API_URL 后端地址），不要用相对路径 fetch —— 相对路径会发到前端域导致 405
-      const data: any = await post('/users/email/verify/send/', { email })
+      // 管理员登录用专用端点（send_admin_verify_code），与用户注册的 verify/send 区分
+      const data: any = await post('/users/login/code/send/', { email })
       if (data && data.verify_id) {
         setVerifyId(data.verify_id)
         setSuccess(t('admin.login.codeSent'))
@@ -236,24 +240,35 @@ export default function AdminLogin() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!email || !verifyCode) return
-    if (!verifyId) {
-      // 未点 Send Code（或刷新后 verify_id 丢失）→ 明确提示，避免向后端发无意义请求
-      setError(t('admin.login.sendCodeFirst'))
-      return
+    if (!email) return
+    // 生产：验证码/人机验证缺一不可；开发：跳过（后端 dev_bypass 同步放行）
+    if (!IS_DEV) {
+      if (!verifyCode) return
+      if (!verifyId) {
+        // 未点 Send Code（或刷新后 verify_id 丢失）→ 明确提示，避免向后端发无意义请求
+        setError(t('admin.login.sendCodeFirst'))
+        return
+      }
+      if (!turnstileToken) {
+        setError(t('admin.login.turnstileRequired'))
+        return
+      }
     }
     if (!password) {
       setError(t('admin.login.passwordRequired'))
       return
     }
-    if (!turnstileToken) {
-      setError(t('admin.login.turnstileRequired'))
-      return
-    }
     setError('')
     setLoading(true)
     try {
-      const ok = await login(email, verifyId, verifyCode, turnstileToken, password, username)
+      const ok = await login(
+        email,
+        verifyId || undefined,
+        verifyCode || undefined,
+        IS_DEV ? undefined : turnstileToken || undefined,
+        password,
+        username,
+      )
       if (ok) {
         navigate('/admin/products', { replace: true })
       } else {
@@ -293,39 +308,50 @@ export default function AdminLogin() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <CodeRow>
-            <CodeInput
-              type="text"
-              placeholder={t('admin.login.verifyCode')}
-              value={verifyCode}
-              onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
-              maxLength={CONFIG.VERIFY_CODE_LENGTH}
-            />
-            <SendCodeBtn
-              type="button"
-              $disabled={!email || sendingCode || countdown > 0}
-              onClick={sendVerifyCode}
-              disabled={!email || sendingCode || countdown > 0}
-            >
-              {sendingCode ? t('admin.login.sendingCode') : countdown > 0 ? `${countdown}s` : t('admin.login.sendCode')}
-            </SendCodeBtn>
-          </CodeRow>
-          <Hint>{t('admin.login.codeHint')}</Hint>
+          {!IS_DEV && (
+            <>
+              <CodeRow>
+                <CodeInput
+                  type="text"
+                  placeholder={t('admin.login.verifyCode')}
+                  value={verifyCode}
+                  onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
+                  maxLength={CONFIG.VERIFY_CODE_LENGTH}
+                />
+                <SendCodeBtn
+                  type="button"
+                  $disabled={!email || sendingCode || countdown > 0}
+                  onClick={sendVerifyCode}
+                  disabled={!email || sendingCode || countdown > 0}
+                >
+                  {sendingCode ? t('admin.login.sendingCode') : countdown > 0 ? `${countdown}s` : t('admin.login.sendCode')}
+                </SendCodeBtn>
+              </CodeRow>
+              <Hint>{t('admin.login.codeHint')}</Hint>
+            </>
+          )}
           <Input
             type="password"
             placeholder={t('admin.login.password')}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <TurnstileWidget
-            ref={turnstileRef}
-            siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
-            onVerify={(token) => setTurnstileToken(token)}
-            onError={() => setTurnstileToken(null)}
-          />
+          {!IS_DEV && (
+            <TurnstileWidget
+              ref={turnstileRef}
+              siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
+              onVerify={(token) => setTurnstileToken(token)}
+              onError={() => setTurnstileToken(null)}
+            />
+          )}
+          {IS_DEV && <Hint>{t('admin.login.devBypassHint')}</Hint>}
           {success && <SuccessText>{success}</SuccessText>}
           {error && <ErrorText>{error}</ErrorText>}
-          <Button type="submit" $loading={loading} disabled={!username || !password || !verifyCode || !turnstileToken || loading}>
+          <Button
+            type="submit"
+            $loading={loading}
+            disabled={!username || !password || loading || (!IS_DEV && (!verifyCode || !turnstileToken))}
+          >
             {loading ? t('admin.login.signingIn') : t('admin.login.signIn')}
           </Button>
         </Form>

@@ -646,10 +646,12 @@ class EmailVerifyService:
         _code_cache.set(f'email_verify:{verify_id}', code, timeout=expire_sec)
         _code_cache.set(f'email_verify_email:{verify_id}', email, timeout=expire_sec)
         _code_cache.set(EmailVerifyService._active_key(email), verify_id, timeout=expire_sec)
-        EmailVerifyService._mark_sent(email)
 
-        # 账号池轮换发送（失败抛异常，由视图返回 500）
+        # 账号池轮换发送（失败抛异常，由视图返回 500）。
+        # 投递成功后才记频控/当日额度：SMTP 失败不占用 60s 冷却，
+        # 用户可立即重试并看到真实错误，而不是被 429「发送过于频繁」掩盖。
         _deliver_verify_email(email, code, 'verify_code')
+        EmailVerifyService._mark_sent(email)
 
         result = {'verify_id': verify_id, 'expire_seconds': expire_sec}
         if getattr(settings, 'ENABLE_MOCK_PAYMENT', False) or settings.DEBUG:
@@ -669,9 +671,10 @@ class EmailVerifyService:
         _code_cache.set(f'email_verify:{verify_id}', code, timeout=expire_sec)
         _code_cache.set(f'email_verify_email:{verify_id}', email, timeout=expire_sec)
         _code_cache.set(EmailVerifyService._active_key(email), verify_id, timeout=expire_sec)
-        EmailVerifyService._mark_sent(email)
 
-        # 账号池轮换发送（失败抛异常，由视图返回 500）
+        # 账号池轮换发送（失败抛异常，由视图返回 500）。
+        # 投递成功后才记频控/当日额度：SMTP 失败不占用 60s 冷却，可立即重试。
         _deliver_verify_email(email, code, 'verify_code')
+        EmailVerifyService._mark_sent(email)
 
         return {'verify_id': verify_id, 'expire_seconds': expire_sec}

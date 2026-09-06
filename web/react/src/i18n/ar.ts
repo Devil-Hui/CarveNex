@@ -150,6 +150,7 @@ const ar = {
       sendCodeFirst: 'يرجى النقر على إرسال الرمز أولاً، ثم أدخل الرمز من بريدك',
       turnstileRequired: 'يرجى إكمال التحقق الأمني',
       passwordRequired: 'يرجى إدخال كلمة المرور',
+      devBypassHint: 'وضع التطوير: تم تخطي رمز البريد والتحقق الأمني',
     },
 
     layout: {

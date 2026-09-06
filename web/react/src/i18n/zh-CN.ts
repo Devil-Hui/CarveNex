@@ -148,6 +148,7 @@ const zhCN = {
       sendCodeFirst: '请先点击发送验证码，再输入邮箱收到的验证码',
       turnstileRequired: '请完成安全验证',
       passwordRequired: '请输入密码',
+      devBypassHint: '开发环境：已跳过邮箱验证码与人机验证',
     },
 
     layout: {

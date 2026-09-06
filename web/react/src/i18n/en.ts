@@ -149,6 +149,7 @@ const en = {
       sendCodeFirst: 'Please click Send Code first, then enter the code from your email',
       turnstileRequired: 'Please complete the security verification',
       passwordRequired: 'Please enter your password',
+      devBypassHint: 'Dev mode: email code & captcha skipped',
     },
 
     layout: {

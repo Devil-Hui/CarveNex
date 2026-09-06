@@ -95,27 +95,35 @@ class AdminLoginView(PublicApiView):
         if not username:
             return Response({'detail': '用户名不能为空'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 邮箱验证码校验
-        if not verify_id or not code:
-            return Response({'detail': '验证码不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        # 开发/测试环境（Mock 支付开启或 DEBUG）：跳过邮箱验证码与 Turnstile。
+        # 本地往往收不到验证码邮件，凭 用户名+密码+邮箱 即可登录，便于联调；
+        # ENABLE_MOCK_PAYMENT 在 prod 被 settings 强制关闭，此分支生产不可达。
+        dev_bypass = getattr(settings, 'ENABLE_MOCK_PAYMENT', False) or settings.DEBUG
+        if dev_bypass:
+            _logger.info('[AdminLogin] dev bypass: skip email code & turnstile for username=%r', username)
 
-        # 验证码必须与请求邮箱绑定（防止跨邮箱复用验证码）
-        if EmailVerifyService.get_verify_email(verify_id) != email:
-            return Response({'detail': '验证码与邮箱不匹配'}, status=status.HTTP_400_BAD_REQUEST)
+        if not dev_bypass:
+            # 邮箱验证码校验
+            if not verify_id or not code:
+                return Response({'detail': '验证码不能为空'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 邮箱验证码校验（consume=False：仅校验不销毁，允许密码输错后重试同一验证码）
-        if not EmailVerifyService.verify_code(verify_id, code, consume=False):
-            return Response({'detail': '验证码错误或已过期'}, status=status.HTTP_400_BAD_REQUEST)
+            # 验证码必须与请求邮箱绑定（防止跨邮箱复用验证码）
+            if EmailVerifyService.get_verify_email(verify_id) != email:
+                return Response({'detail': '验证码与邮箱不匹配'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Cloudflare Turnstile 人机验证
-        if not turnstile_token and not getattr(settings, 'ENABLE_MOCK_PAYMENT', False):
-            return Response({'detail': '请完成安全验证'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            verified = verify_turnstile(turnstile_token)
-        except TurnstileUnavailable:
-            return Response({'detail': '安全验证服务暂时不可用，请稍后重试'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        if not verified:
-            return Response({'detail': '安全验证失败，请重试'}, status=status.HTTP_400_BAD_REQUEST)
+            # 邮箱验证码校验（consume=False：仅校验不销毁，允许密码输错后重试同一验证码）
+            if not EmailVerifyService.verify_code(verify_id, code, consume=False):
+                return Response({'detail': '验证码错误或已过期'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Cloudflare Turnstile 人机验证
+            if not turnstile_token:
+                return Response({'detail': '请完成安全验证'}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                verified = verify_turnstile(turnstile_token)
+            except TurnstileUnavailable:
+                return Response({'detail': '安全验证服务暂时不可用，请稍后重试'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            if not verified:
+                return Response({'detail': '安全验证失败，请重试'}, status=status.HTTP_400_BAD_REQUEST)
 
         # 密码校验（邮箱验证码证明邮箱所有权 + 密码证明身份，双因子）
         if not password:
