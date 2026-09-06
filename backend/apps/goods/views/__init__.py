@@ -11,7 +11,7 @@ from .admin_spu import (
     SPUAdminListView, SPUAdminCreateView, SPUAdminUpdateView,
     SPUAdminDeleteView, SPUAdminDetailView, SPUAdminSubmitView,
     SPUAdminAuditView, SPUAdminShelfView, SPUAdminScheduleView,
-    SPUAdminDuplicateView,
+    SPUAdminDuplicateView, SPUTranslateView,
 )
 from .admin_spu_batch import SPUAdminBatchView, SPUAdminBatchTaskView
 from .admin_sku import (
