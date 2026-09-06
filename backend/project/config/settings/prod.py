@@ -19,12 +19,30 @@ SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'] = datetime.timedelta(hours=2)
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 if ALLOWED_HOSTS == ['']:
     raise RuntimeError("ALLOWED_HOSTS 环境变量未设置！")
+# 自动补充 CarveNex 官方域名，避免服务器 .env 漏配导致 Host 校验 400/403
+_CARVENEX_HOSTS = [
+    "carvenex.com", "www.carvenex.com", "admin.carvenex.com",
+    "shop.carvenex.com", "api.carvenex.com",
+]
+for _h in _CARVENEX_HOSTS:
+    if _h not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_h)
 
-# CORS — 生产环境仅允许已知来源 (F-009 修复)
+# CORS — 生产环境仅允许已知来源 (F-04 修复)
 cors_origins = os.getenv("CORS_ORIGINS", "")
 if not cors_origins:
     raise RuntimeError("CORS_ORIGINS 环境变量未设置！")
 CORS_ALLOWED_ORIGINS = cors_origins.split(",")
+# 自动补充 CarveNex 官方前端来源，避免旧 .env 漏配 admin/shop 域名导致 CORS 预检失败
+_CARVENEX_ORIGINS = [
+    "https://www.carvenex.com",
+    "https://admin.carvenex.com",
+    "https://shop.carvenex.com",
+    "https://api.carvenex.com",
+]
+for _o in _CARVENEX_ORIGINS:
+    if _o not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(_o)
 CORS_ALLOW_CREDENTIALS = True
 
 # 文件存储配置
