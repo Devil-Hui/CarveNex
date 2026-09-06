@@ -28,10 +28,10 @@ services:
       context: ./web/react
       dockerfile: Dockerfile
       args:
-        APP_VERSION: ${APP_VERSION:?APP_VERSION is required}
-        GIT_COMMIT: ${GIT_COMMIT:?GIT_COMMIT is required}
-        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:?VITE_TURNSTILE_SITE_KEY is required}
-    image: carvenex-nginx:${APP_VERSION:?APP_VERSION is required}
+        APP_VERSION: ${APP_VERSION:-v1.0.6}
+        GIT_COMMIT: ${GIT_COMMIT:-latest}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-0x4AAAAAAEod4A8ngpZCK06H}
+    image: carvenex-nginx:${APP_VERSION:-v1.0.6}
     restart: unless-stopped
     logging: *default-logging
     ports:
@@ -71,9 +71,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile.prod
       args:
-        APP_VERSION: ${APP_VERSION:?APP_VERSION is required}
-        GIT_COMMIT: ${GIT_COMMIT:?GIT_COMMIT is required}
-    image: carvenex-django:${APP_VERSION:?APP_VERSION is required}
+        APP_VERSION: ${APP_VERSION:-v1.0.6}
+        GIT_COMMIT: ${GIT_COMMIT:-latest}
+    image: carvenex-django:${APP_VERSION:-v1.0.6}
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -125,7 +125,7 @@ services:
       start_period: 45s
 
   celery-worker:
-    image: carvenex-django:${APP_VERSION:?APP_VERSION is required}
+    image: carvenex-django:${APP_VERSION:-v1.0.6}
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -168,7 +168,7 @@ services:
       <<: *healthcheck
 
   celery-beat:
-    image: carvenex-django:${APP_VERSION:?APP_VERSION is required}
+    image: carvenex-django:${APP_VERSION:-v1.0.6}
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -230,7 +230,7 @@ services:
     build:
       context: ./backend/mysql
       dockerfile: Dockerfile
-    image: carvenex-mysql:${APP_VERSION:?APP_VERSION is required}
+    image: carvenex-mysql:${APP_VERSION:-v1.0.6}
     restart: unless-stopped
     logging: *default-logging
     environment:
