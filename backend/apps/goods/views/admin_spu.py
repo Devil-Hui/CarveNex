@@ -153,6 +153,10 @@ class SPUAdminCreateView(BaseApiView):
         brand_id = request.data.get('brand_id')
         category_id = request.data.get('category_id')
         description = request.data.get('description', '')
+        name_en = request.data.get('name_en', '')
+        description_en = request.data.get('description_en', '')
+        name_ar = request.data.get('name_ar', '')
+        description_ar = request.data.get('description_ar', '')
         main_image = request.data.get('main_image', '')
         meta_title = request.data.get('meta_title', '')
         meta_description = request.data.get('meta_description', '')
@@ -196,7 +200,9 @@ class SPUAdminCreateView(BaseApiView):
 
         spu = SPU.objects.create(
             name=name, brand=brand, category=category,
-            description=description, main_image=main_image,
+            description=description, name_en=name_en, description_en=description_en,
+            name_ar=name_ar, description_ar=description_ar,
+            main_image=main_image,
             meta_title=meta_title, meta_description=meta_description,
             product_type=product_type, tags=tags,
             requires_shipping=requires_shipping, taxable=taxable,
@@ -258,7 +264,7 @@ class SPUAdminUpdateView(BaseApiView):
         if not can_operate_spu(request.user, spu):
             return Response({'detail': Messages.ADMIN_SPU_NOT_IN_GROUP}, status=status.HTTP_403_FORBIDDEN)
 
-        for field in ['name', 'description', 'main_image', 'specs', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind']:
+        for field in ['name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'specs', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind']:
             if field in request.data:
                 setattr(spu, field, request.data[field])
         if 'brand_id' in request.data:
@@ -272,11 +278,11 @@ class SPUAdminUpdateView(BaseApiView):
             except Category.DoesNotExist:
                 return Response({'detail': Messages.SPU_NOT_FOUND}, status=status.HTTP_404_NOT_FOUND)
 
-        spu.save(update_fields=[f for f in request.data if f in ('name', 'description', 'main_image', 'specs', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')])
+        spu.save(update_fields=[f for f in request.data if f in ('name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'specs', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')])
         create_audit_log(request.user, 'update', 'spu', spu.id,
-                         changes={k: str(v) for k, v in request.data.items() if k in ('name', 'description', 'main_image', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')},
+                         changes={k: str(v) for k, v in request.data.items() if k in ('name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')},
                          ip_address=request.META.get('REMOTE_ADDR'))
-        create_operation_log(spu, request.user, 'update', field_name=', '.join(k for k in request.data if k in ('name', 'description', 'main_image', 'specs', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')))
+        create_operation_log(spu, request.user, 'update', field_name=', '.join(k for k in request.data if k in ('name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'specs', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')))
         # 失效 SPU 商品类型缓存 + SPU 详情缓存
         GoodsCacheService.invalidate_spu_kind(spu_id)
         GoodsCacheService.invalidate_spu(spu_id)
@@ -385,6 +391,10 @@ class SPUAdminDetailView(BaseApiView):
             'category_id': spu.category_id,
             'category_path': SPUAdminListView._get_category_path(spu.category),
             'description': spu.description,
+            'name_en': spu.name_en,
+            'description_en': spu.description_en,
+            'name_ar': spu.name_ar,
+            'description_ar': spu.description_ar,
             'main_image': spu.main_image,
             'specs': spu.specs,
             'status': spu.status,
@@ -603,3 +613,32 @@ class SPUAdminDuplicateView(BaseApiView):
             'name': new_spu.name,
             'message': Messages.ADMIN_DUPLICATE_SUCCESS,
         }, status=status.HTTP_201_CREATED)
+
+
+class SPUTranslateView(BaseApiView):
+    """商品内容翻译（调用腾讯云机器翻译）。
+
+    用于商品表单中把名称/描述翻译成目标语言（如阿拉伯语）。
+    未配置 TMT 密钥时返回 503，前端可隐藏翻译按钮。
+    """
+    permission_classes = [HasPerm('goods.spu.write')]
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        responses={200: OpenApiResponse(description='Translated text')},
+    )
+    def post(self, request):
+        text = request.data.get('text', '')
+        source = request.data.get('source', 'auto')
+        target = request.data.get('target', 'ar')
+        if not text or not text.strip():
+            return Response({'detail': 'text is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from ..translation_service import translate_text
+        result = translate_text(text, source=source, target=target)
+        if result is None:
+            return Response(
+                {'detail': '翻译服务未配置或调用失败，请检查 TMT_SECRET_ID/TMT_SECRET_KEY'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({'translated_text': result})

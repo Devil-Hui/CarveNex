@@ -33,6 +33,11 @@ export interface SPUFormData {
   category_id: number;
   main_image?: string;
   description?: string;
+  /** 多语言商品名称/描述（英文 / 阿拉伯语） */
+  name_en?: string;
+  description_en?: string;
+  name_ar?: string;
+  description_ar?: string;
   specs?: { name: string; values: string[] }[];
   /** 显式 SKU 列表：创建时随请求提交，后端据此创建 SKU 并跳过 specs 自动生成 */
   skus?: {
@@ -119,6 +124,10 @@ export interface SPUAdminDetail {
   category_id: number;
   category_path: string;
   description: string;
+  name_en?: string;
+  description_en?: string;
+  name_ar?: string;
+  description_ar?: string;
   main_image: string;
   specs: { name: string; values: string[] }[];
   status: string;
@@ -381,6 +390,9 @@ export const adminAPI = {
     post<SPUItem>('/goods/spu/create', formData),
   updateSPU: (id: number, data: Partial<SPUFormData>) =>
     put<SPUItem>(`/goods/spu/${id}/update`, data),
+  /** 商品内容翻译（腾讯云机器翻译），返回翻译后的文本 */
+  translateText: (data: { text: string; source?: string; target?: string }) =>
+    post<{ translated_text: string }>('/goods/spu/translate', data),
   deleteSPU: (id: number) =>
     del(`/goods/spu/${id}/delete`),
   submitAudit: (id: number) =>

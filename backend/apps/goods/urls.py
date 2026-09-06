@@ -9,7 +9,7 @@ from .views import (
     SPUAdminListView, SPUAdminCreateView, SPUAdminUpdateView,
     SPUAdminDeleteView, SPUAdminDetailView, SPUAdminSubmitView,
     SPUAdminAuditView, SPUAdminShelfView, SPUAdminScheduleView,
-    SPUAdminDuplicateView,
+    SPUAdminDuplicateView, SPUTranslateView,
     # Admin Batch
     SPUAdminBatchView, SPUAdminBatchTaskView,
     # Admin SKU
@@ -77,6 +77,7 @@ urlpatterns = [
     path('spu/<int:spu_id>/shelf', SPUAdminShelfView.as_view(), name='admin-spu-shelf'),
     path('spu/<int:spu_id>/schedule', SPUAdminScheduleView.as_view(), name='admin-spu-schedule'),
     path('spu/<int:spu_id>/duplicate', SPUAdminDuplicateView.as_view(), name='admin-spu-duplicate'),
+    path('spu/translate', SPUTranslateView.as_view(), name='admin-spu-translate'),
     path('spu/batch', SPUAdminBatchView.as_view(), name='admin-spu-batch'),
     path('spu/batch/task/<str:task_id>', SPUAdminBatchTaskView.as_view(), name='admin-spu-batch-task'),
     path('spu/import', ImportProductsView.as_view(), name='admin-spu-import'),

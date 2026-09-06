@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import PageLayout from '../../components/layout/PageLayout/PageLayout'
 import { useProducts, useFlatCategories, useCategories } from '../../hooks/useProducts'
 import { useTranslation } from '../../i18n'
+import { localizedText } from '../../utils/localizedText'
 import { useCurrency } from '../../store/CurrencyContext'
 import styled from 'styled-components'
 import { Color, Radius, Shadow, FontSize } from '../../theme/tokens'
@@ -540,7 +541,7 @@ export default function Category() {
   const { products, total } = useProducts(1, 20, numericCatId, searchQuery, priceMin, priceMax)
   const { categories } = useFlatCategories()
   const { categories: categoryTree } = useCategories()
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const { format } = useCurrency()
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [minPrice, setMinPrice] = useState(priceMin ?? 0)
@@ -693,7 +694,9 @@ export default function Category() {
           </ListHeader>
 
           <ProductGrid $show={view === 'grid'}>
-            {products.map(product => (
+            {products.map(product => {
+              const localizedName = localizedText(lang, product.name, product.name_en, product.name_ar)
+              return (
               <ProductCard key={product.id} onClick={() => handleProductClick(product.id)}>
                 {product.badge && (
                   <ProductBadge>
@@ -703,11 +706,11 @@ export default function Category() {
                 <PromoTags tags={product.promo_tags} onClick={() => navigate('/profile?tab=coupons')} />
                 <ProductImage>
                   {optionalMediaUrl(product.image) && (
-                    <img src={optionalMediaUrl(product.image)} alt={product.name} loading="lazy" decoding="async" />
+                    <img src={optionalMediaUrl(product.image)} alt={localizedName} loading="lazy" decoding="async" />
                   )}
                 </ProductImage>
                 <ProductInfo>
-                  <ProductTitle>{product.name}</ProductTitle>
+                  <ProductTitle>{localizedName}</ProductTitle>
                   <CardFooter>
                     <CardPrice>
                       {format(Number(product.price))}
@@ -729,11 +732,14 @@ export default function Category() {
                   <CardBuyBtn>{t('store.category.buy')}</CardBuyBtn>
                 </ProductInfo>
               </ProductCard>
-            ))}
+              )
+            })}
           </ProductGrid>
 
           <ListView $show={view === 'list'}>
-            {products.map(product => (
+            {products.map(product => {
+              const localizedName = localizedText(lang, product.name, product.name_en, product.name_ar)
+              return (
               <ListItem key={product.id} onClick={() => handleProductClick(product.id)}>
                 {product.badge && (
                   <ProductBadge>
@@ -743,11 +749,11 @@ export default function Category() {
                 <PromoTags tags={product.promo_tags} onClick={() => navigate('/profile?tab=coupons')} />
                 <ProductImage style={{ width: 200, height: 200, flexShrink: 0 }}>
                   {optionalMediaUrl(product.image) && (
-                    <img src={optionalMediaUrl(product.image)} alt={product.name} loading="lazy" decoding="async" />
+                    <img src={optionalMediaUrl(product.image)} alt={localizedName} loading="lazy" decoding="async" />
                   )}
                 </ProductImage>
                 <ListItemInfo>
-                  <ListItemTitle>{product.name}</ListItemTitle>
+                  <ListItemTitle>{localizedName}</ListItemTitle>
                   <ListItemPrice>
                     {format(Number(product.price))}
                     {product.originalPrice && (
@@ -768,7 +774,8 @@ export default function Category() {
                   </ListItemActions>
                 </ListItemInfo>
               </ListItem>
-            ))}
+              )
+            })}
           </ListView>
         </ProductList>
       </MainContent>

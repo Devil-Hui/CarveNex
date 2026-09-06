@@ -863,6 +863,13 @@ COS_SECRET_KEY = os.getenv('COS_SECRET_KEY', '')
 COS_REGION = os.getenv('COS_REGION', 'ap-guangzhou')
 COS_BUCKET = os.getenv('COS_BUCKET', '')
 
+# 腾讯云机器翻译（TMT）
+# 用于商品名称/描述等内容的自动翻译（如翻译成阿拉伯语）。
+# 未配置密钥时翻译接口返回 503，前端可优雅降级（隐藏翻译按钮）。
+TMT_SECRET_ID = os.getenv('TMT_SECRET_ID', '')
+TMT_SECRET_KEY = os.getenv('TMT_SECRET_KEY', '')
+TMT_REGION = os.getenv('TMT_REGION', 'ap-guangzhou')
+
 # 阿里云 OSS
 OSS_ACCESS_KEY_ID = os.getenv('OSS_ACCESS_KEY_ID', '')
 OSS_ACCESS_KEY_SECRET = os.getenv('OSS_ACCESS_KEY_SECRET', '')

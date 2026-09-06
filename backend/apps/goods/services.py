@@ -364,6 +364,8 @@ class GoodsQueryService:
                 results.append({
                     'id': spu.id,
                     'name': spu.name,
+                    'name_en': spu.name_en,
+                    'name_ar': spu.name_ar,
                     'main_image': spu.main_image,
                     'status': spu.status,
                     'brand_name': spu.brand.name if spu.brand_id else '',

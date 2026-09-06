@@ -8,6 +8,7 @@ import { useCurrency } from '../../../store/CurrencyContext'
 import { Color, Radius, Shadow, FontSize, Transition, Type } from '../../../theme/tokens'
 import { zIndex } from '../../../styles/zIndex'
 import { resolveMediaUrl } from '../../../api/chat'
+import { localizedText } from '../../../utils/localizedText'
 
 export interface ProductDetailModalProps {
   productId: number | null
@@ -550,11 +551,13 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onAddToCart,
   onToggleFavorite,
 }) => {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const navigate = useNavigate()
   const { isLoggedIn } = useUser()
   const { format } = useCurrency()
   const [detail, setDetail] = useState<PublicSPUDetail | null>(null)
+  // 多语言：根据当前界面语言选择商品名称
+  const localizedName = localizedText(lang, detail?.name || '', detail?.name_en, detail?.name_ar)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedSpecs, setSelectedSpecs] = useState<Record<string, string>>({})
@@ -829,7 +832,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <MediaCol>
               <MainImageBox>
                 {selectedImageUrl ? (
-                  <MainImage src={selectedImageUrl} alt={detail.name} />
+                  <MainImage src={selectedImageUrl} alt={localizedName} />
                 ) : null}
               </MainImageBox>
               {images.length > 1 && (
@@ -840,7 +843,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       $active={index === selectedImageIndex}
                       onClick={() => setSelectedImageIndex(index)}
                       type="button"
-                      aria-label={`${detail.name} ${index + 1}`}
+                      aria-label={`${localizedName} ${index + 1}`}
                     >
                       <img src={img} alt="" />
                     </ThumbItem>
@@ -852,7 +855,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             {/* 右：参数面板 —— 弹窗的主体，只服务于「选规格 + 加购」 */}
             <ParamCol>
               {detail.brand_name && <BrandTag>{detail.brand_name}</BrandTag>}
-              <ProductName>{detail.name}</ProductName>
+              <ProductName>{localizedName}</ProductName>
 
               <PriceRow>
                 <CurrentPrice>

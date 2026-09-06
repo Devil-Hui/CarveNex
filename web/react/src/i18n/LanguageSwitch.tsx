@@ -49,6 +49,13 @@ export default function LanguageSwitch({ position = 'header' }: LanguageSwitchPr
       >
         中文
       </Btn>
+      <Btn
+        $active={lang === 'ar'}
+        onClick={() => setLang('ar')}
+        style={btnColor ? { color: btnColor, borderColor: btnColor } : undefined}
+      >
+        عربي
+      </Btn>
     </Wrapper>
   )
 }

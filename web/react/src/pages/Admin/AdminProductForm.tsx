@@ -536,6 +536,106 @@ const SpinIcon = styled.span`
   }
 `
 
+// ── 多语言（阿拉伯语）翻译 ──
+
+const LabelRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+`
+
+const TranslateBtn = styled.button<{ $loading?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid ${Color.border.medium};
+  border-radius: ${Radius.sm}px;
+  background: transparent;
+  color: ${Color.text.secondary};
+  font-size: ${FontSize.xs}px;
+  cursor: ${({ $loading }) => ($loading ? 'wait' : 'pointer')};
+  opacity: ${({ $loading }) => ($loading ? 0.6 : 1)};
+  transition: all 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: ${Color.primary};
+    color: ${Color.primary};
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+`
+
+const ArField = styled.div`
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px dashed ${Color.border.medium};
+  border-radius: ${Radius.md}px;
+  background: ${Color.bg.sunken};
+`
+
+const ArLabel = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: ${FontSize.xs}px;
+  color: ${Color.text.muted};
+  margin-bottom: 6px;
+`
+
+const ArInput = styled(Input)`
+  direction: rtl;
+  text-align: right;
+`
+
+const ArTextArea = styled(TextArea)`
+  direction: rtl;
+  text-align: right;
+`
+
+// ── 多语言左右布局：左侧默认语言，右侧英文/阿拉伯语 ──
+const LangGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 12px;
+
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+  }
+`
+
+const LangCol = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+`
+
+const LangColTitle = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: ${FontSize.xs}px;
+  font-weight: 600;
+  color: ${Color.text.muted};
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+`
+
+const SyncTranslateBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+`
+
 // ── 新建模式：提交时图片上传进度遮罩 ──
 
 const UploadOverlay = styled.div`
@@ -1079,6 +1179,11 @@ export default function AdminProductForm() {
   const [brandId, setBrandId] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [description, setDescription] = useState('')
+  // 多语言字段（英文 / 阿拉伯语）
+  const [nameEn, setNameEn] = useState('')
+  const [descriptionEn, setDescriptionEn] = useState('')
+  const [nameAr, setNameAr] = useState('')
+  const [descriptionAr, setDescriptionAr] = useState('')
   const [metaTitle, setMetaTitle] = useState('')
   const [metaDescription, setMetaDescription] = useState('')
   const [productType, setProductType] = useState('')
@@ -1191,11 +1296,17 @@ export default function AdminProductForm() {
             media?: ProductMediaItem[];
             product_kind?: 'physical' | 'virtual';
             scheduled_publish_at?: string; scheduled_unpublish_at?: string;
+            name_en?: string; description_en?: string;
+            name_ar?: string; description_ar?: string;
           }
           setName(data.name)
           setBrandId(String(data.brand_id))
           setCategoryId(String(data.category_id))
           setDescription(data.description || '')
+          setNameEn(data.name_en || '')
+          setDescriptionEn(data.description_en || '')
+          setNameAr(data.name_ar || '')
+          setDescriptionAr(data.description_ar || '')
           if (data.specs?.length) {
             setSpecs(data.specs)
           }
@@ -1357,6 +1468,50 @@ export default function AdminProductForm() {
     await adminAPI.updateMedia(mediaId, data)
   }
 
+  // ── 多语言翻译（同步翻译成英文 / 阿拉伯语） ──
+  const [translating, setTranslating] = useState(false)
+  const [translateError, setTranslateError] = useState('')
+
+  // 同步翻译：一键把名称 + 描述翻译成英文和阿拉伯语
+  const handleSyncTranslate = async () => {
+    if (!name.trim() && !description.trim()) {
+      setTranslateError(t('admin.productForm.translateEmpty'))
+      return
+    }
+    setTranslating(true)
+    setTranslateError('')
+    try {
+      const tasks: Promise<void>[] = []
+      if (name.trim()) {
+        tasks.push(
+          adminAPI.translateText({ text: name, source: 'auto', target: 'en' })
+            .then((r) => setNameEn(r.translated_text)),
+          adminAPI.translateText({ text: name, source: 'auto', target: 'ar' })
+            .then((r) => setNameAr(r.translated_text)),
+        )
+      }
+      if (description.trim()) {
+        tasks.push(
+          adminAPI.translateText({ text: description, source: 'auto', target: 'en' })
+            .then((r) => setDescriptionEn(r.translated_text)),
+          adminAPI.translateText({ text: description, source: 'auto', target: 'ar' })
+            .then((r) => setDescriptionAr(r.translated_text)),
+        )
+      }
+      await Promise.all(tasks)
+      markDirty()
+    } catch (e: unknown) {
+      const err = e as { response?: { status?: number } }
+      if (err?.response?.status === 503) {
+        setTranslateError(t('admin.productForm.translateNotConfigured'))
+      } else {
+        setTranslateError(t('admin.productForm.translateFailed'))
+      }
+    } finally {
+      setTranslating(false)
+    }
+  }
+
   // ── Submit ──
 
   const doSubmit = async (submitForReview = false) => {
@@ -1373,6 +1528,10 @@ export default function AdminProductForm() {
         brand_id: Number(brandId),
         category_id: Number(categoryId),
         description: description.trim(),
+        name_en: nameEn.trim(),
+        description_en: descriptionEn.trim(),
+        name_ar: nameAr.trim(),
+        description_ar: descriptionAr.trim(),
         specs: validSpecs,
         meta_title: metaTitle.trim(),
         meta_description: metaDescription.trim(),
@@ -1426,6 +1585,34 @@ export default function AdminProductForm() {
             })
           }
         }
+
+        // 编辑模式：上传「新裁剪、尚未提交」的暂存媒体（IndexedDB）到该 SPU。
+        // 裁剪时仅暂存浏览器端，点保存/提交才真正上传 R2，避免无效存储。
+        const editStaged = await getAllStagedItems()
+        const editImageItems = editStaged.filter(
+          (it) => it.mediaType === 'image' && it.thumbBlob && it.listBlob && it.largeBlob && it.originalBlob,
+        )
+        if (editImageItems.length > 0) {
+          setUploadState({ active: true, uploaded: 0, total: editImageItems.length, percent: 0, fileName: '' })
+          for (const item of editImageItems) {
+            const fd = new FormData()
+            const base = (item.fileName || 'image').replace(/\.[^.]+$/, '')
+            if (item.thumbBlob) fd.append('thumb', item.thumbBlob, `thumb_${base}.webp`)
+            if (item.listBlob) fd.append('list', item.listBlob, `list_${base}.webp`)
+            if (item.largeBlob) fd.append('large', item.largeBlob, `large_${base}.webp`)
+            if (item.originalBlob) fd.append('original', item.originalBlob, `original_${base}.webp`)
+            try {
+              await adminAPI.uploadMedia(spuId, fd, (p) => {
+                setUploadState((s) => ({ ...s, percent: p, fileName: item.fileName || 'image' }))
+              })
+            } catch (e) {
+              console.warn('[AdminProductForm] 编辑模式上传图片媒体失败 spu=%s:', spuId, e)
+            }
+            setUploadState((s) => ({ ...s, uploaded: s.uploaded + 1, percent: 0 }))
+          }
+          setUploadState((s) => ({ ...s, active: false }))
+        }
+        await clearAllStaged()
       } else {
         // ── 新建模式 ──
         // 先校验所有 SKU 价格，避免 createSPU 之后才发现价格缺失而产生空壳商品
@@ -1650,14 +1837,60 @@ export default function AdminProductForm() {
                   <option value="virtual">{t('admin.productForm.kindVirtual')}</option>
                 </Select>
               </Field>
-              <Field>
-                <Label>{t('admin.productForm.productName')} *</Label>
-                <Input value={name} onChange={(e) => { setName(e.target.value); markDirty() }} required placeholder={t('admin.productForm.productNamePlaceholder')} />
-              </Field>
-              <Field>
-                <Label>{t('admin.productForm.descriptionLabel')}</Label>
-                <TextArea value={description} onChange={(e) => { setDescription(e.target.value); markDirty() }} placeholder={t('admin.productForm.descriptionPlaceholder')} />
-              </Field>
+              <SyncTranslateBar>
+                <TranslateBtn
+                  type="button"
+                  $loading={translating}
+                  disabled={translating}
+                  onClick={handleSyncTranslate}
+                >
+                  {translating ? <SpinIcon><Icon name="refresh" size={12} /></SpinIcon> : <Icon name="refresh" size={12} />}
+                  {t('admin.productForm.syncTranslate')}
+                </TranslateBtn>
+                <span style={{ fontSize: FontSize.xs, color: Color.text.muted }}>
+                  {t('admin.productForm.syncTranslateHint')}
+                </span>
+              </SyncTranslateBar>
+              <LangGrid>
+                <LangCol>
+                  <LangColTitle>{t('admin.productForm.langDefault')}</LangColTitle>
+                  <Field>
+                    <Label style={{ marginBottom: 0 }}>{t('admin.productForm.productName')} *</Label>
+                    <Input value={name} onChange={(e) => { setName(e.target.value); markDirty() }} required placeholder={t('admin.productForm.productNamePlaceholder')} />
+                  </Field>
+                  <Field>
+                    <Label style={{ marginBottom: 0 }}>{t('admin.productForm.descriptionLabel')}</Label>
+                    <TextArea value={description} onChange={(e) => { setDescription(e.target.value); markDirty() }} placeholder={t('admin.productForm.descriptionPlaceholder')} />
+                  </Field>
+                </LangCol>
+                <LangCol>
+                  <LangColTitle>{t('admin.productForm.langEn')}</LangColTitle>
+                  <Field>
+                    <Label style={{ marginBottom: 0 }}>{t('admin.productForm.nameEn')}</Label>
+                    <Input value={nameEn} onChange={(e) => { setNameEn(e.target.value); markDirty() }} placeholder={t('admin.productForm.nameEnPlaceholder')} />
+                  </Field>
+                  <Field>
+                    <Label style={{ marginBottom: 0 }}>{t('admin.productForm.descriptionEn')}</Label>
+                    <TextArea value={descriptionEn} onChange={(e) => { setDescriptionEn(e.target.value); markDirty() }} placeholder={t('admin.productForm.descriptionEnPlaceholder')} />
+                  </Field>
+                </LangCol>
+                <LangCol>
+                  <LangColTitle>{t('admin.productForm.langAr')}</LangColTitle>
+                  <Field>
+                    <Label style={{ marginBottom: 0 }}>{t('admin.productForm.nameAr')}</Label>
+                    <ArInput value={nameAr} onChange={(e) => { setNameAr(e.target.value); markDirty() }} placeholder={t('admin.productForm.nameArPlaceholder')} />
+                  </Field>
+                  <Field>
+                    <Label style={{ marginBottom: 0 }}>{t('admin.productForm.descriptionAr')}</Label>
+                    <ArTextArea value={descriptionAr} onChange={(e) => { setDescriptionAr(e.target.value); markDirty() }} placeholder={t('admin.productForm.descriptionArPlaceholder')} />
+                  </Field>
+                </LangCol>
+              </LangGrid>
+              {translateError && (
+                <Field>
+                  <span style={{ color: Color.status.error, fontSize: FontSize.xs }}>{translateError}</span>
+                </Field>
+              )}
             </SectionBody>
           </SectionCard>
 

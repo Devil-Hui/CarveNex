@@ -12,6 +12,9 @@ import { resolveMediaUrl } from '../api/chat';
 export interface Product {
   id: number;
   name: string;
+  /** 多语言名称（英文 / 阿拉伯语） */
+  name_en?: string;
+  name_ar?: string;
   price: number;
   image: string;
   category: string;
@@ -38,6 +41,8 @@ function mapSPUToProduct(spu: PublicSPU): Product {
   return {
     id: spu.id,
     name: spu.name,
+    name_en: spu.name_en,
+    name_ar: spu.name_ar,
     price: parseFloat(spu.min_price || '0') || 0,
     image: resolveMediaUrl(spu.main_image) || spu.main_image || '',
     category: spu.category_name || '',
@@ -118,6 +123,8 @@ export function useProductDetail(spuId: number) {
           setProduct({
             id: detail.id,
             name: detail.name,
+            name_en: detail.name_en,
+            name_ar: detail.name_ar,
             price: minPrice,
             image: resolveMediaUrl(detail.main_image) || detail.main_image || detail.skus?.[0]?.image_url || '',
             category: detail.category_path || '',

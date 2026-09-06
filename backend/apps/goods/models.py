@@ -260,6 +260,12 @@ class SPU(models.Model):
         verbose_name='分类',
     )
     description = models.TextField(blank=True, default='', verbose_name='商品描述')
+    # ── 多语言（英文 / 阿拉伯语） ──
+    # 商品名称/描述支持英文与阿拉伯语版本，前台按界面语言展示；未填写时回退默认语言。
+    name_en = models.CharField(max_length=200, blank=True, default='', verbose_name='商品名称（英语）')
+    description_en = models.TextField(blank=True, default='', verbose_name='商品描述（英语）')
+    name_ar = models.CharField(max_length=200, blank=True, default='', verbose_name='商品名称（阿拉伯语）')
+    description_ar = models.TextField(blank=True, default='', verbose_name='商品描述（阿拉伯语）')
     main_image = models.CharField(max_length=500, blank=True, default='', verbose_name='主图 URL')
 
     # ── 规格定义（动态多规格） ──

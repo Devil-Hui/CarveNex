@@ -20,6 +20,9 @@ export interface PublicSPU {
   id: number;
   name: string;
   description?: string;
+  /** 多语言字段（英文 / 阿拉伯语） */
+  name_en?: string;
+  name_ar?: string;
   status: string;
   brand_name?: string;
   category_name?: string;
@@ -54,6 +57,11 @@ export interface PublicSPUDetail {
   id: number;
   name: string;
   description?: string;
+  /** 多语言字段（英文 / 阿拉伯语） */
+  name_en?: string;
+  description_en?: string;
+  name_ar?: string;
+  description_ar?: string;
   brand_id?: number;
   brand_name?: string;
   category_id?: number;

@@ -112,23 +112,7 @@ services:
       redis:
         condition: service_healthy
 
-  # Cloudflare Tunnel 本地源站入口：443 HTTPS 反代 /api/→web:8000、/ws/→web:8001
-  # （自签证书在 deploy/nginx-certs/，不入库；cloudflared noTLSVerify 连接）
-  tunnel-nginx:
-    image: nginx:alpine
-    restart: unless-stopped
-    ports:
-      - "443:443"
-    volumes:
-      - ../deploy/nginx-tunnel/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ../deploy/nginx-certs:/etc/nginx/certs:ro
-    depends_on:
-      - web
-    mem_limit: 128m
-    memswap_limit: 256m
-    cpus: 0.1
-
-volumes:
+  volumes:
   mysql_data:
   media_data:
   static_data:

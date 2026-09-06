@@ -14,6 +14,7 @@ import { reviewAPI, type ReviewItem } from '../../api/review'
 import { Color, Radius, Shadow, Type, FontSize, Transition } from '../../theme/tokens'
 import { addProductToCart } from './productCartAction'
 import { resolveMediaUrl } from '../../api/chat'
+import { localizedText } from '../../utils/localizedText'
 
 /**
  * 商品详情页 — SHEIN 三栏规范
@@ -574,7 +575,7 @@ export default function ProductDetail() {
   const navigate = useNavigate()
   const { addItem } = useCart()
   const { isLoggedIn } = useUser()
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const { format } = useCurrency()
 
   const [product, setProduct] = useState<PublicSPUDetail | null>(null)
@@ -619,6 +620,10 @@ export default function ProductDetail() {
 
   const gallery = useMemo(() => collectGallery(product), [product])
   const activeImageUrl = gallery[activeImage] || gallery[0] || ''
+
+  // 多语言：根据当前界面语言选择商品名称/描述
+  const localizedName = localizedText(lang, product?.name || '', product?.name_en, product?.name_ar)
+  const localizedDescription = localizedText(lang, product?.description || '', product?.description_en, product?.description_ar)
 
   // Fetch product
   useEffect(() => {
@@ -851,7 +856,7 @@ export default function ProductDetail() {
               </Fragment>
             ))}
             {' / '}
-            <span>{product.name}</span>
+            <span>{localizedName}</span>
           </Breadcrumb>
 
           <PdpGrid>
@@ -864,7 +869,7 @@ export default function ProductDetail() {
                     $active={i === activeImage}
                     onClick={() => setActiveImage(i)}
                     type="button"
-                    aria-label={`${product.name} ${i + 1}`}
+                    aria-label={`${localizedName} ${i + 1}`}
                   >
                     <img src={src} alt="" loading="lazy" />
                   </Thumb>
@@ -876,7 +881,7 @@ export default function ProductDetail() {
             <StageCol>
               {activeImageUrl ? (
                 <Stage>
-                  <img src={activeImageUrl} alt={product.name} />
+                  <img src={activeImageUrl} alt={localizedName} />
                 </Stage>
               ) : (
                 <EmptyStage aria-hidden="true">📦</EmptyStage>
@@ -886,7 +891,7 @@ export default function ProductDetail() {
             {/* 右：参数面板 */}
             <ParamCol>
               {product.brand_name && <BrandTag>{product.brand_name}</BrandTag>}
-              <ProductName>{product.name}</ProductName>
+              <ProductName>{localizedName}</ProductName>
 
               <PriceRow>
                 {hasActivity && <ActivityBadge>{t('store.product.activityPrice')}</ActivityBadge>}
@@ -983,7 +988,7 @@ export default function ProductDetail() {
           <DetailBlock>
             <SectionTitle>{t('store.product.description')}</SectionTitle>
             <DescriptionText>
-              {product.description || t('store.product.noDescription')}
+              {localizedDescription || t('store.product.noDescription')}
             </DescriptionText>
           </DetailBlock>
 
