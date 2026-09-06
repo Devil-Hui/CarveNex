@@ -7,9 +7,10 @@ name = "carvenex"
 compatibility_date = "2024-01-01"
 
 # 静态资源：托管 Vite 构建产物 dist/
+# 纯静态资源 Worker 不能使用 binding，否则报错：
+# "Cannot use assets with a binding in an assets-only Worker"
 [assets]
 directory = "./dist"
-binding = "ASSETS"
 # SPA 回退：所有未匹配路由返回 index.html（React Router 需要）
 not_found_handling = "single-page-application"
 
