@@ -96,13 +96,15 @@ migrate() {
 # ── 全量初始化（幂等，仅 django 服务在启动时执行一次）──
 # 顺序约束（重要）：
 #   1) 先建表（migrate）
-#   2) 再手动创建超级管理员：docker compose exec web python manage.py createsuperuser
+#   2) 再确保存在超级管理员：从 DJANGO_SUPERUSER_* 自动创建/修复（幂等；未设密码则跳过，不阻断）
 #   3) 播种 RBAC 角色权限矩阵 + 同步审核组角色
 #   4) 创建 Django 角色组
 #   5) 收集静态资源
 init_system() {
     mkdir -p logs  # dev compose 卷挂载会覆写容器内的 logs/, 需重建
     migrate
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Ensuring superuser (from DJANGO_SUPERUSER_*)..."
+    python manage.py ensure_superuser
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Seeding initial data (categories/brands/tags)..."
     python manage.py seed_data --env=prod || echo "[WARN] seed_data 执行失败，请检查"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Bootstrapping RBAC role-permission matrix..."

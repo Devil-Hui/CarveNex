@@ -754,13 +754,11 @@ CELERY_TASK_SOFT_TIME_LIMIT = int(os.getenv('CELERY_TASK_SOFT_TIME_LIMIT', '240'
 CELERY_LOG_LEVEL = LOG_LEVEL
 
 # Broker 连接（SQLAlchemy / MySQL）
-# 注意：SQLAlchemy transport 不接受 RabbitMQ 的 visibility_timeout 等参数
+# SQLAlchemy transport 不接受 RabbitMQ/Redis 的 visibility_timeout、
+# socket_connect_timeout、socket_timeout 等参数——传入会被 create_engine()
+# 拒绝（"Invalid argument(s) sent to create_engine()"），故必须留空。
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-CELERY_BROKER_TRANSPORT_OPTIONS = {
-    'visibility_timeout': 3600,
-    'socket_connect_timeout': 3,
-    'socket_timeout': 5,
-}
+CELERY_BROKER_TRANSPORT_OPTIONS = {}
 
 # 定义队列（按任务类型分离）
 CELERY_TASK_QUEUES = {
