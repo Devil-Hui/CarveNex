@@ -166,8 +166,6 @@ export default function AdminDashboard() {
   )
 
   const pendingItems = [
-    { key: 'products', label: t('admin.dashboard.pending.products'), count: stats.pendingProducts, to: '/admin/products?status=pending' },
-    { key: 'applications', label: t('admin.dashboard.pending.applications'), count: stats.pendingApplications, to: '/admin/applications' },
     { key: 'aftersales', label: t('admin.dashboard.pending.aftersales'), count: stats.pendingAfterSales, to: '/admin/orders?tab=aftersale&status=pending' },
     { key: 'notifications', label: t('admin.dashboard.pending.notifications'), count: stats.unreadNotifications, to: '/admin/notifications' },
   ]

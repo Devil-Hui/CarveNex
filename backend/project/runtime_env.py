@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import os
 
-ALLOWED_ENVS = frozenset({'dev', 'staging', 'prod'})
+# 需求调整：仅保留开发（dev=local）与生产（prod）两档，删除 test/staging。
+ALLOWED_ENVS = frozenset({'dev', 'prod'})
 ENV_ALIASES = {'local': 'dev'}
 
 

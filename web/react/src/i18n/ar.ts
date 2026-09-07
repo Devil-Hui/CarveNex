@@ -273,6 +273,7 @@ const ar = {
       notTracking: 'لا يتتبع',
       saveDraft: 'حفظ كمسودة',
       saveAndSubmit: 'حفظ وإرسال للمراجعة',
+      saveAndOnSale: 'حفظ ونشر',
       uploadingImages: 'جارٍ رفع صور المنتج…',
       unsavedTitle: 'تغييرات غير محفوظة',
       unsavedMessage: 'لديك تغييرات غير محفوظة. مغادرة هذه الصفحة ستتجاهلها. هل تريد المغادرة؟',

@@ -9,7 +9,7 @@
   docker exec django-app python3 manage.py export_data --env=dev --output=seeds/dev/2026-06-21.json
 
   # 导入
-  docker exec django-app python3 manage.py import_data --file=seeds/dev/2026-06-21.json --env=staging
+  docker exec django-app python3 manage.py import_data --file=seeds/dev/2026-06-21.json --env=dev
 
   # 预览
   docker exec django-app python3 manage.py import_data --file=seeds/dev/2026-06-21.json --dry-run

@@ -38,6 +38,19 @@ def media_key(prefix: str, ext: str, *, now: "datetime | None" = None) -> str:
     return f"{prefix}/{now:%Y}/{now:%m}/{now:%d}/{_uuid.uuid4().hex}{ext}"
 
 
+# ==================== 数据库回退存储 ====================
+# 断网 / R2 不可达时，把文件字节落库（apps.media.MediaBlob），读取时经统一
+# /api/media/db/<key> 端点回传。DB 永远可用，保证无外网也能上传与展示。
+
+DB_MEDIA_PREFIX = '/api/media/db/'
+
+
+def db_media_url(file_name: str) -> str:
+    """数据库回退媒体的访问 URL（本地自有域名，由 Django 视图读库回传）。"""
+    from urllib.parse import quote
+    return f'{DB_MEDIA_PREFIX}{quote(file_name, safe="/-._")}'
+
+
 # ==================== 抽象基类 ====================
 
 class BaseStorage(ABC):
@@ -113,8 +126,9 @@ class R2Storage(BaseStorage):
             url = f'{self.base_url}/{file_name}'
             return {'url': url, 'message': '上传成功'}
         except Exception as e:
-            logger.error(f'R2 上传失败: {file_name}\n{e}')
-            return {'url': None, 'message': str(e)}
+            # 断网 / R2 不可达：回退到数据库存储，保证离线仍可上传与展示。
+            logger.warning('R2 上传失败，回退数据库存储: %s\n%s', file_name, e)
+            return DBStorage().upload(file_name, file_content, content_type)
 
     def delete(self, file_name: str) -> bool:
         try:
@@ -126,6 +140,123 @@ class R2Storage(BaseStorage):
 
     def get_url(self, file_name: str) -> str:
         return f'{self.base_url}/{file_name}'
+
+
+# ==================== 数据库回退存储 ====================
+
+class DBStorage(BaseStorage):
+    """数据库存储（离线兜底）：文件字节落库，读取由 /api/media/db/<key> 视图回传。"""
+
+    def _save(self, file_name: str, file_content: bytes, content_type: str):
+        # 延迟导入，避免启动期循环依赖（media 模型需 Django apps 就绪）
+        from apps.media.models import MediaBlob
+        MediaBlob.objects.update_or_create(
+            key=file_name,
+            defaults={
+                'content': file_content,
+                'content_type': content_type or '',
+                'size': len(file_content),
+            },
+        )
+
+    def upload(self, file_name: str, file_content: bytes, content_type: str = None) -> dict:
+        try:
+            self.check_file_size(len(file_content))
+            self._save(file_name, file_content, content_type)
+            return {'url': db_media_url(file_name), 'message': '上传成功(DB 回退)'}
+        except Exception as e:
+            logger.error(f'数据库存储上传失败: {file_name}\n{e}')
+            return {'url': None, 'message': str(e)}
+
+    def delete(self, file_name: str) -> bool:
+        try:
+            from apps.media.models import MediaBlob
+            MediaBlob.objects.filter(key=file_name).delete()
+            return True
+        except Exception as e:
+            logger.error(f'数据库存储删除失败: {file_name}: {e}')
+            return False
+
+    def get_url(self, file_name: str) -> str:
+        return db_media_url(file_name)
+
+
+# ==================== R2 + 数据库回退（Django STORAGES 后端） ====================
+# 商品媒体等以 default_storage（STORAGES）上传的路径，在 R2 断网时同样需要回退。
+# 通过一个自定义后端：S3 失败 → 字节落库 → url() 返回 DB 读取端点。
+
+
+def _media_in_db(name: str) -> bool:
+    """判断某个 key 是否已走数据库回退存储。"""
+    try:
+        from apps.media.models import MediaBlob
+        return MediaBlob.objects.filter(key=name).exists()
+    except Exception:
+        return False
+
+
+def _media_to_db(name: str, content) -> str:
+    """把文件内容写入 MediaBlob，返回落库 key。"""
+    from apps.media.models import MediaBlob
+    raw = content.read() if hasattr(content, 'read') else bytes(content)
+    MediaBlob.objects.update_or_create(
+        key=name,
+        defaults={'content': raw, 'content_type': '', 'size': len(raw)},
+    )
+    return name
+
+
+try:
+    from storages.backends.s3boto3 import S3Boto3Storage
+except Exception:  # pragma: no cover - django-storages 未安装
+    S3Boto3Storage = None  # type: ignore
+
+
+if S3Boto3Storage is None:  # pragma: no cover
+    class R2DBFallbackStorage:  # type: ignore
+        """占位：django-storages 未安装时不真正启用 R2。"""
+
+        def __init__(self, *args, **kwargs):
+            raise ImportError('请安装 django-storages[boto3] 以启用 R2 存储')
+else:
+
+    class R2DBFallbackStorage(S3Boto3Storage):
+        """S3/R2 上传失败（断网）时自动落库；url()/delete()/exists() 感知 DB 回退。
+
+        作为 STORAGES['default'] 的后端，复用 S3Boto3Storage 的读配（settings 里的
+        AWS_* 与 R2 相关类属性），仅对存储/寻址做「S3 → DB」回退降级。
+        """
+
+        def _save(self, name, content):
+            try:
+                return super()._save(name, content)
+            except Exception as e:
+                logger.warning('S3/R2 保存失败，落数据库回退: %s | %s', name, e)
+                return _media_to_db(name, content)
+
+        def url(self, name):
+            if _media_in_db(name):
+                return db_media_url(name)
+            return super().url(name)
+
+        def delete(self, name):
+            try:
+                super().delete(name)
+            except Exception as e:
+                logger.warning('S3/R2 删除失败: %s | %s', name, e)
+            try:
+                from apps.media.models import MediaBlob
+                MediaBlob.objects.filter(key=name).delete()
+            except Exception:
+                pass
+
+        def exists(self, name):
+            try:
+                if _media_in_db(name):
+                    return True
+            except Exception:
+                pass
+            return super().exists(name)
 
 
 # ==================== 本地存储 (兼容旧代码) ====================
@@ -175,7 +306,12 @@ __storage__ = None
 
 
 def get_storage() -> BaseStorage:
-    """根据 FILE_STORAGE 配置返回对应存储后端"""
+    """根据 FILE_STORAGE 配置返回对应存储后端。
+
+    - 'r2'   → R2；上传失败（断网）自动回退数据库（见 R2Storage.upload）
+    - 'db'   → 数据库存储（离线专用，字节落库）
+    - 其他/默认 → 本地磁盘（离线可用）
+    """
     global __storage__
     if __storage__ is not None:
         return __storage__
@@ -183,6 +319,8 @@ def get_storage() -> BaseStorage:
     backend = getattr(settings, 'FILE_STORAGE', 'local')
     if backend == 'r2':
         __storage__ = R2Storage()
+    elif backend == 'db':
+        __storage__ = DBStorage()
     else:
         __storage__ = LocalStorage()
 

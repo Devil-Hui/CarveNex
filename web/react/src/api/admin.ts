@@ -180,19 +180,6 @@ export interface ApplicationItem {
   detail: Record<string, unknown>;
 }
 
-export interface GroupItem {
-  id: number;
-  name: string;
-  slug: string;
-  created_at: string;
-}
-
-export interface GroupMember {
-  account_no: string;
-  username: string;
-  role: 'leader' | 'member';
-}
-
 export interface CouponItem {
   id: number;
   code: string;
@@ -252,15 +239,6 @@ export interface CouponFormData {
   per_user_limit: number;
   start_time: string;
   end_time: string;
-}
-
-/** 优惠券审核申请（promotion 端点）：coupon 为嵌套对象含 id */
-export interface CouponApplicationItem {
-  id: number;
-  status: string;
-  coupon?: { id: number } | number | null;
-  coupon_name?: string;
-  coupon_code?: string;
 }
 
 export type ActivityType = 'full_reduction' | 'percent_off' | 'each_full' | 'flat_off';
@@ -367,14 +345,11 @@ export interface PaginatedData<T> {
 
 export const adminAPI = {
   // Auth
-  login: async (email: string, verifyId?: string, verifyCode?: string, turnstileToken?: string, password?: string, username?: string) => {
+  login: async (username: string, password: string) => {
     await ensureCSRFCookie();
     return post<LoginResult>('/users/login/', {
-      email,
-      ...(verifyId && verifyCode ? { verify_id: verifyId, code: verifyCode } : {}),
-      ...(turnstileToken ? { turnstile_token: turnstileToken } : {}),
-      ...(password ? { password } : {}),
-      ...(username ? { username } : {}),
+      username,
+      password,
     });
   },
   logout: () => post('/users/session/logout/', {}),
@@ -395,10 +370,6 @@ export const adminAPI = {
     post<{ translated_text: string }>('/goods/spu/translate', data),
   deleteSPU: (id: number) =>
     del(`/goods/spu/${id}/delete`),
-  submitAudit: (id: number) =>
-    post(`/goods/spu/${id}/submit`, {}),
-  auditSPU: (id: number, data: { action: string; remark?: string }) =>
-    post(`/goods/spu/${id}/audit`, data),
   shelfSPU: (id: number, data: { action: string }) =>
     post(`/goods/spu/${id}/shelf`, data),
   scheduleSPU: (id: number, data: { publish_at?: string; unpublish_at?: string }) =>
@@ -495,66 +466,6 @@ export const adminAPI = {
       `/goods/media/spu/${spuId}/video/upload`, fd, onProgress,
     );
   },
-
-  // Admin Group —— 管理面统一走 /api/admin/groups/，分组以 slug 寻址、成员以 account_no
-  // 指认（不暴露内部 id、不以 PII 查询）。列表/创建仍带 id 仅用于 AdminCategories /
-  // AdminApplications 设置 admin_group_id 外键关联，寻址一律用 slug。
-  getAdminGroups: () =>
-    get<GroupItem[]>('/admin/groups/'),
-  createAdminGroup: (data: { name: string; slug: string }) =>
-    post<GroupItem>('/admin/groups/create/', data),
-  getGroupMembers: (slug: string) =>
-    get<{ slug: string; name: string; members: GroupMember[] }>(`/admin/groups/${slug}/members`),
-  addGroupMember: (slug: string, data: { account_no: string; role: string }) =>
-    post(`/admin/groups/${slug}/members`, data),
-  removeGroupMember: (slug: string, accountNo: string) =>
-    del(`/admin/groups/${slug}/members/${accountNo}`),
-  updateGroup: (slug: string, data: { name?: string; slug?: string; description?: string }) =>
-    put<GroupItem>(`/admin/groups/${slug}/update`, data),
-  deleteGroup: (slug: string) =>
-    del(`/admin/groups/${slug}/delete`),
-
-  // 管理员账号（超管创建/开通，与普通用户自助注册分离）
-  // email 必填；first_name / last_name / role 必填；其余可选。
-  createAdminUser: (data: {
-    username: string;
-    password: string;
-    email: string;
-    first_name: string;
-    last_name: string;
-    role: 'superadmin' | 'ops' | 'admin_leader' | 'admin_member';
-    country_code?: string;
-    phone?: string;
-    department?: string;
-    is_active?: boolean;
-    note?: string;
-    locale?: string;
-    group_slug?: string;
-    group_role?: 'leader' | 'member';
-  }) =>
-    post<{ account_no?: string; id?: number; username: string; email?: string; first_name?: string; last_name?: string; is_active: boolean; roles?: string[] }>('/admin/users/create/', data),
-
-  // Application
-  submitApplication: (data: Record<string, unknown>) =>
-    post('/goods/application', data),
-  getMyApplications: () =>
-    get<ApplicationItem[]>('/goods/application/my'),
-  getPendingApplications: () =>
-    get<ApplicationItem[]>('/goods/application/pending'),
-  reviewApplication: (id: number, data: { type: string; action: string; comment?: string }) =>
-    post(`/goods/application/${id}/review`, data),
-  // 优惠券草稿：提交审核 / 编辑（复用 promotion 端点，覆盖草稿与驳回态）
-  submitCouponApplication: (id: number) =>
-    post(`/promotion/application/${id}/submit/`, {}),
-  updateCouponApplication: (id: number, data: Record<string, unknown>) =>
-    patch(`/promotion/application/${id}/`, data),
-  // 优惠券审核申请：当前用户申请列表 + 新建草稿（super admin 可直接为已有券发起）
-  getMyCouponApplications: () =>
-    get<{ items: CouponApplicationItem[] }>('/promotion/application/my/'),
-  createCouponApplication: (data: Record<string, unknown>) =>
-    post<CouponApplicationItem>('/promotion/application/', data),
-  getStaffList: () =>
-    get<{ items: { id: number; username: string; is_superuser: boolean }[] }>('/goods/staff/list'),
 
   // Notification（统一走通用通知中心 /notification/，含客服消息 cs_* 通知）
   getNotifications: (params?: { page?: number; per_page?: number }) =>
@@ -671,8 +582,6 @@ export const adminAPI = {
     put<{ role: string; perm_codes: string[] }>('/rbac/matrix', { role, perm_codes: permCodes }),
   getRbacUsers: (params?: { role?: string; account_no?: string; page?: number; size?: number }) =>
     get<PaginatedData<RbacUser>>('/admin/users/', params),
-  getUserRoles: (accountNo: string) =>
-    get<{ roles: string[] }>(`/admin/users/${accountNo}/roles`),
   updateUserRoles: (accountNo: string, roles: string[]) =>
     put<{ roles: string[] }>(`/admin/users/${accountNo}/roles`, { roles }),
 };

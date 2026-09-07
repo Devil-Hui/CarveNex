@@ -1514,7 +1514,7 @@ export default function AdminProductForm() {
 
   // ── Submit ──
 
-  const doSubmit = async (submitForReview = false) => {
+  const doSubmit = async () => {
     if (!name.trim()) { setError(t('admin.productForm.productNameRequired')); return }
     if (!brandId) { setError(t('admin.productForm.brandRequired')); return }
     if (!categoryId) { setError(t('admin.productForm.categoryRequired')); return }
@@ -1697,11 +1697,7 @@ export default function AdminProductForm() {
         })
       }
 
-      // 审核提交放在 setSPUTags / scheduleSPU 之后，确保标签与定时上下架已落库
-      if (submitForReview) {
-        await adminAPI.submitAudit(spuId)
-      }
-
+      // 编辑即上架：保存后商品直接可见，无需提交/审核流程
       navigate('/admin/products')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('common.operationFailed'))
@@ -1709,12 +1705,8 @@ export default function AdminProductForm() {
     setLoading(false)
   }
 
-  const { execute: handleSaveDraft, isPending: isSaving } = useDebounceSubmit(
-    async () => { await doSubmit(false) },
-    800,
-  )
-  const { execute: handleSaveSubmit, isPending: isSubmitting } = useDebounceSubmit(
-    async () => { await doSubmit(true) },
+  const { execute: handleSave, isPending: isSaving } = useDebounceSubmit(
+    async () => { await doSubmit() },
     800,
   )
 
@@ -1793,11 +1785,8 @@ export default function AdminProductForm() {
           <Title>{isEdit ? t('admin.productForm.editTitle') : t('admin.productForm.createTitle')}</Title>
         </HeaderLeft>
         <HeaderActions>
-          <HeaderBtnSecondary type="button" disabled={isSaving || isSubmitting} onClick={handleSaveDraft}>
-            {isSaving ? <><SpinIcon><Icon name="refresh" size={12} /></SpinIcon> {t('admin.productForm.saveDraft')}</> : t('admin.productForm.saveDraft')}
-          </HeaderBtnSecondary>
-          <HeaderBtnPrimary type="button" disabled={isSaving || isSubmitting} onClick={handleSaveSubmit}>
-            {isSubmitting ? <><SpinIcon><Icon name="refresh" size={12} /></SpinIcon> {t('admin.productForm.saveAndSubmit')}</> : t('admin.productForm.saveAndSubmit')}
+          <HeaderBtnPrimary type="button" disabled={isSaving} onClick={handleSave}>
+            {isSaving ? <><SpinIcon><Icon name="refresh" size={12} /></SpinIcon> {t('admin.productForm.saveAndOnSale')}</> : t('admin.productForm.saveAndOnSale')}
           </HeaderBtnPrimary>
           <HeaderBtnText type="button" onClick={() => navigate('/admin/products')}>
             {t('common.cancel')}

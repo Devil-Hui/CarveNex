@@ -16,15 +16,10 @@ _cfg = getattr(settings, 'USERS_SETTINGS', {})
 
 class RegisterSerializer(serializers.Serializer):
     """
-    用户注册 —— 邮箱验证。
+    用户注册 —— 免邮箱验证码（需求调整：去掉邮箱验证 / Turnstile）。
 
-    邮箱流程（三阶段）:
-      1. POST /email/send/       → 获取验证码
-      2. POST /email/verify/     → 校验验证码，获得 verification_token
-      3. POST /register/         → 携带 verification_token 完成注册
-
-    用户名 / 密码校验复用 apps.users.validators 的共用规则，
-    与「新增管理员」创建端保持一致（避免规则漂移）。
+    注册只需：用户名 / 密码 / 可选邮箱 / 可选手机。不再强制邮箱验证，
+    用户可直接创建账号。
     """
     username = serializers.CharField(
         required=True,
@@ -35,6 +30,12 @@ class RegisterSerializer(serializers.Serializer):
         write_only=True,
         validators=[validate_password],
         help_text='Password, ≥8 chars with uppercase, lowercase, and digit/special char.',
+    )
+    email = serializers.EmailField(
+        required=False,
+        allow_blank=True,
+        default='',
+        help_text='Email (optional).',
     )
     country_code = serializers.CharField(
         required=False,
@@ -47,14 +48,6 @@ class RegisterSerializer(serializers.Serializer):
         allow_blank=True,
         max_length=20,
         help_text='Phone number without country code.',
-    )
-    # 邮箱流程：邮箱验证令牌（二选一）
-    verification_token = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        default='',
-        write_only=True,
-        help_text='Email verification token from POST /email/verify/.',
     )
 
     def validate_username(self, value):
@@ -75,148 +68,9 @@ class RegisterSerializer(serializers.Serializer):
         return value
 
     def validate(self, data):
-        """跨字段校验：verify_id 注入的已验证邮箱优先，否则需邮箱验证令牌"""
-        # 两步流程：视图已用 verify_id+code 校验并注入已验证邮箱，直接采用
-        verified_email = self.context.get('verified_email')
-        if verified_email:
-            data['_verified_email'] = verified_email
-            return data
-
-        token = data.get('verification_token', '')
-        if not token:
-            raise serializers.ValidationError({
-                'verification_token': 'Email verification token is required.',
-            })
-
-        # 邮箱流程：解码验证令牌获取邮箱
-        try:
-            data['_verified_email'] = EmailService.decode_verification_token(token)
-        except ValueError as e:
-            raise serializers.ValidationError({
-                'verification_token': str(e),
-            })
-
-        return data
-
-
-# ============================================================
-# 管理员创建（超管开通管理员账号）
-# ============================================================
-
-class AdminCreateSerializer(serializers.Serializer):
-    """
-    超管创建管理员账号的请求体校验。
-
-    字段级格式校验复用 apps.users.validators 的共用规则；
-    唯一性（username/email/phone）由 UserService.create_user 在事务内校验，
-    冲突时抛 ValueError（USERNAME_EXISTS / EMAIL_EXISTS / PHONE_EXISTS）。
-
-    字段 → 错误码映射在 AdminUserCreateView 中完成：
-      username    → USERNAME_INVALID
-      password    → PASSWORD_WEAK
-      email       → EMAIL_INVALID（缺失或格式不合法）
-      first_name  → NAME_REQUIRED
-      last_name   → NAME_REQUIRED
-      role        → ROLE_INVALID
-      phone / country_code → PHONE_INVALID
-    """
-    username = serializers.CharField(
-        required=True,
-        validators=[validate_username],
-        help_text='Login username, 4-32 chars.',
-    )
-    password = serializers.CharField(
-        required=True,
-        write_only=True,
-        validators=[validate_password],
-        help_text='Login password, ≥8 chars.',
-    )
-    email = serializers.CharField(
-        required=True,
-        allow_blank=False,
-        validators=[validate_email],
-        help_text='Email (required, unique, case-insensitive).',
-    )
-    first_name = serializers.CharField(
-        required=True,
-        allow_blank=False,
-        help_text='Real first name.',
-    )
-    last_name = serializers.CharField(
-        required=True,
-        allow_blank=False,
-        help_text='Real last name.',
-    )
-    role = serializers.ChoiceField(
-        required=True,
-        choices=[
-            ('superadmin', '超级管理员'),
-            ('ops', '运维'),
-            ('admin_leader', '管理组组长'),
-            ('admin_member', '管理组组员'),
-        ],
-        help_text='Initial role: superadmin / ops / admin_leader / admin_member.',
-    )
-    country_code = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=10,
-        validators=[validate_country_code],
-        help_text='Country calling code, e.g. +86.',
-    )
-    phone = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=20,
-        validators=[validate_phone],
-        help_text='Phone number without country code.',
-    )
-    department = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=50,
-        help_text='Department (optional).',
-    )
-    is_active = serializers.BooleanField(
-        required=False,
-        default=True,
-        help_text='Whether the account is active on creation (default true).',
-    )
-    note = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        help_text='Note (optional, stored only).',
-    )
-    group_slug = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=100,
-        help_text='Optional: bind the new admin into an admin group on creation (slug).',
-    )
-    group_role = serializers.ChoiceField(
-        required=False,
-        choices=[('leader', '组内组长'), ('member', '组内组员')],
-        help_text='Role within the admin group (required when group_slug is set).',
-    )
-    locale = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        max_length=10,
-        default='zh-CN',
-        help_text='Locale preference (optional, stored only).',
-    )
-
-    def validate(self, data):
-        """跨字段校验：country_code / phone 需成对出现（PHONE_INVALID）。"""
-        country_code = data.get('country_code') or ''
-        phone = (data.get('phone') or '').strip()
-        if bool(country_code) != bool(phone):
-            raise serializers.ValidationError({
-                'phone': '区号与手机号须同时填写或同时留空',
-            })
-        # 归一化 email 小写（唯一性比较与存储保持一致）
-        if data.get('email'):
-            data['email'] = data['email'].strip().lower()
+        """跨字段校验：email 归一化，无邮箱则允许注册（非必填）"""
+        data['email'] = (data.get('email') or '').strip().lower()
+        # 保留 phone/country_code 原样
         return data
 
 

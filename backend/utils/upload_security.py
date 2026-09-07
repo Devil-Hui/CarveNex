@@ -148,6 +148,61 @@ def escape_csv_cell(value) -> str:
     return f"'{text}" if _is_formula(text) else text
 
 
+def to_webp(upload, *, quality: int = 90, method: int = 4, keep_gif: bool = True):
+    """统一把上传图片转成 WebP（有损压缩）并剥离元数据、校正方向。
+
+    用于「任何图片格式最终都落 WebP」的统一入口，返回新的 InMemoryUploadedFile：
+    - 原为 WebP → 校验完整后原样返回（避免二次编码损耗，保留透明通道）。
+    - 其他格式（PNG/JPEG/…）→ Pillow 转有损 WebP（quality=90，视觉近无损，
+      体积比原始小 50–70%）；RGBA/LA/P/PA 保持 alpha（WebP 支持带 alpha 的有损）。
+    - GIF 动画默认保留（转 WebP 会丢动画）；不保留时也会转成静态 WebP。
+    - 解析/转码失败 → 原样返回，绝不让上传失败。
+
+    调用方需保证已通过 validate_image_upload 校验（本函数是「再编码」而非「再校验」）。
+    """
+    try:
+        upload.seek(0)
+        with Image.open(upload) as probe:
+            probe.load()
+            fmt = (probe.format or '').upper()
+            n_frames = getattr(probe, 'n_frames', 1) or 1
+            # GIF 动画保留原文件（避免丢帧）
+            if keep_gif and fmt == 'GIF' and n_frames > 1:
+                upload.seek(0)
+                return upload
+            # 已是 WebP：完整可解码则原样返回，避免二次编码损耗
+            if fmt == 'WEBP':
+                upload.seek(0)
+                return upload
+            # 其余 → 重编码为有损 WebP
+            img = ImageOps.exif_transpose(probe)  # 校正拍摄方向
+            img.load()
+            if img.mode in ('RGBA', 'LA', 'P', 'PA', 'I;16'):
+                img = img.convert('RGBA')
+            else:
+                img = img.convert('RGB')
+            buf = io.BytesIO()
+            img.save(buf, 'WEBP', lossless=False, quality=quality, method=method)
+        buf.seek(0)
+        name = (upload.name or 'image.webp')
+        base, _ext = os.path.splitext(name)
+        return InMemoryUploadedFile(
+            buf,
+            'image',
+            f'{base}.webp',
+            'image/webp',
+            buf.getbuffer().nbytes,
+            None,
+        )
+    except Exception:
+        # 任何异常都回退原始文件，保证可用
+        try:
+            upload.seek(0)
+        except Exception:
+            pass
+        return upload
+
+
 def strip_exif(upload):
     """重编码上传图片以剥离 EXIF（GPS / 相机 / 时间戳等元数据），并校正方向。
 

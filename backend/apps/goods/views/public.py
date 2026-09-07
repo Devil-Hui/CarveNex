@@ -218,7 +218,7 @@ class AdminImageUploadView(BaseApiView):
             return Response({'detail': '请上传文件'}, status=status.HTTP_400_BAD_REQUEST)
         from utils.upload_security import (
             UploadValidationError,
-            strip_exif,
+            to_webp,
             validate_image_upload,
         )
         try:
@@ -239,6 +239,14 @@ class AdminImageUploadView(BaseApiView):
                 status=status.HTTP_202_ACCEPTED,
             )
         from django.core.files.storage import default_storage
-        path = default_storage.save(media_key('uploads', ext), strip_exif(file))
-        # R2 启用时 default_storage.url() 返回绝对 CDN 地址；否则返回 /media/... 相对路径
+        # 图片统一转有损 WebP（GIF 动画保留原格式），存储本地路径/R2 由 default_storage 决定
+        save_file = to_webp(file)
+        final_ext = (
+            ext
+            if ext.lower() == '.gif'
+            and getattr(save_file, 'content_type', '') == 'image/gif'
+            else '.webp'
+        )
+        path = default_storage.save(media_key('uploads', final_ext), save_file)
+        # R2 启用时 default_storage.url() 返回绝对 CDN URL；否则返回 /media/... 相对路径
         return Response({'url': default_storage.url(path)})

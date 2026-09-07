@@ -46,10 +46,10 @@ DJANGO_ENV = os.getenv('DJANGO_ENV', 'dev')
 # Mock 支付（开发/测试用支付模拟器）安全开关：
 # 1. 生产环境（prod）强制禁用，即使显式设置 ENABLE_MOCK_PAYMENT=true 也忽略，
 #    防止攻击者通过 Mock 支付端点伪造"已支付"状态。
-# 2. 非生产环境默认开启（dev/staging/local/test），便于本地联调。
+# 2. 非生产环境默认开启（dev/local），便于本地联调。
 _ENABLE_MOCK_REQUESTED = os.getenv(
     'ENABLE_MOCK_PAYMENT',
-    'true' if DJANGO_ENV in ('dev', 'staging', 'local', 'test') else 'false',
+    'true' if DJANGO_ENV in ('dev', 'local') else 'false',
 ).lower() == 'true'
 ENABLE_MOCK_PAYMENT = _ENABLE_MOCK_REQUESTED and DJANGO_ENV != 'prod'
 
@@ -73,6 +73,8 @@ INSTALLED_APPS = [
     'django_prometheus',
     'corsheaders',  # 与 CorsMiddleware 配套，否则 CORS 配置可能不完整
     'utils',
+    # 媒体回退存储（断网/R2 不可达时把媒体字节落库）
+    'apps.media.apps.MediaConfig',
     # rbac 是全站基础设施：业务 app 单向依赖它，故排在业务 app 之前
     'apps.rbac.apps.RbacConfig',
     'apps.users.apps.UsersConfig',
@@ -155,17 +157,13 @@ ASGI_APPLICATION = 'project.asgi.application'
 # ── Django Channels 配置 ──
 # 关键：REST 由 gunicorn 处理、WebSocket 由 daphne 处理，二者是不同进程。
 # 进程内 InMemoryChannelLayer 无法跨进程广播，导致「客服发消息 → 买家 WS 收不到实时推送」。
-# 改用 Redis Channel Layer（复用已部署的 Redis，独立 DB /4 避免与缓存 /0、CELERY /2,/3 冲突）。
-_CHANNEL_REDIS_BASE = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0').rsplit('/', 1)[0]
-CHANNEL_REDIS_URL = os.getenv('CHANNEL_REDIS_URL', _CHANNEL_REDIS_BASE + '/4')
+# 实时通道：无 Redis，改用进程内内存通道层。
+# InMemoryChannelLayer 支持单进程上的 Channels（含测试），无需额外 Redis。
+# 多 worker 水平扩展时实时推送仅对直连该进程的连接生效；
+# 前端已实现「断线自动重连 + 轮询兜底」，WebSocket 不可用时功能仍可用。
 CHANNEL_LAYERS = {
     'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [CHANNEL_REDIS_URL],
-            'capacity': 1500,
-            'expiry': 3600,
-        },
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
     },
 }
 
@@ -183,7 +181,7 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD'),
         'HOST': os.getenv('DB_HOST'),
         'PORT': os.getenv('DB_PORT'),
-        'CONN_MAX_AGE': 300,  # 5 分钟连接复用
+        'CONN_MAX_AGE': 60,  # 60 秒连接复用（无连接池模式下缩短保持时间，避免并发连接堆积打满 MySQL）
         'CONN_HEALTH_CHECKS': True,  # 每次使用前检查连接健康
         'POOL_OPTIONS': {
             'MAX_CONNS': 15,  # 2C4G：单进程连接池上限 ≤15，防连接泄漏耗内存
@@ -355,38 +353,35 @@ SPECTACULAR_SETTINGS = {
 }
 
 # ── 仅 MySQL：缓存/会话走 DB，去掉 Redis 进程 ──
-# 验证码/限流/黑名单等共用 django_cache 表（启动时 createcachetable）
-REDIS_MASTER_URL = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
-REDIS_SLAVE_URL = os.getenv('REDIS_SLAVE_URL', REDIS_MASTER_URL)
+# 验证码/限流/黑名单/会话等共用 django_cache 表（启动时 create_dbc_table）。
+# 缓存表会随数据库迁移/启动自动创建，无需额外进程，纯离线自托管可用。
+_CACHE_TABLE = 'django_cache_table'
+_CACHE_KEY_PREFIX = f"carvenex:{os.getenv('DJANGO_ENV', 'dev')}"
 
 
-def _redis_cache(location, *, timeout=300):
+def _db_cache(*, timeout=300):
+    """MySQL 后端缓存。所有缓存别名共用一张 django_cache 表；
+    保留 rw_default / rw_default_slave 别名以兼容 utils.cache 的读写分离接口（实际读写同库）。
+    """
     return {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': location,
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': _CACHE_TABLE,
         'TIMEOUT': timeout,
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'SOCKET_CONNECT_TIMEOUT': 2,
-            'SOCKET_TIMEOUT': 2,
-            # 缓存降级：Redis 宕机时缓存读异常被吞（get→None→DB 兜底），
-            # 避免整站 500；锁走 raw redis 连接（utils.cache 互斥锁），异常照抛保持 fail-loud。
-            'IGNORE_EXCEPTIONS': True,
-            # 2C4G：每个 Redis 缓存别名连接池上限 ≤10，防止 Redis 连接数失控
-            'CONNECTION_POOL_KWARGS': {'max_connections': 10},
-        },
-        'KEY_PREFIX': f"carvenex:{os.getenv('DJANGO_ENV', 'dev')}",
+        'KEY_PREFIX': _CACHE_KEY_PREFIX,
+        # 签名 & 值走 DB 校验（默认 40 字符哈希），转换到 DB 不影响使用
+        'VERSION': 1,
     }
 
 
 CACHES = {
-    'default': _redis_cache(REDIS_MASTER_URL),
-    'rw_default': _redis_cache(REDIS_MASTER_URL),
-    'rw_default_slave': _redis_cache(REDIS_SLAVE_URL),
-    'session': _redis_cache(REDIS_MASTER_URL, timeout=86400),
-    'verification_code': _redis_cache(REDIS_MASTER_URL, timeout=600),
-    # 2C4G 二级缓存 L1：进程内 LocMem 近缓存（商品详情/分类树等读多写少数据），
-    # 命中即省一次 Redis 网络往返；TTL 较短（见 utils/cache.py 两级读取）。
+    # 统一使用 Django 官方 DB 缓存（MySQL），无需 Redis 进程
+    'default': _db_cache(),
+    'rw_default': _db_cache(),
+    'rw_default_slave': _db_cache(),
+    'session': _db_cache(timeout=86400),
+    'verification_code': _db_cache(timeout=600),
+    # 进程内 LocMem 近缓存（商品详情/分类树等读多写少数据），
+    # 命中即省一次 MySQL 往返；TTL 较短（见 utils/cache.py 两级读取）。
     'local': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'carvenex-local',
@@ -394,8 +389,8 @@ CACHES = {
     },
 }
 
-SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
-SESSION_CACHE_ALIAS = "session"
+SESSION_ENGINE = "django.contrib.sessions.backends.db"  # 会话直接落 MySQL（无缓存别名耦合）
+# SESSION_CACHE_ALIAS 已移除：DB 会话后端不必转缓存 --> 依赖方回退到 SESSION_ENGINE 默认
 
 # ==================== 用户模块可扩展配置 ====================
 # 后续调优只需改此处，无需改动业务代码
@@ -740,8 +735,13 @@ def _celery_mysql_url():
         f"@{host}:{port}/{name}?charset=utf8mb4"
     )
 
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/2')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://127.0.0.1:6379/3')
+# 默认全部落到 MySQL（SQLAlchemy broker + database result backend），不依赖 Redis。
+# 如需显式指定其他 broker/result，可用环境变量覆盖。
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', _celery_mysql_url())
+CELERY_RESULT_BACKEND = os.getenv(
+    'CELERY_RESULT_BACKEND',
+    'django-db',  # Celery 内置 database result backend（存 MySQL）
+)
 CELERY_RESULT_EXTENDED = False
 CELERY_RESULT_EXPIRES = int(os.getenv('CELERY_RESULT_EXPIRES', '3600'))  # 1h
 CELERY_ACCEPT_CONTENT = ['json']  # 接受的内容类型

@@ -131,9 +131,8 @@ def can_operate_spu(user, spu) -> bool:
 
 
 def can_audit_spu(user, spu) -> bool:
-    """检查用户是否可以审核指定 SPU（组长 + 在管理范围内）"""
-    if has_role(user, Role.SUPERADMIN.value):
-        return True
-    if not has_role(user, Role.ADMIN_LEADER.value):
-        return False
-    return can_operate_spu(user, spu)
+    """检查用户是否可以审核指定 SPU。
+
+    需求调整：已删除组长/组员角色，审核与上架统一由超管承担。
+    """
+    return has_role(user, Role.SUPERADMIN.value)

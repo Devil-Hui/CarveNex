@@ -25,9 +25,14 @@ def verify_turnstile(token: str) -> bool:
     secret = settings.TURNSTILE_SECRET_KEY
     if not secret:
         raise TurnstileUnavailable('Turnstile secret is not configured')
-    # 本地/测试环境：使用 Cloudflare 测试密钥或 DJANGO_ENV=dev 时跳过真实网络校验，
-    # 容器无外网也能登录；生产用真实密钥且 DJANGO_ENV=prod，不会命中此短路。
-    if secret == TURNSTILE_TEST_SECRET or getattr(settings, 'DJANGO_ENV', '') == 'dev' or getattr(settings, 'ENABLE_MOCK_PAYMENT', False):
+    # 本地/测试环境：DEBUG、使用 Cloudflare 测试密钥、DJANGO_ENV=dev 或 Mock 支付开启时
+    # 跳过真实网络校验（本地百分百成功），容器无外网也能通过；生产用真实密钥不会命中此短路。
+    if (
+        getattr(settings, 'DEBUG', False)
+        or secret == TURNSTILE_TEST_SECRET
+        or getattr(settings, 'DJANGO_ENV', '') == 'dev'
+        or getattr(settings, 'ENABLE_MOCK_PAYMENT', False)
+    ):
         return True
     if not token or len(token) > 4096:
         return False

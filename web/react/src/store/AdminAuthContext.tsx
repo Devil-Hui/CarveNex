@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { adminAPI } from '../api/admin'
 import { get } from '../api/request'
 
-export type AdminRole = 'superadmin' | 'leader' | 'member' | 'none'
+export type AdminRole = 'superadmin' | 'none'
 
 interface AdminUser {
   id: number
@@ -20,13 +20,14 @@ interface AdminAuthContextType {
   isAuthenticated: boolean
   isLoading: boolean
   isSuperAdmin: boolean
+  /** 组长/组员角色已删除，以下字段保留为恒 false 以兼容旧引用 */
   isGroupLeader: boolean
   isGroupMember: boolean
   /** 当前管理员的有效权限码（超管隐式全量；非超管 best-effort 由 RBAC 矩阵解析） */
   permissionCodes: string[]
   /** 权限判定：hasPermission('product.delete')。前端显隐用，后端仍须二次鉴权。 */
   hasPermission: (code: string) => boolean
-  login: (email: string, verifyId?: string, verifyCode?: string, turnstileToken?: string, password?: string, username?: string) => Promise<boolean>
+  login: (username: string, password: string) => Promise<boolean>
   logout: () => void
 }
 
@@ -39,9 +40,8 @@ const AdminAuthContext = createContext<AdminAuthContextType>({
 
 function deriveRole(user: AdminUser | null): AdminRole {
   if (!user) return 'none'
+  // 组长/组员角色已删除：仅超管拥有完整后台权限。
   if (user.is_superuser) return 'superadmin'
-  if (user.is_group_leader) return 'leader'
-  if (user.is_group_member) return 'member'
   return 'none'
 }
 
@@ -99,9 +99,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     return () => { alive = false }
   }, [adminUser])
 
-  const login = async (email: string, verifyId?: string, verifyCode?: string, turnstileToken?: string, password?: string, username?: string) => {
+  const login = async (username: string, password: string) => {
     try {
-      const result = await adminAPI.login(email, verifyId, verifyCode, turnstileToken, password, username)
+      const result = await adminAPI.login(username, password)
       if (!result?.authenticated) return false
       const user = await fetchUser()
       if (!user || deriveRole(user) === 'none') {

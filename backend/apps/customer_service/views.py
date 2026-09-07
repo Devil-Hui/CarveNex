@@ -1,3 +1,4 @@
+import os
 import time as _time
 # media_key 统一生成对象 key（见 utils.storage）
 import logging
@@ -14,7 +15,7 @@ from utils.storage import get_storage, media_key
 from utils.api_permission import ApiPermission
 from utils.upload_security import (
     UploadValidationError,
-    strip_exif,
+    to_webp,
     validate_media_upload,
 )
 from apps.rbac.services import has_perm, has_role
@@ -66,8 +67,8 @@ def _is_superuser(user) -> bool:
 
 
 def _is_cs_manager(user) -> bool:
-    """客服主管 / 超管 — 可强制接手被占用的会话"""
-    return has_role(user, Role.SUPERADMIN.value) or has_role(user, Role.ADMIN_LEADER.value)
+    """超管 — 可强制接手被占用的会话"""
+    return has_role(user, Role.SUPERADMIN.value)
 
 
 def _assign_timeout_minutes() -> int:
@@ -271,9 +272,17 @@ class UploadFileView(BaseApiView):
                 {'detail': '文件扩展名、真实内容或大小不符合要求'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        is_image = content_type.startswith('image/')
+        # 图片统一转有损 WebP（GIF 动画保留），生产存本地路径/R2；视频原样
+        upload_file = to_webp(file) if is_image else file
+        if is_image:
+            # to_webp 原样返回时（已是 WebP / GIF 动画）沿用原 mime，否则统一为 image/webp
+            content_type = getattr(upload_file, 'content_type', content_type) or content_type
+            extension = os.path.splitext(upload_file.name or 'x.webp')[1].lower() or '.webp'
+
         folder = (
             getattr(settings, 'CS_IMAGE_UPLOAD_FOLDER', 'chat/images')
-            if content_type.startswith('image/')
+            if is_image
             else getattr(settings, 'CS_VIDEO_UPLOAD_FOLDER', 'chat/videos')
         )
 
@@ -282,8 +291,7 @@ class UploadFileView(BaseApiView):
 
         try:
             storage = get_storage()
-            # 图片剥离 EXIF 后再读取字节上传；视频原样
-            upload_file = strip_exif(file) if content_type.startswith('image/') else file
+            # 图片已转 WebP 后读取字节上传；视频原样
             result = storage.upload(filename, upload_file.read(), content_type=content_type)
             if result.get('url'):
                 return Response({
@@ -496,7 +504,7 @@ class ConversationListView(BaseApiView):
     )
     @extend_schema(responses={200: OpenApiResponse(description='List or retrieve')})
     def get(self, request):
-        is_staff = _is_cs_staff(request.user) or ConversationAccessPolicy.is_ops(request.user)
+        is_staff = _is_cs_staff(request.user)
         if is_staff:
             # Admin: 组级过滤
             qs = _apply_group_filter(Conversation.objects.all(), request.user)
@@ -629,9 +637,6 @@ class ConversationCloseView(BaseApiView):
     )
     @extend_schema(responses={200: OpenApiResponse(description='Close')})
     def post(self, request, conv_id):
-        if ConversationAccessPolicy.is_ops(request.user):
-            return Response({'detail': '只读运维不能关闭会话'}, status=status.HTTP_403_FORBIDDEN)
-
         conv = _get_conv_for_user(conv_id, request.user)
         if not conv:
             return Response({'detail': '会话不存在'}, status=status.HTTP_404_NOT_FOUND)
@@ -823,8 +828,6 @@ class MessageView(BaseApiView):
     )
     @extend_schema(responses={200: OpenApiResponse(description='Create')})
     def post(self, request, conv_id):
-        if ConversationAccessPolicy.is_ops(request.user):
-            return Response({'detail': '只读运维不能发送消息'}, status=status.HTTP_403_FORBIDDEN)
         conv = _get_conv_for_user(conv_id, request.user)
         if not conv:
             return Response({'detail': '会话不存在'}, status=status.HTTP_404_NOT_FOUND)

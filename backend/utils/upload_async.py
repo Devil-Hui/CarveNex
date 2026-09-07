@@ -20,6 +20,7 @@ from celery import shared_task
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.base import ContentFile
+from utils.upload_security import to_webp
 
 UPLOAD_SEMAPHORE_KEY = "r2:upload:semaphore"
 UPLOAD_SEMAPHORE_MAX = 3  # 全局并发上传上限（2C4G：防 I/O 阻塞拖垮 CPU）
@@ -69,9 +70,15 @@ def _release_slot() -> None:
 
 
 def enqueue_media_upload(file_obj, prefix: str, content_type: str) -> str:
-    """落临时文件 + 入队，返回 upload_id。"""
+    """图片统一转有损 WebP（GIF 动画保留）后，落临时文件 + 入队，返回 upload_id。"""
+    is_image = content_type.startswith("image/")
+    if is_image:
+        # to_webp 会把非 WebP 转成 WebP；GIF 动画 / 已是 WebP 原样返回
+        webp = to_webp(file_obj)
+        content_type = getattr(webp, "content_type", content_type) or content_type
+        file_obj = webp
     upload_id = uuid.uuid4().hex
-    ext = os.path.splitext(getattr(file_obj, "name", "") or "")[1].lower() or ".bin"
+    ext = os.path.splitext(getattr(file_obj, "name", "") or "")[1].lower() or ".webp"
     tmp = _tmp_path(upload_id, ext)
     with open(tmp, "wb") as f:
         for chunk in file_obj.chunks() if hasattr(file_obj, "chunks") else [file_obj.read()]:

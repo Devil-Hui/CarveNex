@@ -356,10 +356,7 @@ class PaymentService:
             from apps.rbac.services import has_role
         except Exception:  # pragma: no cover - rbac 不可用时退化为超管判断
             return False
-        return any(
-            has_role(user, r)
-            for r in (Role.SUPERADMIN.value, Role.ADMIN_LEADER.value, Role.ADMIN_MEMBER.value)
-        )
+        return has_role(user, Role.SUPERADMIN.value)
 
     @staticmethod
     def create_refund(

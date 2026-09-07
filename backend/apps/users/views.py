@@ -28,7 +28,6 @@ from apps.users.serializers import (
 from apps.users.services import UserService
 from utils.api_base_view import BaseApiView, PublicApiView
 from apps.users.session_auth import set_auth_cookies
-from apps.users.turnstile import TurnstileUnavailable, verify_turnstile
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -56,115 +55,54 @@ class AdminLoginRateThrottle(AnonRateThrottle):
 
 
 class AdminLoginView(PublicApiView):
-    """管理员登录（邮箱验证码）。"""
+    """管理员登录 —— 仅用用户名 + 密码。
+
+    POST /api/admin/login/
+    请求体: {username, password}
+
+    需求调整：后台登录页只保留用户名 + 密码，去掉邮箱验证码 / Turnstile；
+    管理员账号仍由 Django admin 创建（保留邮箱）。
+    """
     throttle_classes = [AdminLoginRateThrottle]
-    """
-    POST /api/admin/login/ —— 管理员登录（双因子）。
-
-    请求体: {username, email, verify_id, code, password, turnstile_token}
-    - username: 管理员登录名（必填，精确匹配）
-    - email: 管理员邮箱（必填，须与账号绑定邮箱一致）
-    - verify_id: AdminLoginCodeView 返回的 verify_id
-    - code: 邮箱中收到的6位数字验证码
-    - password: 账号密码
-    - turnstile_token: Cloudflare Turnstile 人机验证 token
-
-    四要素（用户名 / 密码 / 邮箱 / 验证码）全部正确才放行，逐项独立报错。
-    """
 
     @extend_schema(
         request=None,
         responses={
             200: OpenApiResponse(description='Login success, returns JWT tokens'),
-            400: OpenApiResponse(description='验证码错误'),
+            400: OpenApiResponse(description='Invalid request'),
             401: OpenApiResponse(description='Invalid credentials'),
         }
     )
     def post(self, request):
         SessionAuthentication().enforce_csrf(request)
-        email = request.data.get('email', '').strip()
-        verify_id = request.data.get('verify_id', '')
-        code = request.data.get('code', '')
-        turnstile_token = request.data.get('turnstile_token', '')
-        password = request.data.get('password', '')
         username = request.data.get('username', '').strip()
-
-        if not email:
-            return Response({'detail': '邮箱不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        password = request.data.get('password', '')
 
         if not username:
             return Response({'detail': '用户名不能为空'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 开发/测试环境（Mock 支付开启或 DEBUG）：跳过邮箱验证码与 Turnstile。
-        # 本地往往收不到验证码邮件，凭 用户名+密码+邮箱 即可登录，便于联调；
-        # ENABLE_MOCK_PAYMENT 在 prod 被 settings 强制关闭，此分支生产不可达。
-        dev_bypass = getattr(settings, 'ENABLE_MOCK_PAYMENT', False) or settings.DEBUG
-        if dev_bypass:
-            _logger.info('[AdminLogin] dev bypass: skip email code & turnstile for username=%r', username)
-
-        if not dev_bypass:
-            # 邮箱验证码校验
-            if not verify_id or not code:
-                return Response({'detail': '验证码不能为空'}, status=status.HTTP_400_BAD_REQUEST)
-
-            # 验证码必须与请求邮箱绑定（防止跨邮箱复用验证码）
-            if EmailVerifyService.get_verify_email(verify_id) != email:
-                return Response({'detail': '验证码与邮箱不匹配'}, status=status.HTTP_400_BAD_REQUEST)
-
-            # 邮箱验证码校验（consume=False：仅校验不销毁，允许密码输错后重试同一验证码）
-            if not EmailVerifyService.verify_code(verify_id, code, consume=False):
-                return Response({'detail': '验证码错误或已过期'}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Cloudflare Turnstile 人机验证
-            if not turnstile_token:
-                return Response({'detail': '请完成安全验证'}, status=status.HTTP_400_BAD_REQUEST)
-            try:
-                verified = verify_turnstile(turnstile_token)
-            except TurnstileUnavailable:
-                return Response({'detail': '安全验证服务暂时不可用，请稍后重试'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-            if not verified:
-                return Response({'detail': '安全验证失败，请重试'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 密码校验（邮箱验证码证明邮箱所有权 + 密码证明身份，双因子）
         if not password:
             return Response({'detail': '密码不能为空'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 四项全部显式校验：用户名 / 密码 / 邮箱 / 验证码 缺一不可，逐项独立报错
         from django.contrib.auth import get_user_model
         from apps.users.tokens import StampRefreshToken
+        from apps.rbac.constants import Role
+        from apps.rbac.services import has_role
 
         User = get_user_model()
-        _logger.warning('[AdminLogin] email=%r username=%r pwd_len=%d', email, username, len(password))
         try:
             user = User.objects.get(username=username)
         except User.DoesNotExist:
             _logger.warning('[AdminLogin] FAIL: no user for username=%r', username)
             return Response({'detail': '用户名不正确'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # 后台访问资格：超管 / 管理组组长 / 管理组组员（RBAC 角色）。
-        # 组长/组员由 AdminGroupMember 派生 admin_leader / admin_member 角色，
-        # 不再依赖 Django is_staff（is_staff 会开放 Django admin，权限面过大）。
-        from apps.rbac.constants import Role
-        from apps.rbac.services import has_role
-        if not (
-            has_role(user, Role.SUPERADMIN.value)
-            or has_role(user, Role.ADMIN_LEADER.value)
-            or has_role(user, Role.ADMIN_MEMBER.value)
-        ):
+        # 后台访问资格：仅超管。组长/组员及运维（只读）角色均已被移除。
+        if not has_role(user, Role.SUPERADMIN.value):
             _logger.warning('[AdminLogin] FAIL: no backend role for username=%r', username)
             return Response({'detail': '用户名不正确'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # 邮箱必须与账号绑定邮箱一致（验证码已证明该邮箱可收信）
-        if user.email != email:
-            _logger.warning('[AdminLogin] FAIL: email mismatch user=%r email=%r', user.username, email)
-            return Response({'detail': '该邮箱不是该管理员账号的邮箱'}, status=status.HTTP_401_UNAUTHORIZED)
-
         if not user.check_password(password):
-            _logger.warning('[AdminLogin] FAIL: password wrong for user=%r', user.username)
+            _logger.warning('[AdminLogin] FAIL: password wrong for user=%r', username)
             return Response({'detail': '密码不正确'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        # 全部校验通过 → 消费验证码（使其不可再用）
-        EmailVerifyService.consume_code(verify_id)
 
         refresh = StampRefreshToken.for_user(user)
         response = Response({'authenticated': True})
@@ -222,11 +160,12 @@ class AdminLoginCodeView(PublicApiView):
 # ============================================================
 
 class RegisterView(PublicApiView):
-    """用户注册（邮箱验证）。"""
+    """用户注册（免邮箱验证码）。"""
     """
     POST /api/users/register/ —— 用户注册。
 
-    邮箱流程:  {username, password, verification_token, country_code?, phone?}
+    需求调整：去掉邮箱验证码 / Turnstile，直接注册。
+    入参: {username, password, email?, country_code?, phone?}
     """
 
     @extend_schema(
@@ -237,50 +176,16 @@ class RegisterView(PublicApiView):
         }
     )
     def post(self, request):
-        # 邮箱验证：兼容两种流程
-        #   A. 两步流程（前端现状）：verify_id + verify_code → 校验通过后从缓存取回邮箱
-        #   B. 三阶段流程：仅携带 verification_token（含已验证邮箱）
-        verify_id = request.data.get('verify_id', '')
-        code = request.data.get('verify_code', '')
-        verification_token = request.data.get('verification_token', '')
-
-        verified_email = ''
-        if verify_id and code:
-            if not EmailVerifyService.verify_code(verify_id, code):
-                return Response(
-                    {'detail': '验证码错误或已过期'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            verified_email = EmailVerifyService.get_verify_email(verify_id)
-            if not verified_email:
-                return Response(
-                    {'detail': '验证码会话缺失，请重新发送验证码'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        elif not verification_token:
-            return Response(
-                {'detail': '请先完成邮箱验证'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        serializer = RegisterSerializer(
-            data=request.data,
-            context={'verified_email': verified_email or None},
-        )
+        serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         data = serializer.validated_data
-
-        # 邮箱从令牌解析
-        email = data.pop('_verified_email', '')
-        # 令牌已校验，后续不再需要
-        data.pop('verification_token', None)
 
         try:
             user = UserService.create_user(
                 username=data['username'],
                 password=data['password'],
-                email=email,
+                email=data.get('email') or '',
                 country_code=data.get('country_code') or None,
                 phone=data.get('phone') or None,
             )
@@ -867,7 +772,7 @@ class AvatarUploadView(BaseApiView):
         
         from utils.upload_security import (
             UploadValidationError,
-            strip_exif,
+            to_webp,
             validate_image_upload,
         )
         try:
@@ -875,8 +780,16 @@ class AvatarUploadView(BaseApiView):
         except UploadValidationError:
             return Response({'detail': 'Unsupported file type'}, status=status.HTTP_400_BAD_REQUEST)
 
-        filename = media_key('avatars', ext)
-        saved_path = default_storage.save(filename, strip_exif(file))
+        # GIF 动画保留原格式（转 WebP 会丢帧）；其余统一转有损 WebP 后落盘
+        webp_file = to_webp(file)
+        _final_ext = (
+            '.gif'
+            if ext.lower() == '.gif'
+            and getattr(webp_file, 'content_type', '') == 'image/gif'
+            else '.webp'
+        )
+        filename = media_key('avatars', _final_ext)
+        saved_path = default_storage.save(filename, webp_file)
         stored_url = default_storage.url(saved_path)
         # R2（S3）存储返回完整 CDN URL（https://cdn.carvenex.com/...），直接用；
         # 仅当返回相对路径（本地磁盘存储）时才补绝对 URL，避免 http(s):// 被二次包裹。

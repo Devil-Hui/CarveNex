@@ -8,26 +8,16 @@ class SupportConversationAccessPolicy:
         return has_role(user, Role.SUPERADMIN.value)
 
     @staticmethod
-    def is_ops(user):
-        return has_role(user, Role.OPS.value)
-
-    @staticmethod
     def is_agent(user):
-        return (
-            not SupportConversationAccessPolicy.is_ops(user)
-            and has_perm(user, "cs.conversation.read")
-        )
+        return has_perm(user, "cs.conversation.read")
 
     @staticmethod
     def redact_sensitive(user):
-        return SupportConversationAccessPolicy.is_ops(user)
+        return False
 
     @staticmethod
     def scope_queryset(queryset, user):
-        if (
-            SupportConversationAccessPolicy.is_superadmin(user)
-            or SupportConversationAccessPolicy.is_ops(user)
-        ):
+        if SupportConversationAccessPolicy.is_superadmin(user):
             return queryset
         if SupportConversationAccessPolicy.is_agent(user):
             return queryset.filter(

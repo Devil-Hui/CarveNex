@@ -79,10 +79,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
             return annotated
         # 回退：用户端看客服消息；管理员端看用户消息
         request = self.context.get('request')
-        if request and any(
-            has_role(request.user, r)
-            for r in (Role.SUPERADMIN.value, Role.ADMIN_LEADER.value, Role.ADMIN_MEMBER.value)
-        ):
+        if request and has_role(request.user, Role.SUPERADMIN.value):
             return obj.messages.filter(sender='user', is_system=False).count()
         return obj.messages.filter(sender='admin', is_system=False).count()
 

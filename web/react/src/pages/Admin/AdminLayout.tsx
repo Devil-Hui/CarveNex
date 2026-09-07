@@ -535,7 +535,6 @@ function useMenuItems() {
       items: [
         { to: '/admin/chat', label: t('admin.layout.menu.chat'), icon: 'message-circle' },
         { to: '/admin/notifications', label: t('admin.layout.menu.notifications'), icon: 'bell' },
-        { to: '/admin/applications', label: t('admin.layout.menu.applications'), icon: 'file' },
       ],
     },
     {
@@ -548,7 +547,7 @@ function useMenuItems() {
     {
       section: t('admin.layout.sidebar.systemMgmt'),
       items: [
-        { to: '/admin/groups', label: t('admin.layout.menu.groups'), icon: 'users' },
+        // 管理组（组长/组员）已删除，不展示 Groups 菜单
         { to: '/admin/audit-logs', label: t('admin.layout.menu.auditLogs'), icon: 'edit' },
         { to: '/admin/recycle-bin', label: t('admin.layout.menu.recycleBin'), icon: 'trash' },
         { to: '/admin/tasks', label: t('admin.layout.menu.asyncTasks'), icon: 'clock' },
@@ -574,12 +573,10 @@ const BREADCRUMB_MAP: Record<string, string> = {
   '/admin/orders': 'admin.layout.breadcrumb.orders',
   '/admin/chat': 'admin.layout.breadcrumb.chat',
   '/admin/notifications': 'admin.layout.breadcrumb.notifications',
-  '/admin/applications': 'admin.layout.breadcrumb.applications',
   '/admin/coupons': 'admin.layout.breadcrumb.coupons',
   '/admin/activities': 'admin.layout.breadcrumb.activities',
   '/admin/audit-logs': 'admin.layout.breadcrumb.auditLogs',
   '/admin/recycle-bin': 'admin.layout.breadcrumb.recycleBin',
-  '/admin/groups': 'admin.layout.breadcrumb.groups',
   '/admin/tasks': 'admin.layout.breadcrumb.tasks',
   '/admin/rbac': 'admin.layout.breadcrumb.rbac',
   '/admin/email-templates': 'admin.layout.breadcrumb.emailTemplates',
@@ -810,9 +807,7 @@ export default function AdminLayout() {
 
   const roleLabel = adminUser?.is_superuser
     ? t('admin.layout.header.superAdmin')
-    : adminUser?.is_group_leader
-    ? t('admin.layout.header.groupLeader')
-    : t('admin.layout.header.member')
+    : ''
 
   // 面包屑
   const breadcrumb = (() => {

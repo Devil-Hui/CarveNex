@@ -5,10 +5,9 @@ User → Role → Permission → Resource → Scope。
 Scope 决定"有权限，但只对哪些数据生效"，对应前端
 web/react/src/permissions/scope.ts 的 ResourceScope（all/group/category/brand）。
 
-角色角色范围规则：
-  - superadmin / ops（运维只读核查）→ scope='all'，对全部数据生效。
-  - admin_leader / admin_member（全局组角色）→ scope='group'，
-    通过 AdminGroup → Category 派生"可管理分类集合"，只对本组管辖类目生效。
+角色范围规则：
+  - superadmin / ops（运维只读检查）→ scope='all'，对全部数据生效。
+  - 组长/组员角色已删除，其余（custom）默认不进入后台数据范围。
 
 本层只负责**解析并判定范围**，不负责具体 queryset 的形状。
 各业务域（order/goods/customer_service…）的复杂查询在此基础上做行级过滤，
@@ -55,8 +54,8 @@ class UserScope:
 
 
 def is_global_scope(user) -> bool:
-    """是否拥有全局数据范围（superadmin / ops）。"""
-    return has_role(user, Role.SUPERADMIN.value) or has_role(user, Role.OPS.value)
+    """是否拥有全局数据范围（仅 superadmin）。"""
+    return has_role(user, Role.SUPERADMIN.value)
 
 
 def get_user_scope(user, *, category_field: str | None = None) -> UserScope:

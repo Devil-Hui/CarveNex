@@ -1,3 +1,4 @@
+import os
 from rest_framework.response import Response
 from rest_framework import status
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiTypes
@@ -5,7 +6,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiRespon
 from utils.api_base_view import BaseApiView
 from utils.upload_security import (
     UploadValidationError,
-    strip_exif,
+    to_webp,
     validate_media_upload,
 )
 from .models import Conversation, Message
@@ -29,10 +30,7 @@ class ConversationListView(BaseApiView):
     )
     @extend_schema(responses={200: OpenApiResponse(description='List or retrieve')})
     def get(self, request):
-        is_staff = (
-            _is_support_staff(request.user)
-            or SupportConversationAccessPolicy.is_ops(request.user)
-        )
+        is_staff = _is_support_staff(request.user)
         if is_staff:
             qs = SupportConversationAccessPolicy.scope_queryset(
                 Conversation.objects.all(), request.user,
@@ -52,8 +50,6 @@ class ConversationListView(BaseApiView):
     )
     @extend_schema(responses={200: OpenApiResponse(description='Create')})
     def post(self, request):
-        if SupportConversationAccessPolicy.is_ops(request.user):
-            return Response({'detail': '只读运维不能创建会话'}, status=status.HTTP_403_FORBIDDEN)
         serializer = CreateConversationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -114,8 +110,6 @@ class ConversationDetailView(BaseApiView):
     )
     @extend_schema(responses={200: OpenApiResponse(description='Create')})
     def post(self, request, conv_id):
-        if SupportConversationAccessPolicy.is_ops(request.user):
-            return Response({'detail': '只读运维不能发送消息'}, status=status.HTTP_403_FORBIDDEN)
         conv = self._get_conv(conv_id, request.user)
         if not conv:
             return Response({'detail': '对话不存在'}, status=status.HTTP_404_NOT_FOUND)
@@ -149,8 +143,6 @@ class ConversationCloseView(BaseApiView):
 
     @extend_schema(request=None, responses={200: OpenApiResponse(description='Conversation closed')})
     def post(self, request, conv_id):
-        if SupportConversationAccessPolicy.is_ops(request.user):
-            return Response({'detail': '只读运维不能关闭会话'}, status=status.HTTP_403_FORBIDDEN)
         conv = SupportConversationAccessPolicy.get_conversation(conv_id, request.user)
         if not conv:
             return Response({'detail': '对话不存在'}, status=status.HTTP_404_NOT_FOUND)
@@ -170,8 +162,6 @@ class UploadAttachmentView(BaseApiView):
 
     @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiResponse(description='File uploaded')})
     def post(self, request):
-        if SupportConversationAccessPolicy.is_ops(request.user):
-            return Response({'detail': '只读运维不能上传附件'}, status=status.HTTP_403_FORBIDDEN)
         file = request.FILES.get('file')
         if not file:
             return Response({'detail': '请选择文件'}, status=status.HTTP_400_BAD_REQUEST)
@@ -201,13 +191,18 @@ class UploadAttachmentView(BaseApiView):
 
         file.content_type = content_type
 
+        # 图片统一转有损 WebP（GIF 动画保留）；视频原样
+        is_image = content_type.startswith('image/')
+        save_file = to_webp(file) if is_image else file
+        if is_image:
+            content_type = getattr(save_file, 'content_type', content_type) or content_type
+            extension = os.path.splitext(save_file.name or 'x.webp')[1].lower() or '.webp'
+
         # 保存到 support/{yyyy}/{mm}/{dd}/（大厂路径规范，见 utils.storage.media_key）
         from django.core.files.storage import default_storage
         from utils.storage import media_key
 
         filename = media_key('support', extension)
-        # 图片剥离 EXIF；视频原样保存
-        save_file = strip_exif(file) if content_type.startswith('image/') else file
         path = default_storage.save(filename, save_file)
         # 统一用 default_storage.url()：local 返回 /media/support/... 相对路径，
         # r2 返回 https://cdn.carvenex.com/support/... 绝对 CDN 地址。

@@ -19,8 +19,8 @@ def _cs_is_superuser(user) -> bool:
 
 
 def _cs_is_staff(user) -> bool:
-    """镜像 views._is_cs_staff：拥有 cs.conversation.read 且非只读运维"""
-    return (not has_role(user, Role.OPS.value)) and has_perm(user, 'cs.conversation.read')
+    """镜像 views._is_cs_staff：拥有 cs.conversation.read 权限"""
+    return has_perm(user, 'cs.conversation.read')
 
 
 def _cs_assign_expired(conv) -> bool:
@@ -262,10 +262,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
         if annotated is not None:
             return annotated
         request = self.context.get('request')
-        if request and any(
-            has_role(request.user, r)
-            for r in (Role.SUPERADMIN.value, Role.ADMIN_LEADER.value, Role.ADMIN_MEMBER.value)
-        ):
+        if request and has_role(request.user, Role.SUPERADMIN.value):
             return obj.messages.filter(sender_type='user', is_read=False).count()
         return obj.messages.filter(sender_type='admin', is_read=False).count()
 
@@ -518,7 +515,7 @@ class UpdateConversationSerializer(serializers.Serializer):
         from django.contrib.auth import get_user_model
         User = get_user_model()
         user = User.objects.filter(id=value).first()
-        if not user or not any(has_role(user, r) for r in (Role.SUPERADMIN.value, Role.ADMIN_LEADER.value, Role.ADMIN_MEMBER.value)):
+        if not user or not has_role(user, Role.SUPERADMIN.value):
             raise serializers.ValidationError('指定的管理员不存在或不是管理员')
         return value
 

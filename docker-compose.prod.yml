@@ -82,11 +82,8 @@ services:
       DAPHNE_PORT: "8001"
       AWS_REGION: ${AWS_REGION:-auto}
       STATIC_ROOT: /app/static
-      REDIS_URL: redis://redis:6379/0
-      CHANNEL_REDIS_URL: "redis://redis:6379/4"
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/3
-      # 2C4G：固定 2 个 gevent 协程 worker，max-requests=1000 防内存泄漏
+      # 无 Redis：缓存/会话走 MySQL，Celery broker&result 走 MySQL（见 settings/base.py）
+      # 2C4G：固定 2 个 gevent 协程 worker，配置：无 Redis、极简架构
       GUNICORN_WORKERS: "2"
       GUNICORN_THREADS: "1"
       GUNICORN_WORKER_CLASS: gevent
@@ -96,7 +93,7 @@ services:
       GUNICORN_GRACEFUL_TIMEOUT: "30"
       # gevent 协程需纯 Python DB 驱动（mysqlclient 为 C 扩展，gevent 无法协作式调度其 socket）
       DJANGO_DB_DRIVER: "pymysql"
-    env_file: [.env.production]
+    env_file: [.env.prod]
     volumes:
       - media_data:/app/media
       - static_data:/app/static
@@ -105,8 +102,6 @@ services:
       - /tmp:size=32m,mode=1777
     depends_on:
       db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     networks: [internal, egress]
     mem_limit: 544m
@@ -131,9 +126,7 @@ services:
     environment:
       SERVICE_TYPE: celery_worker
       DJANGO_ENV: prod
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/3
+      # 无 Redis：Celery broker&result 走 MySQL（见 settings/base.py _celery_mysql_url）
       # gevent 协程需纯 Python DB 驱动
       DJANGO_DB_DRIVER: "pymysql"
       CELERY_CONCURRENCY: "1"
@@ -144,7 +137,7 @@ services:
       CELERY_MAX_MEMORY_PER_CHILD: "160000"
       CELERY_TASK_SOFT_TIME_LIMIT: "240"
       CELERY_TASK_TIME_LIMIT: "300"
-    env_file: [.env.production]
+    env_file: [.env.prod]
     volumes:
       - media_data:/app/media
       - celery_logs:/app/logs
@@ -153,8 +146,6 @@ services:
       - /tmp:size=32m,mode=1777
     depends_on:
       db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     networks: [internal, egress]
     mem_limit: 256m
@@ -174,19 +165,15 @@ services:
     environment:
       SERVICE_TYPE: celery_beat
       DJANGO_ENV: prod
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/3
+      # 无 Redis：Celery broker 走 MySQL（见 settings/base.py _celery_mysql_url），调度器为 DatabaseScheduler
       DJANGO_DB_DRIVER: "pymysql"
-    env_file: [.env.production]
+    env_file: [.env.prod]
     volumes:
       - beat_logs:/app/logs
     tmpfs:
       - /tmp:size=16m,mode=1777
     depends_on:
       db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     networks: [internal]
     mem_limit: 192m
@@ -198,33 +185,6 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f '[c]elery.*beat' >/dev/null"]
       <<: *healthcheck
-
-  redis:
-    image: redis:7.4.2-alpine
-    restart: unless-stopped
-    logging: *default-logging
-    command: >-
-      redis-server --port 6379 --maxmemory 128mb
-      --maxmemory-policy allkeys-lru --save "" --appendonly no
-      --tcp-backlog 128 --timeout 60
-    expose: ["6379"]
-    tmpfs:
-      - /data:size=8m,uid=999,gid=999
-    networks: [internal]
-    mem_limit: 96m
-    mem_reservation: 64m
-    memswap_limit: 96m
-    cpus: "0.10"
-    pids_limit: 24
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
 
   db:
     build:

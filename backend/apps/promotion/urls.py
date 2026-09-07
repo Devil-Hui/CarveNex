@@ -4,9 +4,6 @@ from .views import (
     PromoDetailView,
     GenerateCouponView, MyCouponView,
     ActivityListView, ActivityCreateView, ActivityUpdateView, ActivityDeleteView,
-    CouponApplicationCreateView, CouponApplicationDetailView,
-    CouponApplicationReviewView, CouponApplicationSubmitView,
-    MyCouponApplicationView, PendingCouponApplicationView,
 )
 from .admin_views import (
     CouponAdminListView, CouponAdminDetailView,
@@ -21,12 +18,6 @@ urlpatterns = [
     path('activity/', ActivityListView.as_view(), name='promotion-activity-list'),
     path('generate/', GenerateCouponView.as_view(), name='promotion-generate'),
     path('my/', MyCouponView.as_view(), name='promotion-my'),
-    path('application/', CouponApplicationCreateView.as_view(), name='promotion-application-create'),
-    path('application/my/', MyCouponApplicationView.as_view(), name='promotion-application-my'),
-    path('application/pending/', PendingCouponApplicationView.as_view(), name='promotion-application-pending'),
-    path('application/<int:application_id>/', CouponApplicationDetailView.as_view(), name='promotion-application-detail'),
-    path('application/<int:application_id>/submit/', CouponApplicationSubmitView.as_view(), name='promotion-application-submit'),
-    path('application/<int:application_id>/review/', CouponApplicationReviewView.as_view(), name='promotion-application-review'),
     path('<str:code>/', CouponDetailView.as_view(), name='promotion-detail'),
     path('<str:code>/claim/', ClaimCouponView.as_view(), name='promotion-claim'),
     path('promo/<str:code>/claim/', ClaimByPromoCodeView.as_view(), name='promotion-promo-claim'),

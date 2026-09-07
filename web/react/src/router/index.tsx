@@ -28,17 +28,15 @@ const AdminLayout = lazy(() => import('../pages/Admin/AdminLayout'))
 const AdminDashboard = lazy(() => import('../pages/Admin/AdminDashboard'))
 const AdminProducts = lazy(() => import('../pages/Admin/AdminProducts'))
 const AdminProductForm = lazy(() => import('../pages/Admin/AdminProductForm'))
-const AdminProductAudit = lazy(() => import('../pages/Admin/AdminProductAudit'))
+
 const AdminCategories = lazy(() => import('../pages/Admin/AdminCategories'))
 const AdminBrands = lazy(() => import('../pages/Admin/AdminBrands'))
 const AdminTags = lazy(() => import('../pages/Admin/AdminTags'))
 const AdminNotifications = lazy(() => import('../pages/Admin/AdminNotifications'))
-const AdminApplications = lazy(() => import('../pages/Admin/AdminApplications'))
 const AdminCoupons = lazy(() => import('../pages/Admin/AdminCoupons'))
 const AdminActivities = lazy(() => import('../pages/Admin/AdminActivities'))
 const AdminAuditLogs = lazy(() => import('../pages/Admin/AdminAuditLogs'))
 const AdminRecycleBin = lazy(() => import('../pages/Admin/AdminRecycleBin'))
-const AdminGroups = lazy(() => import('../pages/Admin/AdminGroups'))
 const AdminTasks = lazy(() => import('../pages/Admin/AdminTasks'))
 const AdminOrders = lazy(() => import('../pages/Admin/AdminOrders'))
 const AdminChatList = lazy(() => import('../pages/Admin/AdminChatList'))
@@ -116,20 +114,17 @@ export const routes: RouteObject[] = [
       { path: 'products', element: <Suspense fallback={<PageLoading />}><AdminProducts /></Suspense> },
       { path: 'products/create', element: <Suspense fallback={<PageLoading />}><AdminProductForm /></Suspense> },
       { path: 'products/:id', element: <Suspense fallback={<PageLoading />}><AdminProductForm /></Suspense> },
-      { path: 'products/:id/audit', element: <Suspense fallback={<PageLoading />}><AdminProductAudit /></Suspense> },
       { path: 'import', element: <Suspense fallback={<PageLoading />}><AdminImport /></Suspense> },
       { path: 'categories', element: <Suspense fallback={<PageLoading />}><AdminCategories /></Suspense> },
       { path: 'brands', element: <Suspense fallback={<PageLoading />}><AdminBrands /></Suspense> },
       { path: 'tags', element: <Suspense fallback={<PageLoading />}><AdminTags /></Suspense> },
       { path: 'notifications', element: <Suspense fallback={<PageLoading />}><AdminNotifications /></Suspense> },
-      { path: 'applications', element: <Suspense fallback={<PageLoading />}><AdminApplications /></Suspense> },
       { path: 'coupons', element: <Suspense fallback={<PageLoading />}><AdminCoupons /></Suspense> },
       { path: 'coupons/promo/:couponId', element: <Suspense fallback={<PageLoading />}><AdminPromoCodes /></Suspense> },
       { path: 'orders', element: <Suspense fallback={<PageLoading />}><AdminOrders /></Suspense> },
       { path: 'activities', element: <Suspense fallback={<PageLoading />}><AdminActivities /></Suspense> },
       { path: 'audit-logs', element: <Suspense fallback={<PageLoading />}><AdminAuditLogs /></Suspense> },
       { path: 'recycle-bin', element: <Suspense fallback={<PageLoading />}><AdminRecycleBin /></Suspense> },
-      { path: 'groups', element: <Suspense fallback={<PageLoading />}><AdminGroups /></Suspense> },
       { path: 'tasks', element: <Suspense fallback={<PageLoading />}><AdminTasks /></Suspense> },
       { path: 'rbac', element: <Suspense fallback={<PageLoading />}><AdminRbac /></Suspense> },
       { path: 'chat', element: <Suspense fallback={<PageLoading />}><AdminChatList /></Suspense> },

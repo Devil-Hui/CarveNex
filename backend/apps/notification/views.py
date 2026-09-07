@@ -137,16 +137,5 @@ class OperationLogListView(BaseApiView):
             'id', 'user_id', 'category', 'action', 'resource_type',
             'resource_id', 'detail', 'ip_address', 'created_at',
         ))
-        if (
-            has_role(request.user, Role.OPS.value)
-            and not has_role(request.user, Role.SUPERADMIN.value)
-        ):
-            for item in items:
-                item.update({
-                    'user_id': None,
-                    'resource_id': '',
-                    'detail': {},
-                    'ip_address': None,
-                })
 
         return Response({'items': items, 'total': total, 'page': page})

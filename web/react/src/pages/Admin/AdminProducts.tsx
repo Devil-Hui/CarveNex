@@ -293,9 +293,7 @@ export default function AdminProducts() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { hasPermission } = useAdminAuth()
-  const canSubmit = hasPermission('product.create')
   const canEdit = hasPermission('product.edit')
-  const canAudit = hasPermission('product.audit')
   const canDelete = hasPermission('product.delete')
   const canPublish = hasPermission('product.publish')
 
@@ -353,7 +351,6 @@ export default function AdminProducts() {
   }, [fetchProducts])
 
   const onEdit = useCallback((id: number) => navigate(`/admin/products/${id}`), [navigate])
-  const onReview = useCallback((id: number) => navigate(`/admin/products/${id}/audit`), [navigate])
   const onChat = useCallback((id: number) => navigate(`/admin/chat?product_id=${id}`), [navigate])
   const onDelete = useCallback((id: number) => {
     // 统一删除规则：上架中（on_sale）商品必须先下架才能删除
@@ -364,9 +361,6 @@ export default function AdminProducts() {
     }
     setDeleteTarget(id)
   }, [items])
-  const onSubmitAudit = useCallback((id: number) => {
-    adminAPI.submitAudit(id).then(fetchProducts).catch(() => setError(t('admin.products.submitFailed')))
-  }, [fetchProducts, t])
 
   /* 批量操作：BulkActionBar 风险分级确认后执行 */
   const handleBatchAction = useCallback(async (action: string) => {
@@ -406,28 +400,14 @@ export default function AdminProducts() {
       confirmMessage: t('admin.products.batchOffSaleConfirmMessage', { count: selected.length }),
       onClick: () => handleBatchAction('put_off_sale'),
     },
-    {
-      key: 'batch_audit',
-      label: t('admin.products.batchAudit'),
-      variant: 'secondary',
-      confirmTitle: t('admin.products.batchAuditConfirmTitle'),
-      confirmMessage: t('admin.products.batchAuditConfirmMessage', { count: selected.length }),
-      onClick: () => handleBatchAction('batch_audit'),
-    },
   ]
 
   /* 列表视图：行内操作按钮（阻止冒泡避免触发行点击） */
   const renderRowActions = (item: SPUItem) => (
     <RowActions onClick={(e) => e.stopPropagation()}>
       <ActionBtn onClick={() => onEdit(item.id)}>{t('common.edit')}</ActionBtn>
-      {item.status === 'draft' && (
-        <>
-          {canPublish && <ActionBtn disabled={shelfingIds.has(item.id)} onClick={() => doShelfAction(item.id, 'put_on_sale')}>{t('admin.products.onSale')}</ActionBtn>}
-          {canSubmit && <ActionBtn onClick={() => onSubmitAudit(item.id)}>{t('admin.products.submitReview')}</ActionBtn>}
-        </>
-      )}
-      {item.status === 'submitted' && canAudit && (
-        <ActionBtn onClick={() => onReview(item.id)}>{t('admin.products.review')}</ActionBtn>
+      {item.status === 'draft' && canPublish && (
+        <ActionBtn disabled={shelfingIds.has(item.id)} onClick={() => doShelfAction(item.id, 'put_on_sale')}>{t('admin.products.onSale')}</ActionBtn>
       )}
       {item.status === 'approved' && canPublish && (
         <ActionBtn disabled={shelfingIds.has(item.id)} onClick={() => doShelfAction(item.id, 'put_on_sale')}>{t('admin.products.onSale')}</ActionBtn>
@@ -524,10 +504,6 @@ export default function AdminProducts() {
       <FilterBar>
         <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage('1') }}>
           <option value="">{t('admin.products.filterAllStatus')}</option>
-          <option value="draft">{t('admin.products.statusDraft')}</option>
-          <option value="submitted">{t('admin.products.statusSubmitted')}</option>
-          <option value="approved">{t('admin.products.statusApproved')}</option>
-          <option value="rejected">{t('admin.products.statusRejected')}</option>
           <option value="on_sale">{t('admin.products.statusOnSale')}</option>
           <option value="suspended">{t('admin.products.statusSuspended')}</option>
           <option value="off_sale">{t('admin.products.statusOffSale')}</option>
@@ -578,8 +554,6 @@ export default function AdminProducts() {
                   item={item}
                   isSelected={selected.includes(item.id)}
                   isShelfing={shelfingIds.has(item.id)}
-                  canSubmit={canSubmit}
-                  canAudit={canAudit}
                   canDelete={canDelete}
                   canPublish={canPublish}
                   onToggleSelect={(id) => {
@@ -589,8 +563,6 @@ export default function AdminProducts() {
                   }}
                   onEdit={onEdit}
                   onShelf={doShelfAction}
-                  onSubmitAudit={onSubmitAudit}
-                  onReview={onReview}
                   onDelete={onDelete}
                   onChat={onChat}
                 />
@@ -668,15 +640,11 @@ interface ProductCardProps {
   item: SPUItem
   isSelected: boolean
   isShelfing: boolean
-  canSubmit: boolean
-  canAudit: boolean
   canDelete: boolean
   canPublish: boolean
   onToggleSelect: (id: number) => void
   onEdit: (id: number) => void
   onShelf: (id: number, action: string) => void
-  onSubmitAudit: (id: number) => void
-  onReview: (id: number) => void
   onDelete: (id: number) => void
   onChat: (id: number) => void
 }
@@ -685,15 +653,11 @@ const ProductCard = memo(function ProductCard({
   item,
   isSelected,
   isShelfing,
-  canSubmit,
-  canAudit,
   canDelete,
   canPublish,
   onToggleSelect,
   onEdit,
   onShelf,
-  onSubmitAudit,
-  onReview,
   onDelete,
   onChat,
 }: ProductCardProps) {
@@ -715,14 +679,8 @@ const ProductCard = memo(function ProductCard({
         <CardPrice>{item.price_range ? `$${fmtPrice(item.price_range.min)} – $${fmtPrice(item.price_range.max)}` : '-'}</CardPrice>
         <Actions>
           <ActionBtn onClick={() => onEdit(item.id)}>{t('common.edit')}</ActionBtn>
-          {item.status === 'draft' && (
-            <>
-              {canPublish && <ActionBtn disabled={isShelfing} onClick={() => onShelf(item.id, 'put_on_sale')}>{t('admin.products.onSale')}</ActionBtn>}
-              {canSubmit && <ActionBtn onClick={() => onSubmitAudit(item.id)}>{t('admin.products.submitReview')}</ActionBtn>}
-            </>
-          )}
-          {item.status === 'submitted' && canAudit && (
-            <ActionBtn onClick={() => onReview(item.id)}>{t('admin.products.review')}</ActionBtn>
+          {item.status === 'draft' && canPublish && (
+            <ActionBtn disabled={isShelfing} onClick={() => onShelf(item.id, 'put_on_sale')}>{t('admin.products.onSale')}</ActionBtn>
           )}
           {item.status === 'approved' && canPublish && (
             <ActionBtn disabled={isShelfing} onClick={() => onShelf(item.id, 'put_on_sale')}>{t('admin.products.onSale')}</ActionBtn>

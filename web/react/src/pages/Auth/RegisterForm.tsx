@@ -1,13 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import styled from 'styled-components'
 import Input from '../../components/common/Input/Input'
 import Button from '../../components/common/Button/Button'
-import TurnstileWidget, { type TurnstileWidgetHandle } from '../../components/business/TurnstileWidget/TurnstileWidget'
 import { useUser } from '../../store/UserContext'
 import { Color } from '../../theme/tokens'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from '../../i18n'
-import { post, ensureCSRFCookie } from '../../api/request'
 import { useHoneypot } from '../../components/common/Honeypot'
 
 // ==================== 样式组件 ====================
@@ -25,25 +23,6 @@ const Grid = styled.div`
 
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
-  }
-`
-
-const CodeRow = styled.div`
-  display: flex;
-  gap: 10px;
-`
-
-const CodeBtn = styled.button`
-  padding: 0 14px;
-  border: 1px solid ${Color.text.primary};
-  background: ${Color.bg.card};
-  border-radius: 4px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  white-space: nowrap;
-
-  &:hover {
-    background: ${Color.bg.sunken};
   }
 `
 
@@ -193,15 +172,9 @@ export default function RegisterForm() {
     email: '',
     password: '',
     confirmPassword: '',
-    code: '',
   })
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
-  const turnstileRef = useRef<TurnstileWidgetHandle>(null)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [error, setError] = useState('')
-  const [codeCooldown, setCodeCooldown] = useState(0)
-  const [codeSending, setCodeSending] = useState(false)
-  const [verifyId, setVerifyId] = useState('')
   const [passwordFocused, setPasswordFocused] = useState(false)
   const hp = useHoneypot()
 
@@ -209,30 +182,6 @@ export default function RegisterForm() {
   const confirmTouched = formData.confirmPassword.length > 0
   const confirmMatch = formData.confirmPassword === formData.password
   const strength = STRENGTH_META[passwordEval.level]
-
-  const handleSendCode = async () => {
-    if (!formData.email || codeCooldown > 0) return
-    setCodeSending(true)
-    try {
-      // 确保 csrftoken cookie 就绪（后续注册 POST 需要 CSRF 校验）
-      await ensureCSRFCookie().catch(() => {})
-      const res: any = await post('/users/email/verify/send/', { email: formData.email })
-      if (res && res.verify_id) {
-        setVerifyId(res.verify_id)
-      }
-      setCodeCooldown(30)
-      const timer = setInterval(() => {
-        setCodeCooldown(prev => {
-          if (prev <= 1) { clearInterval(timer); return 0 }
-          return prev - 1
-        })
-      }, 1000)
-    } catch {
-      setError(t('store.auth.codeSendFailed') || 'Failed to send code')
-    } finally {
-      setCodeSending(false)
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -263,18 +212,11 @@ export default function RegisterForm() {
       setError(t('store.auth.acceptTerms'))
       return
     }
-    if (!turnstileToken) {
-      setError(t('store.auth.completeVerification'))
-      return
-    }
 
     const result = await register(
       formData.username,
       formData.password,
       formData.email || undefined,
-      verifyId || undefined,
-      formData.code || undefined,
-      turnstileToken,
     )
 
     if (result.success) {
@@ -282,9 +224,6 @@ export default function RegisterForm() {
     } else {
       setError(result.error || t('store.auth.registrationFailed'))
     }
-    // Turnstile token 一次性：提交后已消费/失效，必须重置，否则重试会报「安全认证错误」
-    turnstileRef.current?.reset()
-    setTurnstileToken(null)
   }
 
   return (
@@ -349,24 +288,7 @@ export default function RegisterForm() {
             </MatchHint>
           )}
         </div>
-        <CodeRow>
-          <Input
-            type="text"
-            placeholder={t('store.auth.verificationCode')}
-            value={formData.code}
-            onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-          />
-          <CodeBtn type="button" onClick={handleSendCode} disabled={codeCooldown > 0 || codeSending}>
-            {codeSending ? 'Sending...' : codeCooldown > 0 ? `${codeCooldown}s` : t('store.auth.getCode')}
-          </CodeBtn>
-        </CodeRow>
       </Grid>
-
-      <TurnstileWidget
-        ref={turnstileRef}
-        siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
-        onVerify={(token) => setTurnstileToken(token)}
-      />
 
       <TermsRow>
         <input

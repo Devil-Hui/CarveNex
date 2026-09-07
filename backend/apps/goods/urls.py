@@ -7,8 +7,8 @@ from .views import (
     SearchSuggestView, AdminImageUploadView,
     # Admin SPU
     SPUAdminListView, SPUAdminCreateView, SPUAdminUpdateView,
-    SPUAdminDeleteView, SPUAdminDetailView, SPUAdminSubmitView,
-    SPUAdminAuditView, SPUAdminShelfView, SPUAdminScheduleView,
+    SPUAdminDeleteView, SPUAdminDetailView,
+    SPUAdminShelfView, SPUAdminScheduleView,
     SPUAdminDuplicateView, SPUTranslateView,
     # Admin Batch
     SPUAdminBatchView, SPUAdminBatchTaskView,
@@ -18,12 +18,9 @@ from .views import (
     # Admin Category
     CategoryAdminCreateView, CategoryAdminUpdateView,
     CategoryAdminDeleteView, CategoryAdminSubtreeView,
-    CategoryAdminMigrateView, CategoryAdminAuditView, CategoryPendingListView,
+    CategoryAdminMigrateView,
     # Admin Brand
     BrandAdminCreateView, BrandAdminUpdateView, BrandAdminDeleteView,
-    # Admin Group
-    AdminGroupListView, AdminGroupCreateView, AdminGroupMembersView,
-    AdminGroupUpdateView, AdminGroupDeleteView,
     # Admin Tag
     TagAdminCreateView, TagAdminUpdateView, TagAdminDeleteView,
     SPUTagSetView, SPUTagRemoveView,
@@ -32,10 +29,6 @@ from .views import (
     # Admin Audit
     AuditLogListView, SPUAuditLogView,
     AuditLogStatsView, OperationLogListView,
-    # Admin Application
-    ApplicationSubmitView, ApplicationListView,
-    ApplicationPendingListView, ApplicationReviewView,
-    StaffListView,
     # Admin Notification
     NotificationListView, NotificationUnreadCountView,
     NotificationReadView, NotificationReadAllView,
@@ -44,7 +37,7 @@ from .views import (
     # Admin Task
     TaskProgressView, TaskListView,
     # Admin Import/Export
-    ImportProductsView, ExportProductsView,
+    ImportProductsView, ExportProductsView, ImportProductMediaZipView,
     # Admin Media
     MediaListBySPUView, MediaDeleteView, MediaReorderView, MediaUpdateView, MediaCreateView, MediaVideoCreateView,
 )
@@ -72,8 +65,6 @@ urlpatterns = [
     path('spu/create', SPUAdminCreateView.as_view(), name='admin-spu-create'),
     path('spu/<int:spu_id>/update', SPUAdminUpdateView.as_view(), name='admin-spu-update'),
     path('spu/<int:spu_id>/delete', SPUAdminDeleteView.as_view(), name='admin-spu-delete'),
-    path('spu/<int:spu_id>/submit', SPUAdminSubmitView.as_view(), name='admin-spu-submit'),
-    path('spu/<int:spu_id>/audit', SPUAdminAuditView.as_view(), name='admin-spu-audit'),
     path('spu/<int:spu_id>/shelf', SPUAdminShelfView.as_view(), name='admin-spu-shelf'),
     path('spu/<int:spu_id>/schedule', SPUAdminScheduleView.as_view(), name='admin-spu-schedule'),
     path('spu/<int:spu_id>/duplicate', SPUAdminDuplicateView.as_view(), name='admin-spu-duplicate'),
@@ -81,6 +72,7 @@ urlpatterns = [
     path('spu/batch', SPUAdminBatchView.as_view(), name='admin-spu-batch'),
     path('spu/batch/task/<str:task_id>', SPUAdminBatchTaskView.as_view(), name='admin-spu-batch-task'),
     path('spu/import', ImportProductsView.as_view(), name='admin-spu-import'),
+    path('spu/import/media-zip', ImportProductMediaZipView.as_view(), name='admin-spu-import-media-zip'),
     path('spu/export', ExportProductsView.as_view(), name='admin-spu-export'),
 
     # ==================== Admin SKU ====================
@@ -95,8 +87,6 @@ urlpatterns = [
     path('category/<int:category_id>/update', CategoryAdminUpdateView.as_view(), name='admin-category-update'),
     path('category/<int:category_id>/delete', CategoryAdminDeleteView.as_view(), name='admin-category-delete'),
     path('category/migrate', CategoryAdminMigrateView.as_view(), name='admin-category-migrate'),
-    path('category/<int:category_id>/audit', CategoryAdminAuditView.as_view(), name='admin-category-audit'),
-    path('category/pending', CategoryPendingListView.as_view(), name='admin-category-pending'),
 
     # ==================== Admin Brand ====================
     path('brand/create', BrandAdminCreateView.as_view(), name='admin-brand-create'),
@@ -108,15 +98,6 @@ urlpatterns = [
     # 路由 kwarg 必须同名，否则 DRF 缺参 TypeError → 500。历史 <int:group_id>/<int:user_id>
     # 与视图不匹配导致 /goods/admin_group/{id}/members 等全部 500（前端走 slug 版
     # /api/v1/admin/groups/ 未暴露，但 id 版为文档标准路径且旧调用方仍可能使用）。
-    path('admin_group', AdminGroupListView.as_view(), name='admin-group-list'),
-    path('admin_group/create', AdminGroupCreateView.as_view(), name='admin-group-create'),
-    path('admin_group/<str:group_ref>/members', AdminGroupMembersView.as_view(), name='admin-group-members'),
-    path('admin_group/<str:group_ref>/members/<str:user_ref>', AdminGroupMembersView.as_view(), name='admin-group-member-delete'),
-    path('admin_group/<str:group_ref>/update', AdminGroupUpdateView.as_view(), name='admin-group-update'),
-    path('admin_group/<str:group_ref>/delete', AdminGroupDeleteView.as_view(), name='admin-group-delete'),
-    # 前端兼容别名
-    path('admin/admin-groups/', AdminGroupListView.as_view(), name='admin-group-list-alias'),
-
     # ==================== Admin SPU (fe) ====================
     # 前端兼容别名 — AdminProducts 调用 /admin/spus/
     path('admin/spus/', SPUAdminListView.as_view(), name='admin-spu-list-alias'),
@@ -127,13 +108,6 @@ urlpatterns = [
     path('tag/<int:tag_id>/delete', TagAdminDeleteView.as_view(), name='admin-tag-delete'),
     path('spu_tag', SPUTagSetView.as_view(), name='admin-spu-tag-set'),
     path('spu_tag/remove', SPUTagRemoveView.as_view(), name='admin-spu-tag-remove'),
-
-    # ==================== Admin Application ====================
-    path('application', ApplicationSubmitView.as_view(), name='admin-application-submit'),
-    path('application/my', ApplicationListView.as_view(), name='admin-application-my'),
-    path('application/pending', ApplicationPendingListView.as_view(), name='admin-application-pending'),
-    path('application/<int:app_id>/review', ApplicationReviewView.as_view(), name='admin-application-review'),
-    path('staff/list', StaffListView.as_view(), name='admin-staff-list'),
 
     # ==================== Admin Notification ====================
     path('notification', NotificationListView.as_view(), name='admin-notification-list'),

@@ -141,7 +141,7 @@ class SPUAdminListView(BaseApiView):
 
 
 class SPUAdminCreateView(BaseApiView):
-    """创建 SPU（draft）"""
+    """创建 SPU —— 超管创建即直接上架（ON_SALE），前台实时可见。"""
     permission_classes = [HasPerm('goods.spu.write')]
 
     @extend_schema(
@@ -198,6 +198,12 @@ class SPUAdminCreateView(BaseApiView):
                 return Response({'detail': Messages.ADMIN_SPU_NOT_IN_GROUP},
                                 status=status.HTTP_403_FORBIDDEN)
 
+        # 需求调整：超管创建商品即直接上架（ON_SALE），前台实时可见，无需审核流程。
+        initial_status = (
+            SPUStatus.ON_SALE
+            if has_role(request.user, Role.SUPERADMIN.value)
+            else SPUStatus.DRAFT
+        )
         spu = SPU.objects.create(
             name=name, brand=brand, category=category,
             description=description, name_en=name_en, description_en=description_en,
@@ -207,7 +213,7 @@ class SPUAdminCreateView(BaseApiView):
             product_type=product_type, tags=tags,
             requires_shipping=requires_shipping, taxable=taxable,
             product_kind=product_kind,
-            status=SPUStatus.DRAFT,
+            status=initial_status,
             specs=specs_raw,
         )
 
@@ -415,89 +421,6 @@ class SPUAdminDetailView(BaseApiView):
         })
 
 
-class SPUAdminSubmitView(BaseApiView):
-    """提交审核（draft/rejected → submitted）"""
-    permission_classes = [HasPerm('goods.spu.write')]
-
-    @extend_schema(
-        request=OpenApiTypes.OBJECT,
-        responses={200: OpenApiResponse(description='SPU submitted')}
-    )
-    def post(self, request, spu_id):
-        try:
-            spu = SPU.objects.get(id=spu_id, deleted_at__isnull=True)
-        except SPU.DoesNotExist:
-            return Response({'detail': Messages.SPU_NOT_FOUND}, status=status.HTTP_404_NOT_FOUND)
-        if not can_operate_spu(request.user, spu):
-            return Response({'detail': Messages.ADMIN_SPU_NOT_IN_GROUP}, status=status.HTTP_403_FORBIDDEN)
-        try:
-            old_status = spu.status
-            spu.submit_for_review(request.user)
-            create_audit_log(request.user, 'submit', 'spu', spu_id,
-                             ip_address=request.META.get('REMOTE_ADDR'))
-            create_operation_log(spu, request.user, 'submit', old_value=old_status, new_value=SPUStatus.SUBMITTED)
-            GoodsCacheService.invalidate_spu(spu_id)
-            GoodsCacheService.invalidate_spu_list()
-        except ValueError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'message': Messages.SUCCESS, 'status': spu.status})
-
-
-class SPUAdminAuditView(BaseApiView):
-    """审核 SPU（approve/reject），仅组长。审核通过后自动上架。"""
-    permission_classes = [HasPerm('goods.spu.audit')]
-
-    @extend_schema(
-        request=OpenApiTypes.OBJECT,
-        responses={200: OpenApiResponse(description='SPU audited')}
-    )
-    def post(self, request, spu_id):
-        try:
-            spu = SPU.objects.get(id=spu_id, deleted_at__isnull=True)
-        except SPU.DoesNotExist:
-            return Response({'detail': Messages.SPU_NOT_FOUND}, status=status.HTTP_404_NOT_FOUND)
-
-        if not can_audit_spu(request.user, spu):
-            return Response({'detail': Messages.ADMIN_SPU_NOT_IN_GROUP}, status=status.HTTP_403_FORBIDDEN)
-
-        action = request.data.get('action')
-        comment = request.data.get('remark', '')
-        auto_on_sale = request.data.get('auto_on_sale', True)
-
-        if action == 'approve':
-            try:
-                spu.approve(request.user, comment)
-                # 审核通过后定时上架（5分钟后），使商品在商城可见
-                if auto_on_sale and spu.status == 'approved':
-                    spu.schedule_publish(timezone.now() + datetime.timedelta(minutes=getattr(settings, 'SPU_SCHEDULED_PUBLISH_DELAY_MINUTES', 5)))
-                GoodsCacheService.invalidate_spu(spu_id)
-                GoodsCacheService.invalidate_spu_list()
-                _logger.info(
-                    'SPU audit approved: spu_id=%s name=%s auto_on_sale=%s new_status=%s',
-                    spu_id, spu.name, auto_on_sale, spu.status
-                )
-                create_audit_log(request.user, 'approve', 'spu', spu_id,
-                                 changes={'comment': comment, 'auto_on_sale': auto_on_sale},
-                                 ip_address=request.META.get('REMOTE_ADDR'))
-                create_operation_log(spu, request.user, 'approve', old_value='submitted', new_value='approved')
-            except ValueError as e:
-                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            return Response({'message': Messages.SUCCESS, 'status': spu.status})
-        elif action == 'reject':
-            try:
-                spu.reject(request.user, comment)
-                create_audit_log(request.user, 'reject', 'spu', spu_id,
-                                 changes={'comment': comment},
-                                 ip_address=request.META.get('REMOTE_ADDR'))
-                create_operation_log(spu, request.user, 'reject', old_value='submitted', new_value='rejected')
-                GoodsCacheService.invalidate_spu(spu_id)
-            except ValueError as e:
-                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            return Response({'message': Messages.SUCCESS, 'status': spu.status})
-        else:
-            return Response({'detail': Messages.ADMIN_INVALID_ACTION}, status=status.HTTP_400_BAD_REQUEST)
-
-
 class SPUAdminShelfView(BaseApiView):
     """上下架 / 挂起 / 恢复"""
     permission_classes = [HasPerm('goods.spu.write')]
@@ -596,13 +519,19 @@ class SPUAdminDuplicateView(BaseApiView):
         if not can_operate_spu(request.user, original):
             return Response({'detail': Messages.ADMIN_SPU_NOT_IN_GROUP}, status=status.HTTP_403_FORBIDDEN)
 
+        # 需求调整：超管复制商品直接上架（ON_SALE），前台实时可见。
+        initial_status = (
+            SPUStatus.ON_SALE
+            if has_role(request.user, Role.SUPERADMIN.value)
+            else SPUStatus.DRAFT
+        )
         new_spu = SPU.objects.create(
             name=f'{original.name} (Copy)',
             brand=original.brand,
             category=original.category,
             description=original.description,
             main_image=original.main_image,
-            status=SPUStatus.DRAFT,
+            status=initial_status,
         )
         create_audit_log(request.user, 'duplicate', 'spu', new_spu.id,
                          changes={'source_spu_id': spu_id, 'name': new_spu.name},

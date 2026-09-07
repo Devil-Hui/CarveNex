@@ -5,7 +5,6 @@ Redis DB 4, key prefix: media:img: / media:vid:, TTL 3600s
 import json
 import logging
 import uuid
-import redis
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -15,25 +14,53 @@ KEY_PREFIX_IMG = 'media:img:'
 KEY_PREFIX_VID = 'media:vid:'
 REDIS_TTL = 3600  # 1 小时
 
-# 模块级 Redis 客户端（连接池复用，避免 raw 连接泄漏）
+# 模块级 Redis 客户端（连接池复用，避免 raw 连接泄漏；可选，见 _get_redis）
 _redis_client = None
 
 
-def _get_redis() -> redis.Redis:
-    """获取 Redis 连接（DB 4），使用连接池管理，不泄漏连接"""
+class _NoopRedis:
+    """Redis 不可用时的 no-op 代理：所有操作为空操作，保证媒体删除/清理主流程不被阻断。
+
+    store/get 返回安全默认值；delete/expire 静默无操作。媒体数据本身已落 MySQL，
+    Redis 仅作为可选暂存（无调用方接入时本就无数据），因此降级无副作用。
+    """
+
+    def set(self, *a, **kw):
+        return True
+
+    def get(self, *a, **kw):
+        return None
+
+    def delete(self, *a, **kw):
+        return 0
+
+    def expire(self, *a, **kw):
+        return False
+
+
+def _get_redis():
+    """获取 Redis 连接（DB 4）。Redis 不可用（未部署/离线）时返回 no-op 代理，不抛异常。
+
+    说明：媒体字节与元数据均已持久化到 MySQL/对象存储，Redis 仅是可选暂存层。
+    去掉 Redis 进程后本模块自动降级为 no-op，媒体上传/删除/清理主流程不受影响。
+    """
     global _redis_client
     if _redis_client is not None:
         return _redis_client
     try:
-        redis_url = getattr(settings, 'REDIS_MASTER_URL', 'redis://redis:6379')
-        _redis_client = redis.Redis.from_url(
+        import redis
+        redis_url = getattr(settings, 'REDIS_MASTER_URL', 'redis://127.0.0.1:6379')
+        client = redis.Redis.from_url(
             redis_url, db=REDIS_DB, decode_responses=True,
             socket_connect_timeout=5, socket_timeout=5,
             max_connections=10,
         )
+        # 惰性连接：探测一次以判断 Redis 是否真实可达，失败则切 no-op
+        client.ping()
+        _redis_client = client
     except Exception as e:
-        logger.error(f'Redis 连接失败 (DB {REDIS_DB}): {e}')
-        raise
+        logger.info('Redis 不可用，媒体暂存进入 no-op 降级模式（已去 Redis 部署）: %s', e)
+        _redis_client = _NoopRedis()
     return _redis_client
 
 

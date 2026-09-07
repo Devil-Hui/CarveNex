@@ -40,7 +40,7 @@ class IsResourceOwner(BasePermission):
 
 
 class IsAdminOrReadOnly(BasePermission):
-    """Write requires管理组角色或超管，read is public。"""
+    """Write requires 超管（运维只读），读公开。"""
 
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
@@ -50,11 +50,4 @@ class IsAdminOrReadOnly(BasePermission):
             return False
         from apps.rbac.constants import Role
         from apps.rbac.services import has_role
-        return any(
-            has_role(user, r)
-            for r in (
-                Role.SUPERADMIN.value,
-                Role.ADMIN_LEADER.value,
-                Role.ADMIN_MEMBER.value,
-            )
-        )
+        return has_role(user, Role.SUPERADMIN.value)

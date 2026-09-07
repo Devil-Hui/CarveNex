@@ -111,3 +111,8 @@ backend/static/
 # ── Python caches (in case backend/.gitignore misses) ─────
 *.pyc
 __pycache__/
+# 临时/杂项文件（不上传）
+check_admin.py
+inspect_xlsx.py
+*.xlsx
+交接文档.md

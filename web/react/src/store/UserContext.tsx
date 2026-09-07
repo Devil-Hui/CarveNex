@@ -8,7 +8,7 @@ interface UserContextValue {
   isLoggedIn: boolean
   isLoading: boolean
   login: (username: string, password: string, turnstileToken: string) => Promise<{ success: boolean; error?: string }>
-  register: (username: string, password: string, email: string | undefined, verifyId: string | undefined, verifyCode: string | undefined, turnstileToken: string) => Promise<{ success: boolean; error?: string }>
+  register: (username: string, password: string, email: string | undefined) => Promise<{ success: boolean; error?: string }>
   logout: () => void
   socialLogin: (provider: string, accessToken: string) => Promise<any>
   refreshUser: () => Promise<void>
@@ -90,11 +90,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshUser])
 
-  const register = useCallback(async (username: string, password: string, email: string | undefined, verifyId: string | undefined, verifyCode: string | undefined, turnstileToken: string) => {
+  const register = useCallback(async (username: string, password: string, email: string | undefined) => {
     try {
-      await publicAPI.register({ username, password, email, verify_id: verifyId, verify_code: verifyCode })
-      // 注册成功后自动登录
-      return await login(username, password, turnstileToken)
+      await publicAPI.register({ username, password, email })
+      // 注册成功后自动登录（已去掉人机验证，无需 turnstile token）
+      return await login(username, password, '')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: Record<string, string[]> } })?.response?.data
       if (msg && typeof msg === 'object') {

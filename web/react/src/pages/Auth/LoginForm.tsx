@@ -1,8 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import styled from 'styled-components'
 import Input from '../../components/common/Input/Input'
 import Button from '../../components/common/Button/Button'
-import TurnstileWidget, { type TurnstileWidgetHandle } from '../../components/business/TurnstileWidget/TurnstileWidget'
 import { useUser } from '../../store/UserContext'
 import { Color } from '../../theme/tokens'
 import { useLocation, useNavigate, Link } from 'react-router-dom'
@@ -134,8 +133,6 @@ export default function LoginForm() {
   const location = useLocation()
   const loginRedirect = getSafeLoginRedirect(location.search)
   const [formData, setFormData] = useState({ email: '', password: '' })
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
-  const turnstileRef = useRef<TurnstileWidgetHandle>(null)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [error, setError] = useState('')
   const [socialLoading, setSocialLoading] = useState<string | null>(null)
@@ -239,20 +236,13 @@ export default function LoginForm() {
       setError(t('store.auth.acceptTerms'))
       return
     }
-    if (!turnstileToken) {
-      setError(t('store.auth.completeVerification'))
-      return
-    }
 
-    const result = await login(formData.email, formData.password, turnstileToken)
+    const result = await login(formData.email, formData.password, '')
     if (result.success) {
       navigate(loginRedirect, { replace: true })
     } else {
       setError(result.error || t('store.auth.invalidCredentials'))
     }
-    // Turnstile token 一次性：提交后已消费/失效，必须重置，否则重试会报「安全认证错误」
-    turnstileRef.current?.reset()
-    setTurnstileToken(null)
   }
 
   return (
@@ -274,12 +264,6 @@ export default function LoginForm() {
       />
 
       <LinkText to="/forgot-password">{t('store.auth.forgotPassword')}</LinkText>
-
-      <TurnstileWidget
-        ref={turnstileRef}
-        siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
-        onVerify={(token) => setTurnstileToken(token)}
-      />
 
       <TermsRow>
         <input

@@ -9,8 +9,6 @@ import { adminAPI, type PaginatedData } from '../api/admin'
 import { orderAPI } from '../api/order'
 
 export interface DashboardStats {
-  pendingProducts: number
-  pendingApplications: number
   pendingAfterSales: number
   unreadNotifications: number
   runningTasks: number
@@ -35,8 +33,6 @@ function readTotal(x: unknown): number {
 
 export function useDashboardStats(): DashboardStats {
   const [stats, setStats] = useState({
-    pendingProducts: 0,
-    pendingApplications: 0,
     pendingAfterSales: 0,
     unreadNotifications: 0,
     runningTasks: 0,
@@ -48,20 +44,16 @@ export function useDashboardStats(): DashboardStats {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    const [spuPending, applications, afterSales, unread, tasks, spuAll, orders] = await Promise.allSettled([
-      adminAPI.getSPUs({ status: 'pending', page: 1, size: 1 }).then((d: PaginatedData<unknown>) => readTotal(d)),
-      adminAPI.getPendingApplications().then((d) => readTotal(d)),
+    const [spuAll, afterSales, unread, tasks, orders] = await Promise.allSettled([
+      adminAPI.getSPUs({ page: 1, size: 1 }).then((d: PaginatedData<unknown>) => readTotal(d)),
       orderAPI.adminAfterSaleList({ status: 'pending', page: 1, size: 1 }).then((d) => readTotal(d)),
       adminAPI.getUnreadCount().then((d) => readTotal((d as { unread_count?: number }).unread_count)),
       adminAPI.getMyTasks().then((d) => (Array.isArray(d) ? d.filter((t) => t.state === 'PROCESSING' || t.state === 'PENDING').length : 0)),
-      adminAPI.getSPUs({ page: 1, size: 1 }).then((d: PaginatedData<unknown>) => readTotal(d)),
       orderAPI.adminList({ page: 1, size: 1 }).then((d) => readTotal(d)),
     ])
 
     const val = (r: PromiseSettledResult<number>): number => (r.status === 'fulfilled' ? r.value : 0)
     setStats({
-      pendingProducts: val(spuPending),
-      pendingApplications: val(applications),
       pendingAfterSales: val(afterSales),
       unreadNotifications: val(unread),
       runningTasks: val(tasks),

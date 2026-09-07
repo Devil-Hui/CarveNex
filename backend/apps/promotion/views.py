@@ -1,6 +1,4 @@
 from drf_spectacular.utils import extend_schema, OpenApiResponse
-from django.http import Http404
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
@@ -8,118 +6,16 @@ from rest_framework import status
 from utils.cache import Cache
 
 from utils.api_base_view import BaseApiView, PublicApiView
-from utils.api_permission import ApiPermission
-from apps.rbac.permissions import HasPerm, IsSuperAdmin
+from apps.rbac.permissions import HasPerm
 from utils.response_codes import Messages
-from .models import Coupon, CouponApplication, DiscountActivity, PromoCode
+from .models import Coupon, DiscountActivity, PromoCode
 from .serializers import (
     ClaimCouponSerializer, CouponSerializer,
     GenerateCouponSerializer, UserCouponSerializer,
     ActivitySerializer, ActivityAdminSerializer,
-    CouponApplicationDraftSerializer, CouponApplicationReviewSerializer,
-    CouponApplicationRevisionSerializer, CouponApplicationSerializer,
     PromoCodeCreateSerializer, PromoCodeDetailSerializer, PromoCodeSerializer,
 )
-from .services import CouponApplicationService, PromotionService, PromoCodeService
-
-
-def _application_error(exc):
-    if isinstance(exc, PermissionError):
-        raise PermissionDenied(str(exc))
-    return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class CouponApplicationCreateView(BaseApiView):
-    permission_classes = [ApiPermission]
-
-    @extend_schema(request=CouponApplicationDraftSerializer, responses={201: CouponApplicationSerializer})
-    def post(self, request):
-        serializer = CouponApplicationDraftSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = dict(serializer.validated_data)
-        group_id = data.pop('admin_group_id', None)
-        try:
-            application = CouponApplicationService.create_draft(request.user, group_id, data)
-        except (PermissionError, ValueError) as exc:
-            return _application_error(exc)
-        return Response(CouponApplicationSerializer(application).data, status=status.HTTP_201_CREATED)
-
-
-class MyCouponApplicationView(BaseApiView):
-    permission_classes = [ApiPermission]
-
-    @extend_schema(responses={200: CouponApplicationSerializer(many=True)})
-    def get(self, request):
-        applications = CouponApplication.objects.filter(applicant=request.user).select_related(
-            'applicant', 'admin_group', 'reviewer', 'coupon',
-        ).prefetch_related('approval_history__actor')
-        return Response({'items': CouponApplicationSerializer(applications, many=True).data})
-
-
-class CouponApplicationDetailView(BaseApiView):
-    permission_classes = [ApiPermission]
-
-    @extend_schema(request=CouponApplicationRevisionSerializer, responses={200: CouponApplicationSerializer})
-    def patch(self, request, application_id):
-        serializer = CouponApplicationRevisionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        if not CouponApplication.objects.filter(pk=application_id, applicant=request.user).exists():
-            raise Http404
-        try:
-            application = CouponApplicationService.revise(
-                request.user, application_id, serializer.validated_data,
-            )
-        except ValueError as exc:
-            return _application_error(exc)
-        return Response(CouponApplicationSerializer(application).data)
-
-
-class CouponApplicationSubmitView(BaseApiView):
-    permission_classes = [ApiPermission]
-
-    @extend_schema(request=None, responses={200: CouponApplicationSerializer})
-    def post(self, request, application_id):
-        if not CouponApplication.objects.filter(pk=application_id, applicant=request.user).exists():
-            raise Http404
-        try:
-            application = CouponApplicationService.submit(request.user, application_id)
-        except ValueError as exc:
-            return _application_error(exc)
-        return Response(CouponApplicationSerializer(application).data)
-
-
-class PendingCouponApplicationView(BaseApiView):
-    permission_classes = [IsSuperAdmin]
-
-    @extend_schema(responses={200: CouponApplicationSerializer(many=True)})
-    def get(self, request):
-        applications = CouponApplication.objects.filter(
-            status=CouponApplication.Status.PENDING,
-        ).select_related('applicant', 'admin_group', 'reviewer', 'coupon')
-        return Response({'items': CouponApplicationSerializer(applications, many=True).data})
-
-
-class CouponApplicationReviewView(BaseApiView):
-    permission_classes = [IsSuperAdmin]
-
-    @extend_schema(request=CouponApplicationReviewSerializer, responses={200: CouponApplicationSerializer})
-    def post(self, request, application_id):
-        serializer = CouponApplicationReviewSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        if not CouponApplication.objects.filter(pk=application_id).exists():
-            raise Http404
-        try:
-            coupon = CouponApplicationService.review(
-                request.user, application_id, **serializer.validated_data,
-            )
-        except (PermissionError, ValueError) as exc:
-            return _application_error(exc)
-        application = CouponApplication.objects.select_related(
-            'applicant', 'admin_group', 'reviewer', 'coupon',
-        ).get(pk=application_id)
-        payload = CouponApplicationSerializer(application).data
-        payload['coupon'] = CouponSerializer(coupon).data if coupon else None
-        return Response(payload)
+from .services import PromotionService, PromoCodeService
 
 
 class CouponListView(PublicApiView):

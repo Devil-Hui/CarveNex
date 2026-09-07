@@ -536,8 +536,6 @@ class CustomerServiceConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _can_access_conversation(self) -> bool:
         """检查用户是否有权限访问该会话 — 组级权限隔离"""
-        if ConversationAccessPolicy.is_ops(self.user):
-            return False
         self.is_admin = ConversationAccessPolicy.is_agent(self.user)
         return ConversationAccessPolicy.get_conversation(
             self.conv_id, self.user,

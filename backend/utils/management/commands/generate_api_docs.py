@@ -232,8 +232,8 @@ class Command(BaseCommand):
         _write_json(output_dir / 'openapi-3.1.json', schema)
         _write_json(output_dir / 'apifox-dev.json', _apifox_environment('CarveNex 开发环境', 'http://localhost:8000'))
         _write_json(
-            output_dir / 'apifox-staging.json',
-            _apifox_environment('CarveNex 预发布环境', 'https://staging-api.carvenex.example'),
+            output_dir / 'apifox-prod.json',
+            _apifox_environment('CarveNex 生产环境', 'https://api.carvenex.com'),
         )
         (output_dir / 'api-reference.md').write_text(_render_reference(schema), encoding='utf-8')
         self.stdout.write(self.style.SUCCESS(f'API documentation generated in {output_dir}'))

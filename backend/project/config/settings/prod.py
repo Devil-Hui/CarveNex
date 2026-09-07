@@ -62,9 +62,10 @@ R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '')
 R2_BUCKET = os.getenv('R2_BUCKET', '')
 R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL', '')  # e.g. https://cdn.carvenex.com
 
-# ── R2 对象存储（凭据齐全时启用；否则回退本地磁盘）──
+# ── R2 对象存储（凭据齐全时启用；上传失败自动回退数据库，见 utils.storage）──
 if R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET:
-    STORAGES['default']['BACKEND'] = 'storages.backends.s3boto3.S3Boto3Storage'
+    # 使用带「S3→DB」回退的后端：断网/R2 不可达时自动落库 MediaBlob，仍可上架展示
+    STORAGES['default']['BACKEND'] = 'utils.storage.R2DBFallbackStorage'
     AWS_ACCESS_KEY_ID = R2_ACCESS_KEY_ID
     AWS_SECRET_ACCESS_KEY = R2_SECRET_ACCESS_KEY
     AWS_STORAGE_BUCKET_NAME = R2_BUCKET

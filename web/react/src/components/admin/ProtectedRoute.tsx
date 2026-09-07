@@ -34,37 +34,34 @@ export function ProtectedRoute({ children }: { children?: ReactNode }) {
  * 定义哪些路由需要什么角色权限
  * 路由路径 → 允许的角色列表
  */
+// 需求调整：已删除组长/组员角色，后台统一由超管访问。
 const ROUTE_PERMISSIONS: Record<string, string[]> = {
-  '/admin/products': ['superadmin', 'leader', 'member'],
-  '/admin/categories': ['superadmin', 'leader'],
-  '/admin/brands': ['superadmin', 'leader'],
-  '/admin/tags': ['superadmin', 'leader'],
-  '/admin/orders': ['superadmin', 'leader', 'member'],
-  '/admin/chat': ['superadmin', 'leader', 'member'],
-  '/admin/email-templates': ['superadmin', 'leader', 'member'],
-  '/admin/notifications': ['superadmin', 'leader', 'member'],
-  '/admin/applications': ['superadmin', 'leader', 'member'],
-  '/admin/coupons': ['superadmin', 'leader'],
-  '/admin/activities': ['superadmin', 'leader'],
-  '/admin/audit-logs': ['superadmin', 'leader'],
-  '/admin/recycle-bin': ['superadmin', 'leader'],
-  '/admin/groups': ['superadmin', 'leader'],
-  '/admin/tasks': ['superadmin', 'leader', 'member'],
+  '/admin/products': ['superadmin'],
+  '/admin/categories': ['superadmin'],
+  '/admin/brands': ['superadmin'],
+  '/admin/tags': ['superadmin'],
+  '/admin/orders': ['superadmin'],
+  '/admin/chat': ['superadmin'],
+  '/admin/email-templates': ['superadmin'],
+  '/admin/notifications': ['superadmin'],
+  '/admin/coupons': ['superadmin'],
+  '/admin/activities': ['superadmin'],
+  '/admin/audit-logs': ['superadmin'],
+  '/admin/recycle-bin': ['superadmin'],
+  '/admin/tasks': ['superadmin'],
   '/admin/rbac': ['superadmin'],
   // 工作台：所有管理角色可见（验收默认首页，此前未注册导致 default-deny 误伤而不可达）
-  '/admin/dashboard': ['superadmin', 'leader', 'member'],
-  '/admin/import': ['superadmin', 'leader', 'member'],
+  '/admin/dashboard': ['superadmin'],
+  '/admin/import': ['superadmin'],
   // 优惠券推广码详情页（coupons 下的子路由），此前未注册导致不可达
-  '/admin/coupons/promo': ['superadmin', 'leader', 'member'],
+  '/admin/coupons/promo': ['superadmin'],
 }
 
 /**
  * 获取当前用户的角色标签
  */
-function getUserRole(isSuperAdmin: boolean, isGroupLeader: boolean, isGroupMember: boolean): string {
+function getUserRole(isSuperAdmin: boolean): string {
   if (isSuperAdmin) return 'superadmin'
-  if (isGroupLeader) return 'leader'
-  if (isGroupMember) return 'member'
   return 'none'
 }
 
@@ -125,8 +122,8 @@ export function RoleProtectedRoute({ children }: { children?: ReactNode }) {
  * 返回当前用户可访问的菜单项路径列表
  */
 export function useAllowedMenuPaths(): string[] {
-  const { isSuperAdmin, isGroupLeader, isGroupMember } = useAdminAuth()
-  const role = getUserRole(isSuperAdmin, isGroupLeader, isGroupMember)
+  const { isSuperAdmin } = useAdminAuth()
+  const role = getUserRole(isSuperAdmin)
 
   return Object.entries(ROUTE_PERMISSIONS)
     .filter(([, allowedRoles]) => allowedRoles.includes(role))

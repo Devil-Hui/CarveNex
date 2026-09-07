@@ -12,19 +12,12 @@ class OrderAdminAccessPolicy:
         return has_role(user, Role.SUPERADMIN.value)
 
     @staticmethod
-    def is_ops(user):
-        return has_role(user, Role.OPS.value)
-
-    @staticmethod
     def redact_sensitive(user):
-        return (
-            OrderAdminAccessPolicy.is_ops(user)
-            and not OrderAdminAccessPolicy.is_superadmin(user)
-        )
+        return False
 
     @staticmethod
     def scope_orders(queryset, user):
-        # 统一范围判定：超管/运维 → all；其余按管辖分类行级过滤（见 apps.rbac.scopes）
+        # 统一范围判定：超管 → all；其余按管辖分类行级过滤（见 apps.rbac.scopes）
         scope = get_user_scope(user, category_field='order')
         if scope.is_all:
             return queryset

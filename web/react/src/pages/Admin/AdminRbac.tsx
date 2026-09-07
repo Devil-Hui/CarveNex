@@ -2,10 +2,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import styled from 'styled-components'
 import { Color, Radius, Shadow, Spacing, FontSize, Transition } from '../../theme/tokens'
-import { PrimaryBtn as SaveBtn, Input as SearchInput, SecondaryBtn, SecondaryBtn as ActionBtn, SecondaryBtn as CancelBtn, FormGroup, Label, ErrorText, Hint, Select } from '../../components/admin/common/ui'
+import { PrimaryBtn as SaveBtn, Input as SearchInput, SecondaryBtn as ActionBtn, SecondaryBtn as CancelBtn } from '../../components/admin/common/ui'
 import {
   Drawer,
-  FormDialog,
   Pagination,
   SmartDataTable,
   StatusBadge,
@@ -188,60 +187,6 @@ const ToastMsg = styled.div<{ $type: 'success' | 'error' }>`
   font-size: ${FontSize.sm}px;
 `
 
-// ── Toggle switch (is_active) ──
-const ToggleRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`
-
-const ToggleSwitch = styled.label`
-  position: relative;
-  display: inline-block;
-  width: 40px;
-  height: 22px;
-`
-
-const ToggleInput = styled.input`
-  opacity: 0;
-  width: 0;
-  height: 0;
-
-  &:checked + span {
-    background: ${Color.primary};
-  }
-
-  &:checked + span::before {
-    transform: translateX(18px);
-  }
-`
-
-const ToggleSlider = styled.span`
-  position: absolute;
-  inset: 0;
-  background: ${Color.border.dark};
-  border-radius: 22px;
-  cursor: pointer;
-  transition: ${Transition.normal};
-
-  &::before {
-    content: '';
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    left: 3px;
-    bottom: 3px;
-    background: ${Color.bg.card};
-    border-radius: 50%;
-    transition: transform 0.2s;
-  }
-`
-
-const ToggleLabel = styled.span`
-  font-size: ${FontSize.sm}px;
-  color: ${Color.text.secondary};
-`
-
 // ── Component ──
 
 export default function AdminRbac() {
@@ -272,57 +217,6 @@ export default function AdminRbac() {
   const [savingUser, setSavingUser] = useState(false)
 
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
-
-  // Create admin dialog（超管创建管理员，与普通用户自助注册彻底分离）
-  const [showCreateAdmin, setShowCreateAdmin] = useState(false)
-  const [createForm, setCreateForm] = useState({
-    username: '',
-    password: '',
-    email: '',
-    first_name: '',
-    last_name: '',
-    role: 'ops' as 'ops' | 'superadmin' | 'admin_leader' | 'admin_member',
-    department: '',
-    country_code: '',
-    phone: '',
-    is_active: true,
-    group_slug: '',
-    group_role: 'member' as 'leader' | 'member',
-    note: '',
-  })
-  const [createErrors, setCreateErrors] = useState<{
-    username?: string
-    password?: string
-    email?: string
-    first_name?: string
-    last_name?: string
-    role?: string
-  }>({})
-  const [creating, setCreating] = useState(false)
-  const [createdAccountNo, setCreatedAccountNo] = useState<string | null>(null)
-  /** 可选：初始管理组绑定（建号+授权一步到位） */
-  const [adminGroups, setAdminGroups] = useState<{ slug: string; name: string }[]>([])
-
-  /** 创建表单初始值（用于"再创建一个"重置） */
-  const emptyCreateForm = () => ({
-    username: '',
-    password: '',
-    email: '',
-    first_name: '',
-    last_name: '',
-    role: 'ops' as 'ops' | 'superadmin' | 'admin_leader' | 'admin_member',
-    department: '',
-    country_code: '',
-    phone: '',
-    is_active: true,
-    group_slug: '',
-    group_role: 'member' as 'leader' | 'member',
-    note: '',
-  })
-
-  useEffect(() => {
-    adminAPI.getAdminGroups().then((g) => setAdminGroups(g || [])).catch(() => setAdminGroups([]))
-  }, [])
 
   const showMsg = (type: 'success' | 'error', msg: string) => {
     setToast({ type, msg })
@@ -422,88 +316,6 @@ export default function AdminRbac() {
       setSavingUser(false)
     }
   }
-
-  /* ---- Create Admin（超管创建管理员账号） ---- */
-
-  const openCreateAdmin = () => {
-    setCreateForm(emptyCreateForm())
-    setCreateErrors({})
-    setCreatedAccountNo(null)
-    setShowCreateAdmin(true)
-  }
-
-  const handleCreateAdmin = async () => {
-    // 创建成功后，提交按钮变为「再创建一个」：重置回输入态
-    if (createdAccountNo) {
-      setCreatedAccountNo(null)
-      setCreateForm(emptyCreateForm())
-      setCreateErrors({})
-      return
-    }
-    const username = createForm.username.trim()
-    const password = createForm.password
-    const email = createForm.email.trim()
-    const firstName = createForm.first_name.trim()
-    const lastName = createForm.last_name.trim()
-    const role = createForm.role
-    const errs: {
-      username?: string
-      password?: string
-      email?: string
-      first_name?: string
-      last_name?: string
-      role?: string
-    } = {}
-    if (!username) errs.username = t('admin.rbac.createAdminUsernameRequired')
-    // 与后端 utils validators.validate_password 保持一致：≥8 位且含大写+小写+(数字|特殊字符)
-    const weakPassword =
-      !password ||
-      password.length < 8 ||
-      !/[A-Z]/.test(password) ||
-      !/[a-z]/.test(password) ||
-      !(/\d/.test(password) || /[^A-Za-z0-9]/.test(password))
-    if (weakPassword) errs.password = t('admin.rbac.createAdminPasswordHint')
-    if (!email) errs.email = t('admin.rbac.createAdminEmailRequired')
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = t('admin.rbac.createAdminEmailInvalid')
-    if (!firstName) errs.first_name = t('admin.rbac.createAdminFirstNameRequired')
-    if (!lastName) errs.last_name = t('admin.rbac.createAdminLastNameRequired')
-    if (!role) errs.role = t('admin.rbac.createAdminRoleRequired')
-    setCreateErrors(errs)
-    if (Object.keys(errs).some((k) => errs[k as keyof typeof errs])) return
-    try {
-      setCreating(true)
-      const res = await adminAPI.createAdminUser({
-        username,
-        password,
-        email,
-        first_name: firstName,
-        last_name: lastName,
-        role,
-        department: createForm.department.trim() || undefined,
-        country_code: createForm.country_code || undefined,
-        phone: createForm.phone.trim() || undefined,
-        is_active: createForm.is_active,
-        note: createForm.note.trim() || undefined,
-        group_slug: createForm.group_slug || undefined,
-        group_role: createForm.group_slug ? createForm.group_role : undefined,
-      })
-      setCreatedAccountNo(res.account_no ?? null)
-      setCreateForm(emptyCreateForm())
-      setCreateErrors({})
-      fetchUsers()
-    } catch (err: unknown) {
-      showMsg('error', err instanceof Error ? err.message : t('admin.rbac.createAdminFailed'))
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  const createRoleOptions: { value: 'ops' | 'superadmin' | 'admin_leader' | 'admin_member'; key: string }[] = [
-    { value: 'ops', key: 'admin.rbac.createAdminRoleOps' },
-    { value: 'superadmin', key: 'admin.rbac.createAdminRoleSuperadmin' },
-    { value: 'admin_leader', key: 'admin.rbac.createAdminRoleLeader' },
-    { value: 'admin_member', key: 'admin.rbac.createAdminRoleMember' },
-  ]
 
   const roleOptions = (matrix?.roles || []).filter((r) => r.value !== 'superadmin')
 
@@ -634,7 +446,6 @@ export default function AdminRbac() {
                 setPage('1')
               }}
             />
-            <SaveBtn onClick={openCreateAdmin}>{t('admin.rbac.createAdmin')}</SaveBtn>
           </div>
           <SmartDataTable<RbacUser>
             columns={userColumns}
@@ -691,182 +502,6 @@ export default function AdminRbac() {
             ))}
           </div>
         </Drawer>
-      )}
-
-      {showCreateAdmin && (
-        <FormDialog
-          open={showCreateAdmin}
-          title={t('admin.rbac.createAdminTitle')}
-          okText={createdAccountNo ? t('admin.rbac.createAnother') : creating ? t('admin.rbac.creating') : t('admin.rbac.create')}
-          loading={creating}
-          cancelText={t('common.cancel')}
-          dirty={false}
-          onCancel={() => setShowCreateAdmin(false)}
-          onOk={handleCreateAdmin}
-        >
-          {createdAccountNo ? (
-            <div>
-              <div style={{ color: Color.status.success, fontWeight: 600, marginBottom: Spacing.md }}>
-                {t('admin.rbac.createAdminSuccess')}
-              </div>
-              <div style={{ padding: Spacing.lg, background: Color.primaryLight, borderRadius: Radius.sm, marginBottom: Spacing.md }}>
-                <div style={{ fontSize: FontSize.xs, color: Color.text.muted, marginBottom: 4 }}>{t('admin.rbac.accountNoLabel')}</div>
-                <div style={{ fontSize: FontSize.lg, fontWeight: 600, color: Color.primaryHover, fontFamily: 'monospace', wordBreak: 'break-all' }}>{createdAccountNo}</div>
-              </div>
-              <Hint>{t('admin.rbac.createAdminCopyHint')}</Hint>
-            </div>
-          ) : (
-            <>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminUsername')}</Label>
-                <SearchInput
-                  value={createForm.username}
-                  onChange={(e) => {
-                    setCreateForm((p) => ({ ...p, username: e.target.value }))
-                    if (createErrors.username) setCreateErrors((p) => ({ ...p, username: undefined }))
-                  }}
-                  placeholder={t('admin.rbac.createAdminUsernamePlaceholder')}
-                />
-                {createErrors.username && <ErrorText>{createErrors.username}</ErrorText>}
-              </FormGroup>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminPassword')}</Label>
-                <SearchInput
-                  type="password"
-                  value={createForm.password}
-                  onChange={(e) => {
-                    setCreateForm((p) => ({ ...p, password: e.target.value }))
-                    if (createErrors.password) setCreateErrors((p) => ({ ...p, password: undefined }))
-                  }}
-                  placeholder={t('admin.rbac.createAdminPasswordPlaceholder')}
-                />
-                {createErrors.password && <ErrorText>{createErrors.password}</ErrorText>}
-              </FormGroup>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminEmailRequired')}</Label>
-                <SearchInput
-                  value={createForm.email}
-                  onChange={(e) => {
-                    setCreateForm((p) => ({ ...p, email: e.target.value }))
-                    if (createErrors.email) setCreateErrors((p) => ({ ...p, email: undefined }))
-                  }}
-                  placeholder={t('admin.rbac.createAdminEmailPlaceholder')}
-                />
-                {createErrors.email && <ErrorText>{createErrors.email}</ErrorText>}
-              </FormGroup>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminFirstName')}</Label>
-                <SearchInput
-                  value={createForm.first_name}
-                  onChange={(e) => {
-                    setCreateForm((p) => ({ ...p, first_name: e.target.value }))
-                    if (createErrors.first_name) setCreateErrors((p) => ({ ...p, first_name: undefined }))
-                  }}
-                  placeholder={t('admin.rbac.createAdminFirstName')}
-                />
-                {createErrors.first_name && <ErrorText>{createErrors.first_name}</ErrorText>}
-              </FormGroup>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminLastName')}</Label>
-                <SearchInput
-                  value={createForm.last_name}
-                  onChange={(e) => {
-                    setCreateForm((p) => ({ ...p, last_name: e.target.value }))
-                    if (createErrors.last_name) setCreateErrors((p) => ({ ...p, last_name: undefined }))
-                  }}
-                  placeholder={t('admin.rbac.createAdminLastName')}
-                />
-                {createErrors.last_name && <ErrorText>{createErrors.last_name}</ErrorText>}
-              </FormGroup>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminRole')}</Label>
-                <Select
-                  value={createForm.role}
-                  onChange={(e) => {
-                    setCreateForm((p) => ({ ...p, role: e.target.value as 'ops' | 'superadmin' | 'admin_leader' | 'admin_member' }))
-                    if (createErrors.role) setCreateErrors((p) => ({ ...p, role: undefined }))
-                  }}
-                >
-                  {createRoleOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{t(o.key)}</option>
-                  ))}
-                </Select>
-                {createErrors.role && <ErrorText>{createErrors.role}</ErrorText>}
-              </FormGroup>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminDepartment')}</Label>
-                <SearchInput
-                  value={createForm.department}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, department: e.target.value }))}
-                  placeholder={t('admin.rbac.createAdminDepartmentPlaceholder')}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminPhoneLabel')}</Label>
-                <SearchInput
-                  value={createForm.phone}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, phone: e.target.value }))}
-                  placeholder={t('admin.rbac.createAdminPhonePlaceholder')}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminCountryCodeLabel')}</Label>
-                <SearchInput
-                  value={createForm.country_code}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, country_code: e.target.value }))}
-                  placeholder={t('admin.rbac.createAdminCountryCodePlaceholder')}
-                />
-              </FormGroup>
-              <FormGroup>
-                <ToggleRow>
-                  <ToggleSwitch>
-                    <ToggleInput
-                      type="checkbox"
-                      checked={createForm.is_active}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, is_active: e.target.checked }))}
-                    />
-                    <ToggleSlider />
-                  </ToggleSwitch>
-                  <ToggleLabel>{t('admin.rbac.createAdminIsActive')}</ToggleLabel>
-                </ToggleRow>
-                <Hint>{t('admin.rbac.createAdminIsActiveHint')}</Hint>
-              </FormGroup>
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminGroup')}</Label>
-                <Select
-                  value={createForm.group_slug}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, group_slug: e.target.value }))}
-                >
-                  <option value="">{t('admin.rbac.createAdminGroupNone')}</option>
-                  {adminGroups.map((g) => (
-                    <option key={g.slug} value={g.slug}>{g.name}</option>
-                  ))}
-                </Select>
-                <Hint>{t('admin.rbac.createAdminGroupHint')}</Hint>
-              </FormGroup>
-              {createForm.group_slug && (
-                <FormGroup>
-                  <Label>{t('admin.rbac.createAdminGroupRole')}</Label>
-                  <Select
-                    value={createForm.group_role}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, group_role: e.target.value as 'leader' | 'member' }))}
-                  >
-                    <option value="member">{t('admin.rbac.createAdminGroupRoleMember')}</option>
-                    <option value="leader">{t('admin.rbac.createAdminGroupRoleLeader')}</option>
-                  </Select>
-                </FormGroup>
-              )}
-              <FormGroup>
-                <Label>{t('admin.rbac.createAdminNote')}</Label>
-                <SearchInput
-                  value={createForm.note}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, note: e.target.value }))}
-                  placeholder={t('admin.rbac.createAdminNotePlaceholder')}
-                />
-              </FormGroup>
-            </>
-          )}
-        </FormDialog>
       )}
 
       {toast && <ToastMsg $type={toast.type}>{toast.msg}</ToastMsg>}

@@ -1,5 +1,5 @@
 """
-幂等种子数据管理命令 —— 支持 dev / staging / prod 环境
+幂等种子数据管理命令 —— 支持 dev / prod 环境
 =========================================================
 与 init_p0_data 的区别：
   - init_p0_data: TRUNCATE 全表 + 重建，仅开发环境，破坏性
@@ -7,7 +7,6 @@
 
 用法:
   docker exec django-app python3 manage.py seed_data --env=dev
-  docker exec django-app python3 manage.py seed_data --env=staging
   docker exec django-app python3 manage.py seed_data --env=prod
   docker exec django-app python3 manage.py seed_data --env=prod --dry-run  # 预览模式
 """
@@ -51,22 +50,6 @@ SEED_CONFIG = {
             ('满100减10', 'fixed', 10, 100),
             ('满200减30', 'fixed', 30, 200),
             ('9折券', 'percentage', 10, 0),
-        ],
-    },
-    'staging': {
-        'categories': [
-            ('数码产品', 1, None, {'is_active': True}),
-            ('手机', 2, '数码产品', {'is_active': True}),
-            ('家电', 1, None, {'is_active': True}),
-            ('服装', 1, None, {'is_active': True}),
-        ],
-        'brands': [
-            ('Apple', '苹果公司'),
-            ('Huawei', '华为技术有限公司'),
-        ],
-        'tags': ['新品', '热销', '推荐'],
-        'coupons': [
-            ('满100减10', 'fixed', 10, 100),
         ],
     },
     'prod': {
@@ -115,7 +98,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--env', type=str, default='dev',
-                            choices=['dev', 'staging', 'prod'],
+                            choices=['dev', 'prod'],
                             help='目标环境')
         parser.add_argument('--dry-run', action='store_true',
                             help='预览模式，不实际写入')

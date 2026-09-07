@@ -49,13 +49,3 @@ class IsSuperAdmin(BasePermission):
 
     def has_permission(self, request, view) -> bool:
         return has_role(request.user, Role.SUPERADMIN.value)
-
-
-class IsOpsAuditor(BasePermission):
-    """运维（只读核查）或超级管理员。"""
-
-    message = '仅运维或超级管理员可查看'
-
-    def has_permission(self, request, view) -> bool:
-        user = request.user
-        return has_role(user, Role.SUPERADMIN.value) or has_role(user, Role.OPS.value)

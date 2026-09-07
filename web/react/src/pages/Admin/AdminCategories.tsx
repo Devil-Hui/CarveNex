@@ -174,8 +174,6 @@ export default function AdminCategories() {
   const [formParentId, setFormParentId] = useState<number | null>(null);
   const [formLevel, setFormLevel] = useState(1);
   const [formActive, setFormActive] = useState(true);
-  const [formAdminGroupId, setFormAdminGroupId] = useState<number | null>(null);
-  const [adminGroups, setAdminGroups] = useState<{ id: number; name: string }[]>([]);
   const [migrateFromId, setMigrateFromId] = useState<number | null>(null);
   const [migrateToId, setMigrateToId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -186,7 +184,6 @@ export default function AdminCategories() {
     try {
       setLoading(true);
       setError(null);
-      // 组范围子树：无权限的类目（其他管理组）后端直接不返回
       const data = await adminAPI.getCategorySubtree();
       setTree(data as unknown as CategoryNode[]);
     } catch (err: any) {
@@ -199,12 +196,6 @@ export default function AdminCategories() {
   useEffect(() => {
     fetchTree();
   }, [fetchTree]);
-
-  useEffect(() => {
-    adminAPI.getAdminGroups()
-      .then((res) => setAdminGroups(Array.isArray(res) ? res : []))
-      .catch(() => {});
-  }, []);
 
   const showToast = (type: 'success' | 'error', msg: string) => {
     setToast({ type, msg });
@@ -220,7 +211,7 @@ export default function AdminCategories() {
     });
   };
 
-  const selectNode = (node: CategoryNode & { admin_group_id?: number }) => {
+  const selectNode = (node: CategoryNode) => {
     creatingRef.current = false;
     setSelected(node);
     setMode('view');
@@ -228,7 +219,6 @@ export default function AdminCategories() {
     setFormParentId(node.parent_id);
     setFormLevel(node.level);
     setFormActive(node.is_active);
-    setFormAdminGroupId(node.admin_group_id || null);
     if (String(selectedId) !== String(node.id)) setSelectedId(String(node.id));
   };
 
@@ -240,7 +230,6 @@ export default function AdminCategories() {
     setFormParentId(null);
     setFormLevel(1);
     setFormActive(true);
-    setFormAdminGroupId(null);
     // 清除 URL 中的 id，避免「回放选中」effect 把 mode 重置回 view，导致新建表单一闪而过
     setSelectedId('');
   };
@@ -256,14 +245,12 @@ export default function AdminCategories() {
           name: formName.trim(),
           parent_id: formParentId,
           level: formLevel,
-          admin_group_id: formAdminGroupId || undefined,
         });
         showToast('success', t('admin.categories.createSuccess'));
       } else if (mode === 'edit' && selected) {
         await adminAPI.updateCategory(selected.id, {
           name: formName.trim(),
           is_active: formActive,
-          admin_group_id: formAdminGroupId || undefined,
         });
         showToast('success', t('admin.categories.updateSuccess'));
       }
@@ -429,18 +416,7 @@ export default function AdminCategories() {
                     <option value="0">{t('admin.categories.disabled')}</option>
                   </Select>
                 </FormGroup>
-                <FormGroup>
-                  <Label>{t('admin.categories.adminGroup')}</Label>
-                  <Select
-                    value={formAdminGroupId || ''}
-                    onChange={(e) => setFormAdminGroupId(e.target.value ? Number(e.target.value) : null)}
-                  >
-                    <option value="">{t('admin.categories.noGroup')}</option>
-                    {adminGroups.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </Select>
-                </FormGroup>
+                
                 <ButtonGroup>
                   <PrimaryBtn onClick={debouncedSave} disabled={isSaving}>{isSaving ? t('common.saving') : t('common.save')}</PrimaryBtn>
                   <SecondaryBtn onClick={() => setMode('view')}>{t('common.cancel')}</SecondaryBtn>
@@ -489,18 +465,7 @@ export default function AdminCategories() {
                     <option value="3">{t('admin.categories.level3')}</option>
                   </Select>
                 </FormGroup>
-                <FormGroup>
-                  <Label>{t('admin.categories.adminGroup')}</Label>
-                  <Select
-                    value={formAdminGroupId || ''}
-                    onChange={(e) => setFormAdminGroupId(e.target.value ? Number(e.target.value) : null)}
-                  >
-                    <option value="">{t('admin.categories.noGroup')}</option>
-                    {adminGroups.map((g) => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
-                    ))}
-                  </Select>
-                </FormGroup>
+                
                 <ButtonGroup>
                   <PrimaryBtn onClick={handleSave}>{t('common.create')}</PrimaryBtn>
                   <SecondaryBtn onClick={() => setMode('view')}>{t('common.cancel')}</SecondaryBtn>

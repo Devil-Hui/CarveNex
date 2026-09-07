@@ -13,11 +13,6 @@ from .models import (
     PriceHistory,
     ProductOperationLog,
 )
-from .models_application import (
-    CategoryRenameApplication,
-    BrandRenameApplication,
-    LeaderChangeApplication,
-)
 from .models_notification import AdminNotification
 
 
@@ -95,25 +90,6 @@ class PriceHistoryAdmin(admin.ModelAdmin):
 class ProductOperationLogAdmin(admin.ModelAdmin):
     list_display = ['id', 'action', 'user', 'spu', 'created_at']
     list_filter = ['action']
-
-
-# Application models
-@admin.register(CategoryRenameApplication)
-class CategoryRenameApplicationAdmin(admin.ModelAdmin):
-    list_display = ['id', 'category', 'new_name', 'applicant', 'status', 'created_at']
-    list_filter = ['status']
-
-
-@admin.register(BrandRenameApplication)
-class BrandRenameApplicationAdmin(admin.ModelAdmin):
-    list_display = ['id', 'brand', 'new_name', 'applicant', 'status', 'created_at']
-    list_filter = ['status']
-
-
-@admin.register(LeaderChangeApplication)
-class LeaderChangeApplicationAdmin(admin.ModelAdmin):
-    list_display = ['id', 'group', 'new_leader', 'applicant', 'status', 'created_at']
-    list_filter = ['status']
 
 
 @admin.register(AdminNotification)

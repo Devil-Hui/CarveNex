@@ -17,6 +17,8 @@ django-celery-results==2.6.0
 django-cors-headers==4.7.0
 django-prometheus==2.3.1
 Pillow==12.3.0
+# Excel 导入解析（admin_import_export.py 的 xlsx 解析依赖）
+openpyxl>=3.1.5
 PyJWT==2.13.0
 cryptography>=42.0
 pycryptodome>=3.20.0

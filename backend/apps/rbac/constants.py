@@ -16,12 +16,13 @@ from django.db import models
 
 
 class Role(models.TextChoices):
-    """全局角色。与 goods.AdminGroupMember.role（组内职责）是两个概念，勿混。"""
+    """全局角色。
+
+    需求调整：已删除管理组组长 / 组员角色与运维（只读）角色，仅保留
+    超级管理员 / 普通用户。商品上架等后台操作由超管直接完成。
+    """
 
     SUPERADMIN = 'superadmin', '超级管理员'
-    OPS = 'ops', '运维'
-    ADMIN_LEADER = 'admin_leader', '管理组组长'
-    ADMIN_MEMBER = 'admin_member', '管理组组员'
     CUSTOMER = 'customer', '普通用户'
 
 
@@ -100,60 +101,10 @@ def is_valid_perm(code: str) -> bool:
 
 
 # ==================== 默认授权 ====================
-# 仅作为**首次初始化**的种子；之后以 DB 中的 RolePermission 为准，
-# superadmin 可在界面上调整。
-
-_ADMIN_MEMBER_PERMS = frozenset({
-    'goods.spu.read',
-    'goods.spu.write',
-    'goods.sku.write',
-    'goods.media.write',
-    'goods.stats.read',
-    'order.read',
-    'cs.conversation.read',
-    'cs.message.write',
-    'support.ticket.read',
-})
-
-_ADMIN_LEADER_PERMS = _ADMIN_MEMBER_PERMS | {
-    'goods.spu.audit',
-    # 分类保留给组长：创建/更新/删除有管辖范围校验 + 非超管建分类走 PENDING 超管审核闭环
-    'goods.category.write',
-    # 品牌/标签为全局共享资源（无组归属、无审核流），组长创建即全局生效 → 仅超管。
-    # 审核组同理：goods.group.write 仅超管（组内自治走 AdminGroupMembersView）。
-    'goods.import.execute',
-    'goods.recycle.restore',
-    'goods.application.review',
-    'order.ship',
-    'order.cancel',
-    'order.aftersale.review',
-    'promotion.coupon.write',
-    'promotion.activity.write',
-    'cs.conversation.takeover',
-    'cs.conversation.close',
-    'support.ticket.write',
-    'notification.broadcast',
-}
-
-#: 运维是**只读**角色：能看全站权限与用户，不能改任何业务数据。
-#: D3 修复：授权邮件模板只读（邮件模板属系统配置，运维审计可见）
-#: D4：移除死权限 users.read（无对应视图）
-_OPS_PERMS = frozenset({
-    'rbac.matrix.read',
-    'rbac.user.read',
-    'rbac.audit.read',
-    'users.email_template.read',
-    'goods.spu.read',
-    'goods.stats.read',
-    'order.read',
-    'cs.conversation.read',
-    'support.ticket.read',
-})
+# 仅作为**首次初始化**的种子；之后以 DB 中的 RolePermission 为准。
+# 管理操作统一由超管承担；普通用户默认无任何权限点。
 
 DEFAULT_ROLE_PERMS: dict[str, frozenset[str]] = {
-    # superadmin 不在此列：它在 has_perm 里短路放行，不依赖 DB 授权。
-    Role.OPS.value: _OPS_PERMS,
-    Role.ADMIN_LEADER.value: frozenset(_ADMIN_LEADER_PERMS),
-    Role.ADMIN_MEMBER.value: _ADMIN_MEMBER_PERMS,
+    # superadmin/超管全量放行，在 has_perm 里短路返回 True
     Role.CUSTOMER.value: frozenset(),
 }

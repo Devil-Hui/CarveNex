@@ -205,8 +205,8 @@ class AdminOrderCancelSerializer(serializers.Serializer):
 
 class RoleMatrixUpdateSerializer(serializers.Serializer):
     role = serializers.ChoiceField(
-        choices=['customer', 'admin_member', 'admin_leader', 'ops'],
-        help_text='待调整的角色；superadmin 权限不可修改。',
+        choices=['customer'],
+        help_text='待调整的角色（组长/组员及运维已移除）；superadmin 权限不可修改。',
     )
     perm_codes = serializers.ListField(
         child=serializers.CharField(max_length=100),
@@ -216,7 +216,7 @@ class RoleMatrixUpdateSerializer(serializers.Serializer):
 
 class UserRoleAssignSerializer(serializers.Serializer):
     roles = serializers.ListField(
-        child=serializers.ChoiceField(choices=['customer', 'ops', 'superadmin']),
+        child=serializers.ChoiceField(choices=['customer', 'superadmin']),
         help_text='目标用户的可手工分配角色完整列表。',
     )
 

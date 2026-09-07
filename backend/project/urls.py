@@ -23,7 +23,7 @@ from django.conf.urls.static import static
 from utils.health_check import HealthCheckView
 from utils.versioned_router import router
 from utils.upload_async import get_upload_status, async_upload_enabled
-from apps.goods import urls_admin_group_slug
+from apps.media.views import serve_db_media
 
 
 def media_upload_status(request, upload_id):
@@ -72,24 +72,22 @@ urlpatterns = [
     path('', include('django_prometheus.urls')),
     path("admin/", admin.site.urls),
     # OpenAPI 文档（/api/schema/ 等）只在 DEBUG 下注册（见文件末尾）：
-    # 生产环境不向外网暴露完整接口地图，收敛攻击者侦察面。
+    # 生产环境不对外网暴露完整接口地图，收敛攻击者侦察面。
     # R2 异步上传结果轮询
     path('api/v1/media/status/<str:upload_id>/', media_upload_status, name='media-upload-status'),
+    # 数据库回退媒体读取（断网/R2 不可达时的媒体回传端点）
+    path('api/media/db/<path:key>/', serve_db_media, name='serve-db-media'),
 ]
 
 # 通过 VersionedAPIRouter 注册所有 API 路由
 urlpatterns += router.get_urlpatterns()
 
 # 管理员命名空间（与普通用户自助面 /api/v1/users/ 分离）：
-# 仅超管/运维可达，且只用 account_no 指认用户、用 slug 寻址分组，绝不暴露内部自增 id。
+# 仅超管可达（role 已收敛为 superadmin/customer），用 account_no 指认用户，不暴露内部自增 id。
 # 仅挂载 /api/v1/admin/（无前缀旧版 /api/admin/ 已废弃，见 utils/versioned_router）。
 urlpatterns += [
-    # 分组管理：复用已有的 id 版 AdminGroup* 视图（数字 group_id / user_id 寻址），
-    # 与已部署前端（Cloudflare Pages 构建）的分组端点契约一致。
-    path('api/v1/admin/groups/', include(urls_admin_group_slug)),
     # 用户管理：沿用既有 account_no 寻址实现（apps.users.admin_urls）。
-    # 此命名空间为 /admin/rbac 页面的用户列表、创建管理员、角色指派提供后端，
-    # 与分组（goods id 版）是两个独立领域。
+    # 此命名空间为 /admin/rbac 页面的用户列表、角色指派提供后端。
     path('api/v1/admin/users/', include('apps.users.admin_urls')),
 ]
 

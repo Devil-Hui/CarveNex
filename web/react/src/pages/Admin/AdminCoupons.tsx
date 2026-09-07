@@ -6,7 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Color, Radius, Shadow, Spacing, FontSize, Transition } from '../../theme/tokens';
 import PageHeader from '../../components/admin/common/PageHeader';
 import { Pagination, ConfirmDialog, StatusBadge } from '../../components/admin/design-system';
-import { adminAPI, Coupon, CouponFormData, type PromoCodeItem, type CouponApplicationItem } from '../../api/admin';
+import { adminAPI, Coupon, CouponFormData, type PromoCodeItem } from '../../api/admin';
 import { useDebounceSubmit } from '../../hooks/useDebounceSubmit';
 import { useUrlState } from '../../hooks/useUrlState';
 import { useDirtyForm } from '../../hooks/useDirtyForm';
@@ -292,33 +292,6 @@ const SearchBar = styled.div`
 
 const PAGE_SIZE = 20;
 
-const REVIEW_STATUS_LABEL_KEY: Record<string, string> = {
-  DRAFT: 'admin.coupons.reviewDraft',
-  PENDING: 'admin.coupons.reviewPending',
-  APPROVED: 'admin.coupons.reviewApproved',
-  REJECTED: 'admin.coupons.reviewRejected',
-  SCHEDULED: 'admin.coupons.reviewScheduled',
-  ACTIVE: 'admin.coupons.reviewActive',
-  EXPIRED: 'admin.coupons.reviewExpired',
-};
-
-// 审核状态 → 语义 tone（design-system StatusBadge）
-const reviewTone = (status: string): 'success' | 'warning' | 'danger' | 'neutral' => {
-  switch (status) {
-    case 'PENDING':
-    case 'SCHEDULED':
-      return 'warning';
-    case 'APPROVED':
-    case 'ACTIVE':
-      return 'success';
-    case 'REJECTED':
-    case 'EXPIRED':
-      return 'danger';
-    default:
-      return 'neutral';
-  }
-};
-
 // 优惠券生命周期 → 语义 tone
 const couponTone = (active: boolean, status: string): 'success' | 'danger' | 'neutral' =>
   active ? 'success' : status === 'expired' ? 'danger' : 'neutral';
@@ -449,10 +422,6 @@ export default function AdminCoupons() {
   const [promoBusyId, setPromoBusyId] = useState<number | null>(null);
   const [promoDeleteTarget, setPromoDeleteTarget] = useState<PromoCodeItem | null>(null);
 
-  // 优惠券审核申请（状态展示 + 提交审核）
-  const [appMap, setAppMap] = useState<Record<number, CouponApplicationItem>>({});
-  const [reviewingId, setReviewingId] = useState<number | null>(null);
-
   // 推广码看板独立为子页面（非弹窗）：/admin/coupons/promo/:couponId
   const openPromo = (coupon: Coupon) => {
     navigate(`/admin/coupons/promo/${coupon.id}`);
@@ -570,26 +539,9 @@ export default function AdminCoupons() {
     }
   }, [page, search, t]);
 
-  // 加载当前用户的优惠券审核申请，按 coupon.id 建索引（用于状态展示 + 提交审核）
-  const loadApplications = useCallback(async () => {
-    try {
-      const data = await adminAPI.getMyCouponApplications();
-      const items = data?.items || [];
-      const map: Record<number, CouponApplicationItem> = {};
-      for (const a of items) {
-        const cid = typeof a.coupon === 'number' ? a.coupon : a.coupon?.id;
-        if (cid != null) map[cid] = a;
-      }
-      setAppMap(map);
-    } catch {
-      /* 非关键：忽略申请列表加载失败 */
-    }
-  }, []);
-
   useEffect(() => {
     fetchCoupons();
-    loadApplications();
-  }, [fetchCoupons, loadApplications]);
+  }, [fetchCoupons]);
 
   // ==================== Toast ====================
 
@@ -724,39 +676,6 @@ export default function AdminCoupons() {
     setSearchParams(next, { replace: true });
   };
 
-  // 提交审核：无申请则先建草稿（带入 coupon_id，审核时原地更新该券），再提交
-  const handleSubmitReview = async (coupon: Coupon) => {
-    try {
-      setReviewingId(coupon.id);
-      const existing = appMap[coupon.id];
-      let appId = existing?.id;
-      if (!appId) {
-        const created = await adminAPI.createCouponApplication({
-          coupon_id: coupon.id,
-          coupon_name: coupon.code,
-          coupon_code: coupon.code,
-          discount_type: coupon.discount_type,
-          amount: coupon.amount,
-          min_amount: coupon.min_amount,
-          max_discount: coupon.max_discount,
-          stackable: coupon.stackable,
-          total_count: coupon.total_count,
-          per_user_limit: coupon.per_user_limit || 1,
-          start_time: coupon.start_time,
-          end_time: coupon.end_time,
-        });
-        appId = created.id;
-      }
-      await adminAPI.submitCouponApplication(appId);
-      showMsg('success', t('admin.coupons.submitReviewSuccess'));
-      await loadApplications();
-    } catch (err: any) {
-      showMsg('error', err?.message || t('admin.coupons.submitReviewFailed'));
-    } finally {
-      setReviewingId(null);
-    }
-  };
-
   // ==================== Render ====================
 
   return (
@@ -790,22 +709,6 @@ export default function AdminCoupons() {
         <CouponList>
           {coupons.map(record => {
             const s = getCouponStatus(record)
-            const app = appMap[record.id]
-            const canSubmit = !app || app.status === 'DRAFT' || app.status === 'REJECTED'
-            const busy = reviewingId === record.id
-            const submitLabel = !app
-              ? t('admin.coupons.submitReview')
-              : app.status === 'REJECTED'
-                ? t('admin.coupons.resubmit')
-                : app.status === 'PENDING'
-                  ? t('admin.coupons.reviewPending')
-                  : app.status === 'APPROVED'
-                    ? t('admin.coupons.reviewApproved')
-                    : app.status === 'SCHEDULED'
-                      ? t('admin.coupons.reviewScheduled')
-                      : app.status === 'ACTIVE'
-                        ? t('admin.coupons.reviewActive')
-                        : t('admin.coupons.submitReview')
             const usagePercent = record.total_count > 0 ? ((record.used_count ?? 0) / record.total_count) * 100 : 0
             const discountText = record.discount_type === 'fixed'
               ? t('admin.coupons.discountFormat').replace('{amount}', String(record.amount))
@@ -826,7 +729,6 @@ export default function AdminCoupons() {
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                     <StatusBadge tone={couponTone(s.active, s.status)}>{s.label}</StatusBadge>
-                    {app && <StatusBadge tone={reviewTone(app.status)}>{REVIEW_STATUS_LABEL_KEY[app.status] ? t(REVIEW_STATUS_LABEL_KEY[app.status]) : app.status}</StatusBadge>}
                   </div>
                 </CouponInfo>
                 <CouponRight>
@@ -837,7 +739,6 @@ export default function AdminCoupons() {
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <CardActionBtn onClick={() => openEdit(record)}>{t('admin.coupons.edit')}</CardActionBtn>
                     <CardActionBtn $tone="blue" onClick={() => openPromo(record)}>{t('admin.coupons.promoBtn')}</CardActionBtn>
-                    <CardActionBtn $tone="orange" disabled={!canSubmit || busy} onClick={() => handleSubmitReview(record)}>{busy ? t('common.processing') : submitLabel}</CardActionBtn>
                     <CardActionBtn $tone="danger" onClick={() => setDeleteTarget(record)}>{t('admin.coupons.delete')}</CardActionBtn>
                   </div>
                 </CouponRight>

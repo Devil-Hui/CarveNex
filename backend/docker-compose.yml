@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     image: carvenex-mysql:dev
     restart: unless-stopped
-    env_file: [../.env.test]
+    env_file: [../.env]
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
       MYSQL_DATABASE: ${DB_NAME:-backend}
@@ -24,22 +24,6 @@ services:
       retries: 5
       start_period: 30s
 
-  redis:
-    image: docker.m.daocloud.io/library/redis:7.4.2-alpine
-    restart: unless-stopped
-    command: >-
-      redis-server --port 6379 --maxmemory 96mb
-      --maxmemory-policy allkeys-lru --save "" --appendonly no
-    expose: ["6379"]
-    mem_limit: 96m
-    memswap_limit: 96m
-    cpus: 0.1
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-
   web:
     hostname: web
     build:
@@ -47,7 +31,7 @@ services:
       dockerfile: Dockerfile
     environment:
       SERVICE_TYPE: django
-      DJANGO_ENV: ${DJANGO_ENV:-test}
+      DJANGO_ENV: ${DJANGO_ENV:-dev}
       # 本机即生产源站：允许 Cloudflare Tunnel 公网域名访问（api.carvenex.com）
       DJANGO_DEV_ALLOWED_HOSTS: ${DJANGO_DEV_ALLOWED_HOSTS:-api.carvenex.com}
       # 邮件账号池（QQ，.env 配置，用于验证码发送）
@@ -57,15 +41,12 @@ services:
       DB_NAME: ${DB_NAME:-backend}
       DB_USER: ${DB_USER:-admin}
       DB_PASSWORD: ${DB_PASSWORD:-admin123456}
-      REDIS_URL: redis://redis:6379/0
-      CHANNEL_REDIS_URL: "redis://redis:6379/4"
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/3
+      # 无 Redis：缓存/会话走 MySQL，Celery broker&result 走 MySQL（见 settings/base.py）
       STATIC_ROOT: /backend/static
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-only-change-in-prod}
       # 不注入 DJANGO_SUPERUSER_*：确保容器创建不自动生成超级管理员。
       # 需要超管时手动执行：docker compose exec web python manage.py createsuperuser
-    env_file: [../.env.test]
+    env_file: [../.env]
     ports: ["8000:8000", "8001:8001"]
     volumes:
       - .:/backend
@@ -73,8 +54,6 @@ services:
       - static_data:/backend/static
     depends_on:
       db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     mem_limit: 448m
     memswap_limit: 448m
@@ -89,7 +68,7 @@ services:
     memswap_limit: 448m
     cpus: 0.5
     environment:
-      DJANGO_ENV: ${DJANGO_ENV:-test}
+      DJANGO_ENV: ${DJANGO_ENV:-dev}
       # 邮件账号池（QQ，.env 配置，验证码异步发送需要）
       EMAIL_ACCOUNTS: ${EMAIL_ACCOUNTS:-}
       DB_HOST: db
@@ -97,22 +76,19 @@ services:
       DB_NAME: ${DB_NAME:-backend}
       DB_USER: ${DB_USER:-admin}
       DB_PASSWORD: ${DB_PASSWORD:-admin123456}
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/2
-      CELERY_RESULT_BACKEND: redis://redis:6379/3
+      # 无 Redis：Celery broker&result 走 MySQL（见 settings/base.py _celery_mysql_url）
       CELERY_CONCURRENCY: "1"
       CELERY_BEAT_ENABLED: "true"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-only-change-in-prod}
+    env_file: [../.env]
     volumes:
       - .:/backend
       - media_data:/backend/media
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
 
-  volumes:
+volumes:
   mysql_data:
   media_data:
   static_data:

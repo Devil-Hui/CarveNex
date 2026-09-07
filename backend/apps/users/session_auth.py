@@ -16,13 +16,10 @@ from apps.users.tokens import (
     StampTokenObtainPairSerializer,
     get_db_stamp,
 )
-from apps.users.turnstile import TurnstileUnavailable, verify_turnstile
 from utils.api_jwt_authentication import UsersJWTAuthentication
 from utils.exceptions import (
     AuthException,
-    ClientException,
     ErrorCodes,
-    ServerException,
 )
 
 
@@ -103,18 +100,8 @@ class BrowserLoginView(APIView):
 
     def post(self, request):
         SessionAuthentication().enforce_csrf(request)
-        turnstile_token = request.data.get('turnstile_token', '')
-        # mock/测试模式（ENABLE_MOCK_PAYMENT）跳过人机验证：与验证码直返同一开关
-        if not turnstile_token:
-            if not (getattr(settings, 'ENABLE_MOCK_PAYMENT', False) or settings.DEBUG):
-                raise ClientException(ErrorCodes.TURNSTILE_REQUIRED)
-        else:
-            try:
-                verified = verify_turnstile(turnstile_token)
-            except TurnstileUnavailable as exc:
-                raise ServerException(ErrorCodes.TURNSTILE_UNAVAILABLE) from exc
-            if not verified:
-                raise ClientException(ErrorCodes.TURNSTILE_INVALID)
+        # 需求调整：去掉人机验证 —— 登录百分百放行（不再校验 turnstile_token）。
+        # 前端即使仍传 token 也不校验，避免任何环境（不含 Turnstile 配置/离线）导致登录被卡。
 
         raw_login = request.data.get('username', '')
         password = request.data.get('password', '')

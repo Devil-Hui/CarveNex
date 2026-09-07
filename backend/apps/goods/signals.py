@@ -1,15 +1,10 @@
-"""商品信号 —— 同步缓存、布隆过滤器、main_image、审核组角色"""
+"""商品信号 —— 同步缓存、布隆过滤器、main_image"""
 import logging
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.db import transaction
 
-from apps.rbac.constants import Role
-from apps.rbac.models import UserRole
-from apps.rbac.services import invalidate_user
-from apps.users.tokens import rotate_user_stamp
-
-from .models import AdminGroupMember, ProductMedia, SPU, SKU
+from .models import ProductMedia, SPU, SKU
 from .services import GoodsCacheService
 
 logger = logging.getLogger(__name__)
@@ -64,50 +59,4 @@ def sync_main_image_on_media_active(sender, instance, **kwargs):
 
     spu = SPU.objects.filter(id=instance.spu_id).first()
     if spu and spu.main_image != instance.large_url:
-        SPU.objects.filter(id=instance.spu_id).update(main_image=instance.large_url)
         logger.info(f'信号: 已同步 SPU#{instance.spu_id} main_image: {instance.large_url}')
-
-# ── AdminGroupMember 信号：审核组成员身份 → RBAC 全局角色 ──
-#
-# 审核组（业务分组）与全局角色是两个概念，但组员身份天然蕴含管理权限。
-# 这里做单向派生：组成员变动 → 重算该用户的 admin_leader / admin_member 角色。
-# 反向不成立 —— 手工授予的角色不会凭空造出组成员身份。
-
-_GROUP_ROLE_MAP = {
-    AdminGroupMember.Role.LEADER: Role.ADMIN_LEADER.value,
-    AdminGroupMember.Role.MEMBER: Role.ADMIN_MEMBER.value,
-}
-_DERIVED_ROLES = list(_GROUP_ROLE_MAP.values())
-
-
-def _resync_admin_roles(user_id: int) -> None:
-    """按该用户当前的全部活跃组成员身份，重算其派生角色。"""
-    if not user_id:
-        return
-
-    active_roles = AdminGroupMember.objects.filter(
-        user_id=user_id, status=AdminGroupMember.Status.ACTIVE
-    ).values_list('role', flat=True)
-    wanted = {_GROUP_ROLE_MAP[r] for r in active_roles if r in _GROUP_ROLE_MAP}
-
-    current = set(
-        UserRole.objects.filter(
-            user_id=user_id, role__in=_DERIVED_ROLES
-        ).values_list('role', flat=True)
-    )
-
-    stale = current - wanted
-    if stale:
-        UserRole.objects.filter(user_id=user_id, role__in=list(stale)).delete()
-
-    for role in sorted(wanted - current):
-        UserRole.objects.get_or_create(user_id=user_id, role=role)
-
-    invalidate_user(user_id)
-    # 旋转安全戳：组员身份变更使该用户所有旧会话立即失效，必须重新登录以获取新角色
-    rotate_user_stamp(user_id)
-
-
-@receiver([post_save, post_delete], sender=AdminGroupMember)
-def sync_admin_group_role(sender, instance, **kwargs):
-    _resync_admin_roles(instance.user_id)
