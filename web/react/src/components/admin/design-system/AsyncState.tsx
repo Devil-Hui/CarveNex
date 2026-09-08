@@ -11,6 +11,7 @@ import type { ReactNode } from 'react'
 import styled, { keyframes } from 'styled-components'
 import { Semantic } from '@/theme'
 import { Button } from './Button'
+import { Icon as UiIcon } from '../common/Icon'
 import { useTranslation } from '@/i18n'
 
 const shimmer = keyframes`
@@ -88,7 +89,7 @@ export interface EmptyStateProps {
 }
 
 export function EmptyState({
-  icon = '🗂',
+  icon,
   title,
   description,
   actionLabel,
@@ -97,7 +98,7 @@ export function EmptyState({
   const { t } = useTranslation()
   return (
     <Box>
-      <Icon $color={Semantic.text.muted}>{icon}</Icon>
+      <Icon $color={Semantic.text.muted}>{icon ?? <UiIcon name="box" size={40} />}</Icon>
       <Title>{title ?? t('common.noData')}</Title>
       {description && <Desc>{description}</Desc>}
       {actionLabel && onAction && (

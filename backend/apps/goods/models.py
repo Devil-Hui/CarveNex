@@ -189,7 +189,7 @@ class Category(models.Model):
         ]
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(level__gte=1, level__lte=3),
+                check=models.Q(level__gte=1, level__lte=3),
                 name='category_level_range',
             ),
         ]
@@ -344,7 +344,7 @@ class SPU(models.Model):
         constraints = [
             # D1 修复：SUBMITTED 状态必须有关联提交人，杜绝审核页「提交人 -」
             models.CheckConstraint(
-                condition=(
+                check=(
                     models.Q(status=SPUStatus.SUBMITTED, submitted_by__isnull=False)
                     | ~models.Q(status=SPUStatus.SUBMITTED)
                 ),

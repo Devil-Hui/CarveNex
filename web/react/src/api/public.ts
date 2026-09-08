@@ -15,6 +15,14 @@ export interface PromoTag {
   label: string;
 }
 
+/** 商品普通标签（后台 Tag 管理：name / color / tag_type） */
+export interface ProductTag {
+  id: number;
+  name: string;
+  color?: string;
+  tag_type?: 'product' | 'activity';
+}
+
 /** 后台 SPU 列表项 */
 export interface PublicSPU {
   id: number;
@@ -74,7 +82,7 @@ export interface PublicSPUDetail {
   attributes: { name: string; value: string }[];
   skus: PublicSKU[];
   media?: PublicProductMedia[];
-  tags?: { id: number; name: string }[];
+  tags?: ProductTag[];
   /** 活动标签：活动价(primary) / 可领券(secondary) */
   promo_tags?: PromoTag[];
   submitted_by_name?: string;

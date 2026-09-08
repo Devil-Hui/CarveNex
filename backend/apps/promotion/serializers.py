@@ -6,7 +6,6 @@ from .models import (
     CouponApplication,
     CouponApprovalHistory,
     CouponTargetAudience,
-    DiscountActivity,
     PromoCode,
     UserCoupon,
 )
@@ -42,19 +41,6 @@ class CouponAdminSerializer(serializers.ModelSerializer):
         if 'discount' in self.initial_data and 'amount' not in attrs:
             attrs['amount'] = self.initial_data['discount']
         return attrs
-
-
-class ActivitySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DiscountActivity
-        fields = ['id', 'name', 'type', 'rule', 'start_time', 'end_time', 'created_at']
-
-
-class ActivityAdminSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DiscountActivity
-        fields = ['id', 'name', 'type', 'rule', 'start_time', 'end_time', 'created_at']
-        read_only_fields = ['id', 'created_at']
 
 
 class PromoCodeSerializer(serializers.ModelSerializer):

@@ -183,6 +183,14 @@ const MainImage = styled.img`
   display: block;
 `
 
+const MainVideo = styled.video`
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+`
+
 const ThumbRow = styled.div`
   display: flex;
   gap: 8px;
@@ -491,23 +499,42 @@ function isSkuSellable(sku: PublicSKU): boolean {
   return true
 }
 
-function collectImages(detail: PublicSPUDetail | null, selectedSku: PublicSKU | null): string[] {
+/** 图集项：图片或视频 */
+type ModalGalleryItem = { kind: 'image' | 'video'; src: string; thumb?: string }
+
+function collectImages(detail: PublicSPUDetail | null, selectedSku: PublicSKU | null): ModalGalleryItem[] {
   if (!detail) return []
-  const list: string[] = []
-  if (selectedSku?.image_url) list.push(resolveMediaUrl(selectedSku.image_url) || selectedSku.image_url)
+  const list: ModalGalleryItem[] = []
+  const seen = new Set<string>()
+  const push = (item: ModalGalleryItem) => {
+    if (!item.src || seen.has(item.src)) return
+    seen.add(item.src)
+    list.push(item)
+  }
+  if (selectedSku?.image_url) {
+    const src = resolveMediaUrl(selectedSku.image_url) || selectedSku.image_url || ''
+    push({ kind: 'image', src })
+  }
   for (const m of detail.media || []) {
     if (m.media_type === 'video') {
-      const thumb = m.video_large_url || m.video_list_url || m.video_thumb_url
-      if (thumb) list.push(resolveMediaUrl(thumb) || thumb)
+      const src = resolveMediaUrl(m.video_url) || m.video_url || ''
+      const frame = m.video_large_url || m.video_list_url || m.video_thumb_url
+      const thumb = resolveMediaUrl(frame) || resolveMediaUrl(detail.main_image) || detail.main_image || src
+      push({ kind: 'video', src, thumb })
       continue
     }
     // 详情大图优先用 original（≤2560px 高清），Retina 屏放大不糊；
     // 回退 large(800) → list(400) → thumb(200)。
     const url = m.original_url || m.large_url || m.list_url || m.thumb_url
-    if (url) list.push(resolveMediaUrl(url) || url)
+    const src = resolveMediaUrl(url) || url || ''
+    push({ kind: 'image', src })
   }
-  if (detail.main_image) list.push(resolveMediaUrl(detail.main_image) || detail.main_image)
-  return Array.from(new Set(list.filter(Boolean)))
+  if (detail.main_image) {
+    const src = resolveMediaUrl(detail.main_image) || detail.main_image || ''
+    push({ kind: 'image', src })
+  }
+  // 视频默认放第一位（主图默认显示视频），其余图片保持原顺序
+  return list.filter(i => i.kind === 'video').concat(list.filter(i => i.kind !== 'video'))
 }
 
 function deriveSpecGroups(detail: PublicSPUDetail | null): { name: string; values: string[] }[] {
@@ -679,7 +706,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     : undefined
 
   const images = useMemo(() => collectImages(detail, selectedSku), [detail, selectedSku])
-  const selectedImageUrl = resolveMediaUrl(images[selectedImageIndex] || detail?.main_image)
+  const selectedImage = images[selectedImageIndex]
+  const selectedImageUrl = selectedImage?.src || resolveMediaUrl(detail?.main_image) || ''
 
   useEffect(() => {
     setSelectedImageIndex(0)
@@ -831,21 +859,31 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             {/* 左：紧凑单图 + 极小缩略图条（无大图画廊、无左右箭头） */}
             <MediaCol>
               <MainImageBox>
-                {selectedImageUrl ? (
-                  <MainImage src={selectedImageUrl} alt={localizedName} />
+                {selectedImage ? (
+                  selectedImage.kind === 'video' ? (
+                    <MainVideo
+                      src={selectedImage.src}
+                      poster={selectedImage.thumb || undefined}
+                      controls
+                      preload="metadata"
+                      playsInline
+                    />
+                  ) : (
+                    <MainImage src={selectedImage.src} alt={localizedName} />
+                  )
                 ) : null}
               </MainImageBox>
               {images.length > 1 && (
                 <ThumbRow>
                   {images.slice(0, 6).map((img, index) => (
                     <ThumbItem
-                      key={`${img}-${index}`}
+                      key={`${img.src}-${index}`}
                       $active={index === selectedImageIndex}
                       onClick={() => setSelectedImageIndex(index)}
                       type="button"
                       aria-label={`${localizedName} ${index + 1}`}
                     >
-                      <img src={img} alt="" />
+                      <img src={img.thumb || img.src} alt="" />
                     </ThumbItem>
                   ))}
                 </ThumbRow>

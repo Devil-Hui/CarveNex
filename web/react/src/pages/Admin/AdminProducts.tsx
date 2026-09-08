@@ -5,6 +5,7 @@ import styled from 'styled-components'
 import { Color, Radius, FontWeight, Transition } from '../../theme/tokens'
 import { Select, Input as SearchInput } from '../../components/admin/common/ui'
 import { Skeleton, Empty, RefreshButton } from '../../components/admin/common'
+import { Icon } from '../../components/admin/common/Icon'
 import { adminAPI } from '../../api/admin'
 import { useAdminAuth } from '../../store/AdminAuthContext'
 import { useTranslation } from '../../i18n'
@@ -440,7 +441,7 @@ export default function AdminProducts() {
       render: (_: unknown, r: SPUItem) => (
         <ProductCell>
           <CellThumb>
-            {r.main_image_thumb || r.main_image ? <img src={r.main_image_thumb || r.main_image} alt={r.name} loading="lazy" /> : <span>📦</span>}
+            {r.main_image_thumb || r.main_image ? <img src={r.main_image_thumb || r.main_image} alt={r.name} loading="lazy" /> : <span><Icon name="box" size={16} /></span>}
           </CellThumb>
           <CellName>{r.name}</CellName>
         </ProductCell>
@@ -666,7 +667,7 @@ const ProductCard = memo(function ProductCard({
     <Card $selected={isSelected}>
       <Checkbox checked={isSelected} onChange={() => onToggleSelect(item.id)} />
       <Thumb>
-        {item.main_image_thumb || item.main_image ? <img src={item.main_image_thumb || item.main_image} alt={item.name} loading="lazy" /> : <span className="ph">📦</span>}
+        {item.main_image_thumb || item.main_image ? <img src={item.main_image_thumb || item.main_image} alt={item.name} loading="lazy" /> : <span className="ph"><Icon name="box" size={16} /></span>}
       </Thumb>
       <CardMain>
         <CardName>{item.name}</CardName>

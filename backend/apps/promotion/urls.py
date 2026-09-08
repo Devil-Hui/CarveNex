@@ -3,19 +3,16 @@ from .views import (
     ClaimCouponView, ClaimByPromoCodeView, CouponDetailView, CouponListView,
     PromoDetailView,
     GenerateCouponView, MyCouponView,
-    ActivityListView, ActivityCreateView, ActivityUpdateView, ActivityDeleteView,
 )
 from .admin_views import (
     CouponAdminListView, CouponAdminDetailView,
-    ActivityAdminListView, ActivityAdminDetailView,
-    CouponScopeView, ActivitySKUView, ActivityScopePreviewView,
+    CouponScopeView,
     PromoCodeAdminListView, PromoCodeDashboardView, PromoCodeAdminDetailView,
 )
 
 urlpatterns = [
     # Public
     path('', CouponListView.as_view(), name='promotion-list'),
-    path('activity/', ActivityListView.as_view(), name='promotion-activity-list'),
     path('generate/', GenerateCouponView.as_view(), name='promotion-generate'),
     path('my/', MyCouponView.as_view(), name='promotion-my'),
     path('<str:code>/', CouponDetailView.as_view(), name='promotion-detail'),
@@ -32,12 +29,4 @@ urlpatterns = [
     path('coupon/<int:pk>/promo-codes', PromoCodeAdminListView.as_view(), name='promotion-promo-codes'),
     path('coupon/<int:pk>/promo-dashboard', PromoCodeDashboardView.as_view(), name='promotion-promo-dashboard'),
     path('coupon/promo/<int:pk>/', PromoCodeAdminDetailView.as_view(), name='promotion-promo-detail-admin'),
-
-    # Admin Activity CRUD
-    path('activity', ActivityAdminListView.as_view(), name='promotion-activity-admin'),
-    path('activity/create', ActivityAdminListView.as_view(), name='promotion-activity-create'),
-    path('activity/<int:pk>/update', ActivityAdminDetailView.as_view(), name='promotion-activity-update'),
-    path('activity/<int:pk>/delete', ActivityAdminDetailView.as_view(), name='promotion-activity-delete'),
-    path('activity/scope-preview', ActivityScopePreviewView.as_view(), name='promotion-activity-scope-preview'),
-    path('activity/<int:pk>/skus', ActivitySKUView.as_view(), name='promotion-activity-skus'),
 ]

@@ -2090,7 +2090,7 @@ export default function AdminProductForm() {
                           )}
                         </VariantField>
                         <VariantField>
-                          <VariantFieldLabel>Discount Price</VariantFieldLabel>
+                          <VariantFieldLabel>{t('admin.productForm.skuDiscountPrice')}</VariantFieldLabel>
                           <VariantDiscountInput
                             type="number"
                             min="0"
@@ -2104,22 +2104,28 @@ export default function AdminProductForm() {
 
                       <VariantMetaRow>
                         <VariantField>
-                          <VariantFieldLabel>SKU Code</VariantFieldLabel>
+                          <VariantFieldLabel>{t('admin.productForm.skuCode')}</VariantFieldLabel>
                           <VariantMetaInput
                             type="text"
                             placeholder="e.g. TS-RED-S"
                             value={sku.sku_code || ''}
                             onChange={(e) => updateSKU(idx, 'sku_code', e.target.value)}
                           />
+                          <span style={{ fontSize: FontSize.xs, color: Color.text.muted }}>
+                            {t('admin.productForm.skuCodeHint')}
+                          </span>
                         </VariantField>
                         <VariantField>
-                          <VariantFieldLabel>Barcode</VariantFieldLabel>
+                          <VariantFieldLabel>{t('admin.productForm.barcode')}</VariantFieldLabel>
                           <VariantMetaInput
                             type="text"
                             placeholder="e.g. 5901234123457"
                             value={sku.barcode || ''}
                             onChange={(e) => updateSKU(idx, 'barcode', e.target.value)}
                           />
+                          <span style={{ fontSize: FontSize.xs, color: Color.text.muted }}>
+                            {t('admin.productForm.barcodeHint')}
+                          </span>
                         </VariantField>
                         <VariantField>
                           <VariantFieldLabel>{t('admin.productForm.shelfStatus')}</VariantFieldLabel>

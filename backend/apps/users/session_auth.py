@@ -1,3 +1,4 @@
+import logging
 from django.conf import settings
 from django.middleware.csrf import get_token
 from rest_framework import exceptions, status
@@ -25,6 +26,8 @@ from utils.exceptions import (
 
 ACCESS_COOKIE = 'carvenex_access'
 REFRESH_COOKIE = 'carvenex_refresh'
+
+logger = logging.getLogger(__name__)
 
 
 def _cookie_kwargs():
@@ -153,15 +156,21 @@ class BrowserRefreshView(APIView):
 
 
 class BrowserLogoutView(APIView):
-    authentication_classes = [CookieJWTAuthentication]
+    # 登出必须在任意状态都能完成（即使 access token 已过期/缺失），否则用户将
+    # 被困在“无法登出”的状态。因此不依赖 CookieJWTAuthentication 认证成功，
+    # 仅做 CSRF 校验后清除 cookie，并尽力把 refresh token 加入黑名单。
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
     def post(self, request):
+        SessionAuthentication().enforce_csrf(request)
         raw_refresh = request.COOKIES.get(REFRESH_COOKIE)
         if raw_refresh:
             try:
                 RefreshToken(raw_refresh).blacklist()
-            except AttributeError:
-                pass
+            except Exception as e:  # noqa: BLE001
+                # token 已轮换/无效/已入黑名单等均不影响登出成功，绝不能抛错导致 500
+                logger.warning('登出黑名单 refresh token 失败: %s', e, exc_info=True)
         response = Response(status=status.HTTP_204_NO_CONTENT)
         clear_auth_cookies(response)
         return response

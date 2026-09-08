@@ -4,6 +4,7 @@
 import type { ReactNode } from 'react'
 import styled from 'styled-components'
 import { Color, FontSize, FontWeight, Radius, Spacing, Transition } from '../../../theme/tokens'
+import { Icon } from './Icon'
 import { useTranslation } from '@/i18n'
 
 const Wrap = styled.div`
@@ -61,12 +62,12 @@ const BackBtn = styled.button`
 
 export type ResultStatus = '403' | '404' | '500' | 'success' | 'error'
 
-const MAP: Record<ResultStatus, { icon: string; tone: string }> = {
-  '403': { icon: '🔒', tone: '#fffbeb' },
-  '404': { icon: '🔍', tone: '#eff6ff' },
-  '500': { icon: '⚠️', tone: '#fef2f2' },
-  success: { icon: '✅', tone: '#ecfdf5' },
-  error: { icon: '❌', tone: '#fef2f2' },
+const MAP: Record<ResultStatus, { icon: ReactNode; tone: string }> = {
+  '403': { icon: <Icon name="lock" size={32} />, tone: '#fffbeb' },
+  '404': { icon: <Icon name="search" size={32} />, tone: '#eff6ff' },
+  '500': { icon: <Icon name="alert" size={32} />, tone: '#fef2f2' },
+  success: { icon: <Icon name="check" size={32} />, tone: '#ecfdf5' },
+  error: { icon: <Icon name="x" size={32} />, tone: '#fef2f2' },
 }
 
 export interface ResultProps {

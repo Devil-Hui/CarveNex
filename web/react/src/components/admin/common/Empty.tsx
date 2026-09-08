@@ -5,6 +5,7 @@
 import type { ReactNode } from 'react'
 import styled from 'styled-components'
 import { Color, FontSize, Spacing } from '../../../theme/tokens'
+import { Icon as UiIcon } from './Icon'
 
 const Wrap = styled.div`
   display: flex;
@@ -23,7 +24,6 @@ const Icon = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
   color: ${Color.text.muted};
   margin-bottom: ${Spacing.md}px;
 `
@@ -41,17 +41,17 @@ const Desc = styled.div`
 `
 
 export interface EmptyProps {
-  icon?: string
+  icon?: ReactNode
   title?: string
   description?: string
   children?: ReactNode
   className?: string
 }
 
-export default function Empty({ icon = '📭', title = '暂无数据', description, children, className }: EmptyProps) {
+export default function Empty({ icon, title = '暂无数据', description, children, className }: EmptyProps) {
   return (
     <Wrap className={className}>
-      <Icon>{icon}</Icon>
+      <Icon>{icon ?? <UiIcon name="box" size={22} />}</Icon>
       <Title>{title}</Title>
       {description && <Desc>{description}</Desc>}
       {children}

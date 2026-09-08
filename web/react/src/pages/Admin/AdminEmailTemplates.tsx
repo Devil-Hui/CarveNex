@@ -4,6 +4,7 @@ import { useTranslation } from '../../i18n'
 import { adminAPI, type EmailTemplateItem } from '../../api/admin'
 import { Color, Radius, Shadow, FontSize, Spacing } from '../../theme/tokens'
 import { Input, PrimaryBtn as SaveBtn } from '../../components/admin/common/ui'
+import { Icon } from '../../components/admin/common/Icon'
 import { ConfirmDialog } from '../../components/admin/design-system'
 
 /* ───────────────────────── 布局 ───────────────────────── */
@@ -411,7 +412,7 @@ const AdminEmailTemplates: React.FC = () => {
           )}
           {view === 'preview' && (
             <>
-              <PreviewLabel>📧 {t('admin.emailTemplates.previewFrame')}</PreviewLabel>
+              <PreviewLabel><Icon name="mail" size={15} /> {t('admin.emailTemplates.previewFrame')}</PreviewLabel>
               <PreviewFrame title="preview" srcDoc={`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6">${htmlBody}</body></html>`} />
             </>
           )}
@@ -442,7 +443,7 @@ const AdminEmailTemplates: React.FC = () => {
 
       {/* 右：可视化调色板 / 排版工具 */}
       <Palette>
-        <PaletteTitle>🎨 {t('admin.emailTemplates.palette')}</PaletteTitle>
+        <PaletteTitle><Icon name="image" size={15} /> {t('admin.emailTemplates.palette')}</PaletteTitle>
 
         <Group>
           <GroupLabel>{t('admin.emailTemplates.typo')}</GroupLabel>

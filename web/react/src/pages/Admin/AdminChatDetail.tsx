@@ -1438,7 +1438,7 @@ export default function AdminChatDetail() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {conv.handled_by_name && (
                     <span style={{ fontSize: 11, color: '#c2410c', whiteSpace: 'nowrap' }}>
-                      🙋 {conv.handled_by_name}
+                      <Icon name="users" size={13} /> {conv.handled_by_name}
                     </span>
                   )}
                   <StatusBadge tone={statusTone(conv.status)}>
@@ -1471,7 +1471,7 @@ export default function AdminChatDetail() {
                 <DetailUser>{activeConv.user?.username}</DetailUser>
                 {activeConv.spu_info && (
                   <ProductChip onClick={() => navigate(`/product/${activeConv.spu_info!.id}`)}>
-                    🛍️ {activeConv.spu_info.name}
+                    <Icon name="package" size={14} /> {activeConv.spu_info.name}
                   </ProductChip>
                 )}
                 <StatusBadge tone={statusTone(activeConv.status)}>
@@ -1622,7 +1622,7 @@ export default function AdminChatDetail() {
                   </PreviewRow>
                 )}
                 <InputRow>
-                  {/* 🛒 Product search button */}
+                  {/* Product search button */}
                   <ToolBtn
                     onClick={() => setShowProductSearch(true)}
                     disabled={isInputDisabled}
@@ -1713,7 +1713,7 @@ export default function AdminChatDetail() {
         <ProductSearchOverlay onClick={() => setShowProductSearch(false)}>
           <ProductSearchPopover onClick={(e) => e.stopPropagation()}>
             <ProductSearchHeader>
-              <span>🛒 {t('store.chatDetail.selectProduct')}</span>
+              <span><Icon name="cart" size={15} /> {t('store.chatDetail.selectProduct')}</span>
               <ProductSearchClose onClick={() => setShowProductSearch(false)}>×</ProductSearchClose>
             </ProductSearchHeader>
 

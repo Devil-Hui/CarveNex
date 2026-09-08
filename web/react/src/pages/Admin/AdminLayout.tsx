@@ -522,6 +522,7 @@ function useMenuItems() {
         { to: '/admin/categories', label: t('admin.layout.menu.categories'), icon: 'grid' },
         { to: '/admin/brands', label: t('admin.layout.menu.brands'), icon: 'brand' },
         { to: '/admin/tags', label: t('admin.layout.menu.tags'), icon: 'tag' },
+        { to: '/admin/media-import', label: t('admin.layout.menu.mediaImport'), icon: 'upload' },
       ],
     },
     {
@@ -541,7 +542,6 @@ function useMenuItems() {
       section: t('admin.layout.sidebar.marketing'),
       items: [
         { to: '/admin/coupons', label: t('admin.layout.menu.coupons'), icon: 'card' },
-        { to: '/admin/activities', label: t('admin.layout.menu.activities'), icon: 'trending' },
       ],
     },
     {
@@ -567,6 +567,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   '/admin': 'admin.layout.breadcrumb.home',
   '/admin/dashboard': 'admin.layout.breadcrumb.dashboard',
   '/admin/products': 'admin.layout.breadcrumb.products',
+  '/admin/media-import': 'admin.layout.breadcrumb.mediaImport',
   '/admin/categories': 'admin.layout.breadcrumb.categories',
   '/admin/brands': 'admin.layout.breadcrumb.brands',
   '/admin/tags': 'admin.layout.breadcrumb.tags',
@@ -574,7 +575,6 @@ const BREADCRUMB_MAP: Record<string, string> = {
   '/admin/chat': 'admin.layout.breadcrumb.chat',
   '/admin/notifications': 'admin.layout.breadcrumb.notifications',
   '/admin/coupons': 'admin.layout.breadcrumb.coupons',
-  '/admin/activities': 'admin.layout.breadcrumb.activities',
   '/admin/audit-logs': 'admin.layout.breadcrumb.auditLogs',
   '/admin/recycle-bin': 'admin.layout.breadcrumb.recycleBin',
   '/admin/tasks': 'admin.layout.breadcrumb.tasks',
@@ -592,7 +592,6 @@ const GROUP_MAP: Record<string, string> = {
   notifications: 'admin.layout.sidebar.communication',
   applications: 'admin.layout.sidebar.communication',
   coupons: 'admin.layout.sidebar.marketing',
-  activities: 'admin.layout.sidebar.marketing',
   'audit-logs': 'admin.layout.sidebar.systemMgmt',
   'recycle-bin': 'admin.layout.sidebar.systemMgmt',
   groups: 'admin.layout.sidebar.systemMgmt',
@@ -782,11 +781,11 @@ export default function AdminLayout() {
     {
       title: t('admin.layout.palette.actions'),
       items: [
-        { id: 'act-product', label: t('admin.layout.action.newProduct'), icon: '🛍️', keywords: 'create product', onSelect: () => { setPaletteOpen(false); navigate('/admin/products/create') } },
-        { id: 'act-coupon', label: t('admin.layout.action.createCoupon'), icon: '🎟️', keywords: 'coupon create', onSelect: () => { setPaletteOpen(false); navigate('/admin/coupons') } },
-        { id: 'act-order', label: t('admin.layout.action.viewOrders'), icon: '📦', keywords: 'orders', onSelect: () => { setPaletteOpen(false); navigate('/admin/orders') } },
-        { id: 'act-chat', label: t('admin.layout.action.chatWorkbench'), icon: '💬', keywords: 'chat support', onSelect: () => { setPaletteOpen(false); navigate('/admin/chat') } },
-        { id: 'act-recycle', label: t('admin.layout.action.recycleBin'), icon: '🗑️', keywords: 'trash recycle', onSelect: () => { setPaletteOpen(false); navigate('/admin/recycle-bin') } },
+        { id: 'act-product', label: t('admin.layout.action.newProduct'), icon: <Icon name="package" size={16} />, keywords: 'create product', onSelect: () => { setPaletteOpen(false); navigate('/admin/products/create') } },
+        { id: 'act-coupon', label: t('admin.layout.action.createCoupon'), icon: <Icon name="tag" size={16} />, keywords: 'coupon create', onSelect: () => { setPaletteOpen(false); navigate('/admin/coupons') } },
+        { id: 'act-order', label: t('admin.layout.action.viewOrders'), icon: <Icon name="box" size={16} />, keywords: 'orders', onSelect: () => { setPaletteOpen(false); navigate('/admin/orders') } },
+        { id: 'act-chat', label: t('admin.layout.action.chatWorkbench'), icon: <Icon name="message-circle" size={16} />, keywords: 'chat support', onSelect: () => { setPaletteOpen(false); navigate('/admin/chat') } },
+        { id: 'act-recycle', label: t('admin.layout.action.recycleBin'), icon: <Icon name="trash" size={16} />, keywords: 'trash recycle', onSelect: () => { setPaletteOpen(false); navigate('/admin/recycle-bin') } },
       ],
     },
   ]
@@ -897,7 +896,7 @@ export default function AdminLayout() {
                         <GroupTitle>{t('admin.layout.search.products')}</GroupTitle>
                         {searchProducts.map(p => (
                           <SearchItem key={p.id} onClick={() => { navigate('/admin/products'); setSearchOpen(false) }}>
-                            {p.main_image ? <img src={p.main_image} alt="" loading="lazy" /> : <span className="s">📦</span>}
+                            {p.main_image ? <img src={p.main_image} alt="" loading="lazy" /> : <span className="s"><Icon name="box" size={16} /></span>}
                             <span style={{ flex: 1, minWidth: 0 }}>
                               <div className="t" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                               <div className="s">{p.status_display ?? ''}</div>
@@ -911,7 +910,7 @@ export default function AdminLayout() {
                         <GroupTitle>{t('admin.layout.search.orders')}</GroupTitle>
                         {searchOrders.map(o => (
                           <SearchItem key={o.order_no} onClick={() => { navigate('/admin/orders'); setSearchOpen(false) }}>
-                            <span className="s" style={{ fontSize: 13 }}>🧾</span>
+                            <span className="s" style={{ fontSize: 13 }}><Icon name="card" size={15} /></span>
                             <span style={{ flex: 1, minWidth: 0 }}>
                               <div className="t">{o.order_no}</div>
                               <div className="s">{o.channel_name ?? ''}</div>

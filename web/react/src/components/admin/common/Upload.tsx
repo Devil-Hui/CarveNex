@@ -10,6 +10,7 @@
 import { useRef, useState, type CSSProperties } from 'react'
 import styled from 'styled-components'
 import { Color, FontSize, FontWeight, Radius, Spacing, Transition } from '../../../theme/tokens'
+import { Icon } from './Icon'
 import { useTranslation } from '@/i18n'
 
 const MAX_SIZE_MB = 5
@@ -259,7 +260,7 @@ export default function Upload({
         onDragLeave={() => setDragging(false)}
         onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files) }}
       >
-        <span className="icon">🖼️</span>
+        <span className="icon"><Icon name="image" size={20} /></span>
         <span>{placeholder ?? t('admin.upload.placeholder')}</span>
         <span className="hint">{multiple ? t('admin.upload.multiHint') : t('admin.upload.clickHint')}</span>
       </DropZone>
@@ -288,7 +289,7 @@ export default function Upload({
                 <div className="name">{url.split('/').pop()?.slice(0, 40) || 'image'}</div>
                 <Track><Fill $percent={100} /></Track>
               </CardMain>
-              <IconBtn title={t('common.delete')} onClick={() => remove(i)}>🗑</IconBtn>
+              <IconBtn title={t('common.delete')} onClick={() => remove(i)}><Icon name="trash" size={14} /></IconBtn>
             </Card>
           ))}
           {Object.entries(busy).map(([key, st]) => (

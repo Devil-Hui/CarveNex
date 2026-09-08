@@ -4,6 +4,7 @@ import styled from 'styled-components'
 import { Color, Radius, Spacing, FontSize, Transition } from '../../theme/tokens'
 import { SecondaryBtn, PrimaryBtn } from '../../components/admin/common/ui'
 import { adminAPI, type CategoryNode } from '../../api/admin'
+import { Icon } from '../../components/admin/common/Icon'
 import { post } from '../../api/request'
 import PageHeader from '../../components/admin/common/PageHeader'
 import ErrorRetry from '../../components/admin/common/ErrorRetry'
@@ -300,12 +301,13 @@ export default function AdminImport() {
   const [brandId, setBrandId] = useState('')
   const [categoryId, setCategoryId] = useState('')
 
-  // 图片文件夹
+  // 图片/视频文件夹（合并为一个选择器，按扩展名自动拆分）
   const [imageFiles, setImageFiles] = useState<File[]>([])
-  const [imageDirName, setImageDirName] = useState('')
+  const [videoFiles, setVideoFiles] = useState<File[]>([])
+  const [mediaDirName, setMediaDirName] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const imageInputRef = useRef<HTMLInputElement>(null)
+  const mediaInputRef = useRef<HTMLInputElement>(null)
 
   // 加载品牌/分类
   const loadOptions = useCallback(async () => {
@@ -394,13 +396,17 @@ export default function AdminImport() {
     }
   }
 
-  // ── 图片文件夹上传 ──
+  // ── 图片/视频文件夹上传（合并为一个选择器，按扩展名拆分） ──
 
-  const handleImageDirChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp|svg|avif)$/i
+  const VIDEO_EXT = /\.(mp4|webm|mov|avi|mkv|m4v|wmv)$/i
+
+  const handleMediaDirChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
-    setImageFiles(files)
-    setImageDirName(files[0].webkitRelativePath?.split('/')[0] || '')
+    setMediaDirName(files[0].webkitRelativePath?.split('/')[0] || '')
+    setImageFiles(files.filter((f) => IMAGE_EXT.test(f.name)))
+    setVideoFiles(files.filter((f) => VIDEO_EXT.test(f.name)))
   }
 
   // ── Import ──
@@ -420,6 +426,10 @@ export default function AdminImport() {
       // 图片文件夹：按商品名对应，文件名前缀匹配商品名
       imageFiles.forEach((f) => {
         formData.append('images', f, f.webkitRelativePath || f.name)
+      })
+      // 视频文件夹：按商品名对应，文件名匹配商品名
+      videoFiles.forEach((f) => {
+        formData.append('videos', f, f.webkitRelativePath || f.name)
       })
       const res = (await post('/goods/spu/import', formData)) as { message?: string; imported?: number; errors?: string[] }
 
@@ -443,7 +453,8 @@ export default function AdminImport() {
     setError(null)
     setResult(null)
     setImageFiles([])
-    setImageDirName('')
+    setVideoFiles([])
+    setMediaDirName('')
   }
 
   // ── Render ──
@@ -539,7 +550,9 @@ export default function AdminImport() {
                       <PreviewTd>{row.price}</PreviewTd>
                       <PreviewTd>{row.discount_price}</PreviewTd>
                       <PreviewTd>{row.sku_code}</PreviewTd>
-                      <PreviewTd>{(row.tags || []).slice(0, 2).join(' · ')}</PreviewTd>
+                      <PreviewTd style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', minWidth: 120 }}>
+                        {(row.tags || []).join(' / ')}
+                      </PreviewTd>
                     </tr>
                   ))}
                 </tbody>
@@ -551,26 +564,28 @@ export default function AdminImport() {
               </p>
             )}
 
-            {/* 图片文件夹上传 */}
-            <ImageArea
-              onClick={() => imageInputRef.current?.click()}
-            >
-              <div style={{ fontSize: 24, marginBottom: 6 }}>🖼️</div>
+            {/* 图片/视频文件夹上传（合并为一个选择器，按扩展名自动拆分） */}
+            <ImageArea onClick={() => mediaInputRef.current?.click()}>
+              <div style={{ marginBottom: 6 }}><Icon name="image" size={32} /></div>
               <div style={{ fontSize: FontSize.sm, color: Color.primaryHover, fontWeight: 500 }}>
-                {imageDirName ? t('admin.dataImport.imageDirSelected') : t('admin.dataImport.imageDirUpload')}
+                {mediaDirName
+                  ? t('admin.dataImport.mediaDirSelected').replace('{dir}', mediaDirName)
+                  : t('admin.dataImport.mediaDirUpload')}
               </div>
-              <MediaHint>{t('admin.dataImport.imageDirHint')}</MediaHint>
-              {imageFiles.length > 0 && (
+              <MediaHint>{t('admin.dataImport.mediaDirHint')}</MediaHint>
+              {(imageFiles.length > 0 || videoFiles.length > 0) && (
                 <MediaSummary>
-                  {t('admin.dataImport.imageCount').replace('{count}', String(imageFiles.length))}
+                  {t('admin.dataImport.mediaCount')
+                    .replace('{imageCount}', String(imageFiles.length))
+                    .replace('{videoCount}', String(videoFiles.length))}
                 </MediaSummary>
               )}
               <HiddenInput
-                ref={imageInputRef}
+                ref={mediaInputRef}
                 type="file"
                 multiple
                 {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)}
-                onChange={handleImageDirChange}
+                onChange={handleMediaDirChange}
               />
             </ImageArea>
 

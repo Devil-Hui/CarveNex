@@ -45,7 +45,6 @@ const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/admin/email-templates': ['superadmin'],
   '/admin/notifications': ['superadmin'],
   '/admin/coupons': ['superadmin'],
-  '/admin/activities': ['superadmin'],
   '/admin/audit-logs': ['superadmin'],
   '/admin/recycle-bin': ['superadmin'],
   '/admin/tasks': ['superadmin'],

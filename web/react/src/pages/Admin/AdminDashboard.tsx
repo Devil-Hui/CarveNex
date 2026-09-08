@@ -11,6 +11,7 @@ import styled from 'styled-components'
 import PageHeader from '../../components/admin/common/PageHeader'
 import { Button } from '../../components/admin/design-system'
 import { Semantic } from '@/theme'
+import { Icon } from '../../components/admin/common/Icon'
 import { useDashboardStats } from '../../hooks/useDashboardStats'
 import { useAdminAuth } from '../../store/AdminAuthContext'
 import { useTranslation } from '../../i18n'
@@ -179,11 +180,11 @@ export default function AdminDashboard() {
   ]
 
   const quickActions = [
-    { icon: '🛍️', label: t('admin.layout.action.newProduct'), to: '/admin/products/create' },
-    { icon: '📦', label: t('admin.layout.action.viewOrders'), to: '/admin/orders' },
-    { icon: '🎟️', label: t('admin.layout.action.createCoupon'), to: '/admin/coupons' },
-    { icon: '💬', label: t('admin.layout.action.chatWorkbench'), to: '/admin/chat' },
-    { icon: '🗑️', label: t('admin.layout.action.recycleBin'), to: '/admin/recycle-bin' },
+    { icon: <Icon name="package" size={18} />, label: t('admin.layout.action.newProduct'), to: '/admin/products/create' },
+    { icon: <Icon name="box" size={18} />, label: t('admin.layout.action.viewOrders'), to: '/admin/orders' },
+    { icon: <Icon name="tag" size={18} />, label: t('admin.layout.action.createCoupon'), to: '/admin/coupons' },
+    { icon: <Icon name="message-circle" size={18} />, label: t('admin.layout.action.chatWorkbench'), to: '/admin/chat' },
+    { icon: <Icon name="trash" size={18} />, label: t('admin.layout.action.recycleBin'), to: '/admin/recycle-bin' },
   ]
 
   return (
@@ -191,7 +192,7 @@ export default function AdminDashboard() {
       <PageHeader title={t('admin.dashboard.title')} breadcrumb={[{ label: t('admin.dashboard.console') }, { label: t('admin.dashboard.title') }]} />
 
       <Greeting>
-        {timeGreeting(t)}, {adminUser?.username ?? 'Admin'} 👋
+        {timeGreeting(t)}, {adminUser?.username ?? 'Admin'}
       </Greeting>
       <Sub>
         {today} · {t('admin.dashboard.todoSummary', { count: String(pendingTotal) })}

@@ -158,7 +158,8 @@ export async function prepareImageForUpload(
     return { ok: false }
   }
 
-  // 轻量解码检查尺寸，>8192px 直接拒绝（避免后续 canvas 解码 OOM）
+  // 轻量解码校验：图片必须能被浏览器解码，否则直接拒绝（避免坏图/损坏产物流进裁剪器
+  // 再弹「解码失败」，也避免后续 canvas 解码 OOM）。
   try {
     const bmp = await createImageBitmap(file)
     const { width, height } = bmp
@@ -168,7 +169,9 @@ export async function prepareImageForUpload(
       return { ok: false }
     }
   } catch {
-    // 解码失败：交给压缩流程/后端兜底校验
+    // 解码失败：文件损坏或格式不支持，直接拦截本轮，不送进裁剪器
+    opts.onReject?.('图片无法解码（文件可能已损坏或格式不支持），请更换图片')
+    return { ok: false }
   }
 
   // 大图自动处理（>200KB 触发，compressImage 内部对更小文件直接透传）。

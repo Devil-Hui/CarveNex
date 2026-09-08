@@ -4,6 +4,7 @@ import { Color, Radius, Shadow, Spacing, FontSize, Transition } from '../../them
 import { Input, Select, SecondaryBtn, DangerBtn, PrimaryBtn } from '../../components/admin/common/ui';
 import PageHeader from '../../components/admin/common/PageHeader';
 import { ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBadge } from '../../components/admin/design-system';
+import { Icon } from '../../components/admin/common/Icon';
 import { useUrlState } from '../../hooks/useUrlState';
 import { adminAPI } from '../../api/admin';
 import { useDebounceSubmit } from '../../hooks/useDebounceSubmit';
@@ -511,7 +512,7 @@ export default function AdminCategories() {
                 <EmptyState
                   title={t('admin.categories.selectCategory')}
                   description={t('admin.categories.selectCategoryHint')}
-                  icon="📁"
+                  icon={<Icon name="box" size={28} />}
                 />
                 {isSuperUser && (
                   <PrimaryBtn onClick={handleCreate} style={{ marginTop: 16 }}>

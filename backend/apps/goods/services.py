@@ -272,9 +272,14 @@ class GoodsQueryService:
             }
             for m in media_qs
         ]
-        # 标签
+        # 标签（含 color / tag_type，供前端按商品标签渲染独立标签块）
         data['tags'] = [
-            {'id': rel.tag_id, 'name': rel.tag.name}
+            {
+                'id': rel.tag_id,
+                'name': rel.tag.name,
+                'color': rel.tag.color,
+                'tag_type': rel.tag.tag_type,
+            }
             for rel in spu.tag_relations.select_related('tag').filter(tag__is_active=True)
         ]
         _goods_cache.two_level_set(f'spu:{spu_id}', data, _ttl['SPU_DETAIL'])
@@ -421,18 +426,16 @@ class GoodsQueryService:
         """计算商品活动标签。
         items: [{'id': int, 'category_id': int|None, 'brand_id': int|None}]
         返回 {spu_id: [{'type':'primary'|'secondary','label':str}, ...]}
-        - 活动价(primary): 在售 SKU 含 discount_price，或 SPU 命中生效期折扣活动
+        - 活动价(primary): 在售 SKU 含 discount_price
         - 可领券(secondary): 命中活动券 scope，或存在无 scope 的全场券
         """
         if not items:
             return {}
         spu_ids = [i['id'] for i in items]
         from apps.goods.models import SKU
-        discount_spu_ids = set(SKU.objects.filter(
+        activity_hit = set(SKU.objects.filter(
             spu_id__in=spu_ids, shelf_status='on', discount_price__isnull=False,
         ).values_list('spu_id', flat=True))
-        activity_spu_ids = _get_active_activity_index()
-        activity_hit = discount_spu_ids | (activity_spu_ids & set(spu_ids))
         cidx = _get_active_coupon_index()
         result = {}
         for it in items:
@@ -450,9 +453,8 @@ class GoodsQueryService:
 
     @staticmethod
     def invalidate_promo_caches():
-        """券/活动/折扣价变更后，刷新活动标签相关缓存。"""
+        """券/折扣价变更后，刷新活动标签相关缓存。"""
         cache.delete('promo:coupon_index:v1')
-        cache.delete('promo:activity_index:v1')
         GoodsCacheService.invalidate_spu_list()
         from utils.cache import Cache
         Cache('search').clear_by_prefix('srch:')
@@ -494,26 +496,6 @@ def _get_active_coupon_index():
     idx = {'spu': spu_set, 'cat': cat_set, 'brand': brand_set, 'global': global_coupon}
     cache.set(key, idx, _PROMO_INDEX_TTL)
     return idx
-
-
-def _get_active_activity_index():
-    """处于生效期的折扣活动所覆盖的 SPU id 集合（缓存 60s）。"""
-    key = 'promo:activity_index:v1'
-    idx = cache.get(key)
-    if idx is not None:
-        return idx
-    now = timezone.now()
-    from apps.promotion.models import DiscountActivity, ActivitySKURelation
-    active_ids = list(DiscountActivity.objects.filter(
-        start_time__lte=now, end_time__gte=now,
-    ).values_list('id', flat=True))
-    spu_ids = set()
-    if active_ids:
-        spu_ids = set(ActivitySKURelation.objects.filter(
-            activity_id__in=active_ids,
-        ).values_list('sku__spu_id', flat=True))
-    cache.set(key, spu_ids, _PROMO_INDEX_TTL)
-    return spu_ids
 
 
 # ==================== SPU 状态缓存服务（Redis 前置缓存） ====================

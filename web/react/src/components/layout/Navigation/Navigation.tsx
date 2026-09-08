@@ -492,35 +492,6 @@ const UserMenu = styled.div`
   }
 `
 
-/** 主站导航项 —— 价值导向动词，与落地页各 section 覆盖内容对齐，未登录同样可见 */
-const NAV_ITEMS: { label: string; href: string; children: { label: string; href: string }[] }[] = [
-  {
-    label: 'Optimize',
-    href: '/#optimizer',
-    children: [
-      { label: 'AI Optimizer', href: '/#optimizer' },
-      { label: 'Shop Products', href: '/category' },
-    ],
-  },
-  {
-    label: 'Automate',
-    href: '/#paths',
-    children: [
-      { label: 'Competitor Analysis', href: '/#paths' },
-      { label: 'Site Builder', href: '/#paths' },
-      { label: 'AI Marketing', href: '/#paths' },
-    ],
-  },
-  {
-    label: 'Launch',
-    href: '/#journey',
-    children: [
-      { label: '30-day Workflow', href: '/#journey' },
-      { label: 'AI Agents', href: '/#paths' },
-    ],
-  },
-]
-
 export default function Navigation() {
   const navigate = useNavigate()
   const { count } = useCart()
@@ -628,35 +599,6 @@ export default function Navigation() {
         </Logo>
 
         <MainNav>
-          {NAV_ITEMS.map(item => (
-            <NavItem key={item.label}>
-              <NavLink
-                href={item.href}
-                onClick={e => {
-                  e.preventDefault()
-                  navigate(item.href)
-                }}
-              >
-                {item.label}
-                <NavCaret>▾</NavCaret>
-              </NavLink>
-              <SubMenu className="nav-submenu">
-                {item.children.map(child => (
-                  <SubItem
-                    key={child.label}
-                    href={child.href}
-                    onClick={e => {
-                      e.preventDefault()
-                      navigate(child.href)
-                    }}
-                  >
-                    {child.label}
-                  </SubItem>
-                ))}
-              </SubMenu>
-            </NavItem>
-          ))}
-
           {/* 商城分类：一级标题 = 商城大类，子项 = 二级分类，前瞻性设计 */}
           {shopCategories.map(cat => (
             <NavItem key={cat.id}>

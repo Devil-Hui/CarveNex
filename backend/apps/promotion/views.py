@@ -6,13 +6,12 @@ from rest_framework import status
 from utils.cache import Cache
 
 from utils.api_base_view import BaseApiView, PublicApiView
-from apps.rbac.permissions import HasPerm
 from utils.response_codes import Messages
-from .models import Coupon, DiscountActivity, PromoCode
+from apps.rbac.permissions import HasPerm
+from .models import Coupon, PromoCode
 from .serializers import (
     ClaimCouponSerializer, CouponSerializer,
     GenerateCouponSerializer, UserCouponSerializer,
-    ActivitySerializer, ActivityAdminSerializer,
     PromoCodeCreateSerializer, PromoCodeDetailSerializer, PromoCodeSerializer,
 )
 from .services import PromotionService, PromoCodeService
@@ -157,74 +156,3 @@ class GenerateCouponView(BaseApiView):
         from apps.goods.services import GoodsQueryService
         GoodsQueryService.invalidate_promo_caches()
         return Response(CouponSerializer(coupon).data, status=status.HTTP_201_CREATED)
-
-
-# ==================== 折扣活动 ====================
-
-class ActivityListView(PublicApiView):
-    """折扣活动列表（公开）"""
-
-    @extend_schema(responses={200: ActivitySerializer(many=True)})
-    def get(self, request):
-        from django.utils import timezone
-        now = timezone.now()
-        activities = DiscountActivity.objects.filter(
-            start_time__lte=now, end_time__gte=now,
-        ).order_by('-created_at')
-        return Response(ActivitySerializer(activities, many=True).data)
-
-
-class ActivityCreateView(BaseApiView):
-    """创建折扣活动（仅管理员）"""
-    permission_classes = [HasPerm('promotion.activity.write')]
-
-    @extend_schema(request=ActivityAdminSerializer, responses={201: ActivitySerializer})
-    def post(self, request):
-        serializer = ActivityAdminSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        activity = DiscountActivity.objects.create(
-            name=data['name'],
-            type=data['type'],
-            rule=data.get('rule', []),
-            start_time=data['start_time'],
-            end_time=data['end_time'],
-            created_by=request.user,
-        )
-        from apps.goods.services import GoodsQueryService
-        GoodsQueryService.invalidate_promo_caches()
-        return Response(ActivitySerializer(activity).data, status=status.HTTP_201_CREATED)
-
-
-class ActivityUpdateView(BaseApiView):
-    """更新折扣活动（仅管理员）"""
-    permission_classes = [HasPerm('promotion.activity.write')]
-
-    @extend_schema(request=ActivityAdminSerializer, responses={200: ActivitySerializer})
-    def patch(self, request, pk):
-        activity = DiscountActivity.objects.filter(pk=pk).first()
-        if not activity:
-            return Response({'detail': Messages.COUPON_NOT_FOUND}, status=status.HTTP_404_NOT_FOUND)
-        serializer = ActivityAdminSerializer(data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        for k, v in serializer.validated_data.items():
-            setattr(activity, k, v)
-        activity.save()
-        from apps.goods.services import GoodsQueryService
-        GoodsQueryService.invalidate_promo_caches()
-        return Response(ActivitySerializer(activity).data)
-
-
-class ActivityDeleteView(BaseApiView):
-    """删除折扣活动（仅管理员）"""
-    permission_classes = [HasPerm('promotion.activity.write')]
-
-    @extend_schema(responses={200: OpenApiResponse(description='Activity deleted')})
-    def delete(self, request, pk):
-        activity = DiscountActivity.objects.filter(pk=pk).first()
-        if not activity:
-            return Response({'detail': Messages.COUPON_NOT_FOUND}, status=status.HTTP_404_NOT_FOUND)
-        activity.delete()
-        from apps.goods.services import GoodsQueryService
-        GoodsQueryService.invalidate_promo_caches()
-        return Response({'detail': 'Activity deleted successfully.'})

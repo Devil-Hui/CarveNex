@@ -27,8 +27,6 @@ export const PERMISSIONS = {
   'coupon.edit': '编辑优惠券',
   'coupon.audit': '审核优惠券',
   'promo.create': '生成推广码',
-  'activity.create': '创建活动',
-  'activity.edit': '编辑活动',
   // 运营
   'chat.answer': '客服回复',
   'chat.assign': '客服转交',

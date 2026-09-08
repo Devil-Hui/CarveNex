@@ -1,4 +1,4 @@
-"""Promotion admin CRUD views for Coupon and DiscountActivity."""
+"""Promotion admin CRUD views for Coupon."""
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
@@ -7,10 +7,10 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiTypes
 from utils.api_base_view import BaseApiView
 from utils.response_codes import Messages
 from apps.rbac.permissions import HasPerm
-from .models import Coupon, DiscountActivity, ActivitySKURelation, PromoCode, CouponScope
+from .models import Coupon, PromoCode, CouponScope
 from .serializers import (
-    CouponAdminSerializer, ActivityAdminSerializer,
-    CouponSerializer, ActivitySerializer,
+    CouponAdminSerializer,
+    CouponSerializer,
     PromoCodeCreateSerializer, PromoCodeDetailSerializer, PromoCodeSerializer,
 )
 from .services import PromoCodeService
@@ -76,56 +76,6 @@ class CouponAdminDetailView(BaseApiView):
         return Response({'message': 'Coupon deleted.'})
 
 
-# ── Activity Admin ──────────────────────────────────
-
-class ActivityAdminListView(BaseApiView):
-    """Admin activity list + create."""
-    permission_classes = [HasPerm('promotion.activity.write')]
-
-    @extend_schema(responses={200: ActivitySerializer(many=True)})
-    def get(self, request):
-        qs = DiscountActivity.objects.all().order_by('-created_at')
-        search = request.query_params.get('search')
-        if search:
-            qs = qs.filter(name__icontains=search)
-        paginator = StandardPagination()
-        page = paginator.paginate_queryset(qs, request)
-        serializer = ActivitySerializer(page, many=True)
-        return paginator.get_paginated_response(serializer.data)
-
-    @extend_schema(request=ActivityAdminSerializer, responses={201: ActivitySerializer})
-    def post(self, request):
-        serializer = ActivityAdminSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        activity = serializer.save(created_by=request.user)
-        return Response(ActivitySerializer(activity).data, status=status.HTTP_201_CREATED)
-
-
-class ActivityAdminDetailView(BaseApiView):
-    """Admin activity update + delete."""
-    permission_classes = [HasPerm('promotion.activity.write')]
-
-    @extend_schema(request=ActivityAdminSerializer, responses={200: ActivitySerializer})
-    def put(self, request, pk):
-        try:
-            activity = DiscountActivity.objects.get(pk=pk)
-        except DiscountActivity.DoesNotExist:
-            return Response({'detail': 'Activity not found.'}, status=status.HTTP_404_NOT_FOUND)
-        serializer = ActivityAdminSerializer(activity, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(ActivitySerializer(activity).data)
-
-    @extend_schema(request=None, responses={200: OpenApiResponse(description='Delete')})
-    def delete(self, request, pk):
-        try:
-            activity = DiscountActivity.objects.get(pk=pk)
-        except DiscountActivity.DoesNotExist:
-            return Response({'detail': 'Activity not found.'}, status=status.HTTP_404_NOT_FOUND)
-        activity.delete()
-        return Response({'message': 'Activity deleted.'})
-
-
 # ── Coupon Scope ──────────────────────────────────
 
 class CouponScopeView(BaseApiView):
@@ -161,205 +111,6 @@ class CouponScopeView(BaseApiView):
             ])
 
         return Response({'message': Messages.SUCCESS, 'scope_type': scope_type})
-
-
-# ── Activity SKU ──────────────────────────────────
-
-def _parse_activity_price(raw):
-    """解析统一活动价；None / 空串 → None（不设活动价）。非法值抛 ValueError。"""
-    if raw in (None, ''):
-        return None
-    try:
-        val = float(raw)
-    except (TypeError, ValueError):
-        raise ValueError('activity_price 必须为数字或留空')
-    if val < 0:
-        raise ValueError('activity_price 不能为负数')
-    return val
-
-
-def _parse_sku_prices(raw):
-    """解析按商品维度的活动价，兼容两种格式：
-    [{'sku_id': 1, 'activity_price': 9.9}] 或 {1: 9.9}。
-    返回 [{'sku_id': int, 'activity_price': float|None}]。
-    """
-    result = []
-    if isinstance(raw, list):
-        for item in raw:
-            if not isinstance(item, dict) or 'sku_id' not in item:
-                continue
-            try:
-                sid = int(item['sku_id'])
-            except (TypeError, ValueError):
-                continue
-            try:
-                price = _parse_activity_price(item.get('activity_price'))
-            except ValueError:
-                price = None
-            result.append({'sku_id': sid, 'activity_price': price})
-    elif isinstance(raw, dict):
-        for k, v in raw.items():
-            try:
-                sid = int(k)
-            except (TypeError, ValueError):
-                continue
-            try:
-                price = _parse_activity_price(v)
-            except ValueError:
-                price = None
-            result.append({'sku_id': sid, 'activity_price': price})
-    return result
-
-
-class ActivitySKUView(BaseApiView):
-    """活动关联 SKU：GET 返回当前关联列表；POST 按 mode 操作。
-
-    POST mode（默认 replace）：
-      - replace：scope 或 sku_ids 全量替换当前关联列表
-      - append ：追加 sku_ids（已存在跳过不报错；带 sku_prices 时更新对应价格）
-      - remove ：移除 sku_ids
-      - clear  ：清空全部关联
-
-    直降定价（仅 flat_off 活动使用，其他类型应留空）：
-      - activity_price：统一活动价，作用于本次操作涉及的全部 SKU（空 = 不设）
-      - sku_prices    ：按商品维度覆盖，优先级高于统一活动价
-    """
-    permission_classes = [HasPerm('promotion.activity.write')]
-
-    @extend_schema(responses={200: OpenApiResponse(description='Linked SKU list')})
-    def get(self, request, pk):
-        try:
-            activity = DiscountActivity.objects.get(id=pk)
-        except DiscountActivity.DoesNotExist:
-            return Response({'detail': 'Activity not found.'}, status=status.HTTP_404_NOT_FOUND)
-        rels = (
-            ActivitySKURelation.objects.filter(activity=activity)
-            .select_related('sku', 'sku__spu')
-            .order_by('id')
-        )
-        items = [{
-            'id': rel.id,
-            'sku_id': rel.sku_id,
-            'sku_code': rel.sku.sku_code,
-            'spu_id': rel.sku.spu_id,
-            'spu_name': rel.sku.spu.name,
-            'price': str(rel.sku.price),
-            'activity_price': str(rel.activity_price) if rel.activity_price is not None else None,
-            'spu_status': rel.sku.spu.status,
-            'sku_shelf_status': rel.sku.shelf_status,
-        } for rel in rels]
-        return Response({'items': items, 'count': len(items)})
-
-    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiResponse(description='SKU linked')})
-    def post(self, request, pk):
-        try:
-            activity = DiscountActivity.objects.get(id=pk)
-        except DiscountActivity.DoesNotExist:
-            return Response({'detail': 'Activity not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        mode = request.data.get('mode') or 'replace'
-        if mode not in ('replace', 'append', 'remove', 'clear'):
-            return Response({'detail': 'mode 仅支持 replace / append / remove / clear'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 统一活动价 + 按商品维度价格
-        try:
-            activity_price = _parse_activity_price(request.data.get('activity_price'))
-        except ValueError as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        sku_prices = _parse_sku_prices(request.data.get('sku_prices'))
-
-        # clear：清空全部
-        if mode == 'clear':
-            ActivitySKURelation.objects.filter(activity=activity).delete()
-            return Response({'message': Messages.SUCCESS, 'linked_count': 0, 'mode': mode})
-
-        # remove：移除指定 SKU
-        if mode == 'remove':
-            sku_ids = [int(x) for x in (request.data.get('sku_ids') or []) if str(x).isdigit()]
-            if not sku_ids:
-                return Response({'detail': '请提供要移除的 SKU'}, status=status.HTTP_400_BAD_REQUEST)
-            removed = ActivitySKURelation.objects.filter(activity=activity, sku_id__in=sku_ids).delete()[0]
-            return Response({'message': Messages.SUCCESS, 'removed_count': removed, 'mode': mode})
-
-        # replace / append：解析目标 SKU 集合
-        sku_ids = [int(x) for x in (request.data.get('sku_ids') or []) if str(x).isdigit()]
-        scope = request.data.get('scope') or {}
-        scope_type = scope.get('type') if isinstance(scope, dict) else None
-        if scope_type in ('tag', 'category', 'all'):
-            from apps.goods.scope_helpers import resolve_scope_sku_ids as _resolve
-            sku_ids = _resolve(scope_type, scope)
-        elif scope_type not in (None, ''):
-            return Response({'detail': 'scope.type 仅支持 tag / category / all'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not sku_ids:
-            return Response({'detail': '未匹配到任何 SKU'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 构建最终价格表：统一价兜底，sku_prices 逐条覆盖
-        final_prices: dict[int, float | None] = {}
-        for sid in sku_ids:
-            final_prices[sid] = activity_price
-        for p in sku_prices:
-            if p['sku_id'] in final_prices:
-                final_prices[p['sku_id']] = p['activity_price']
-
-        if mode == 'replace':
-            ActivitySKURelation.objects.filter(activity=activity).delete()
-            ActivitySKURelation.objects.bulk_create([
-                ActivitySKURelation(activity=activity, sku_id=sid, activity_price=final_prices[sid])
-                for sid in sku_ids
-            ])
-            return Response({
-                'message': Messages.SUCCESS,
-                'linked_count': len(sku_ids),
-                'activity_price': activity_price,
-                'mode': mode,
-            })
-
-        # append：已存在跳过（不报错），sku_prices 中命中已存在项则更新价格
-        existing = set(
-            ActivitySKURelation.objects.filter(activity=activity, sku_id__in=sku_ids)
-            .values_list('sku_id', flat=True)
-        )
-        for p in sku_prices:
-            if p['sku_id'] in existing:
-                ActivitySKURelation.objects.filter(activity=activity, sku_id=p['sku_id']).update(
-                    activity_price=p['activity_price']
-                )
-        to_create = [sid for sid in sku_ids if sid not in existing]
-        if to_create:
-            ActivitySKURelation.objects.bulk_create([
-                ActivitySKURelation(activity=activity, sku_id=sid, activity_price=final_prices[sid])
-                for sid in to_create
-            ])
-        return Response({
-            'message': Messages.SUCCESS,
-            'linked_count': len(to_create),
-            'total': len(sku_ids),
-            'mode': mode,
-        })
-
-
-class ActivityScopePreviewView(BaseApiView):
-    """解析批量关联 scope，返回将关联的 SKU 数量与样例列表（不落库）。"""
-    permission_classes = [HasPerm('promotion.activity.write')]
-
-    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiResponse(description='Scope preview')})
-    def post(self, request):
-        scope = request.data.get('scope') or {}
-        scope_type = scope.get('type') if isinstance(scope, dict) else None
-        if scope_type not in ('tag', 'category', 'all'):
-            return Response({'detail': 'scope.type 仅支持 tag / category / all'}, status=status.HTTP_400_BAD_REQUEST)
-        if scope_type == 'tag' and not scope.get('tag_id'):
-            return Response({'detail': '请选择标签'}, status=status.HTTP_400_BAD_REQUEST)
-        if scope_type == 'category' and not scope.get('category_id'):
-            return Response({'detail': '请选择一级目录'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            limit = max(1, min(int(request.data.get('preview_limit', 10)), 50))
-        except (TypeError, ValueError):
-            limit = 10
-        from apps.goods.scope_helpers import resolve_scope_sku_items
-        data = resolve_scope_sku_items(scope_type, scope, preview_limit=limit)
-        return Response({'count': data['count'], 'items': data['items']})
 
 
 # ── 专属推广码（引流追踪） ──────────────────────────

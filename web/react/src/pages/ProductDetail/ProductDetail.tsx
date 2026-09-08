@@ -12,6 +12,7 @@ import { useTranslation } from '../../i18n'
 import { publicAPI, type PublicSPUDetail, type PublicSKU } from '../../api/public'
 import { reviewAPI, type ReviewItem } from '../../api/review'
 import { Color, Radius, Shadow, Type, FontSize, Transition } from '../../theme/tokens'
+import { Icon } from '../../components/admin/common/Icon'
 import { addProductToCart } from './productCartAction'
 import { resolveMediaUrl } from '../../api/chat'
 import { localizedText } from '../../utils/localizedText'
@@ -167,6 +168,15 @@ const Stage = styled.div`
 const EmptyStage = styled(Stage)`
   color: ${Color.text.muted};
   font-size: 2.5rem;
+`
+
+/** 主图视频：铺满舞台区域，圆角与 Stage 一致 */
+const StageVideo = styled.video`
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
 `
 
 /* ── 右：参数面板 ─────────────────────────────────────────── */
@@ -388,17 +398,48 @@ const SecondaryBtn = styled.button<{ $active?: boolean }>`
 const PromiseRow = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 8px;
   margin-top: 18px;
-  font-size: 0.75rem;
-  color: ${Color.text.muted};
-
-  span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
 `
+
+const PromiseTag = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 6px;
+  border-radius: ${Radius.full}px;
+  background: ${Color.bg.card};
+  border: 1px solid ${Color.border.light};
+  box-shadow: 0 1px 2px rgba(14, 16, 19, 0.04);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: ${Color.text.body};
+  line-height: 1.4;
+  white-space: nowrap;
+`
+
+const PromiseIcon = styled.span<{ $accent: string }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: ${({ $accent }) => `${$accent}1c`};
+  color: ${({ $accent }) => $accent};
+  flex-shrink: 0;
+`
+
+/** 按商品标签名匹配语义图标，颜色取后台配置的标签色 */
+function resolveTagVisual(name?: string, color?: string) {
+  const n = (name || '').toLowerCase()
+  const accent = color || '#7b828a'
+  if (/warrant|质保|保修|year/i.test(n)) return { icon: 'shield' as const, accent }
+  if (/return|退换|退货/i.test(n)) return { icon: 'box' as const, accent }
+  if (/pay|支付|免息|分期|paypal|payment/i.test(n)) return { icon: 'card' as const, accent }
+  if (/seed|seeds|member|会员|bonus|赠|scoring/i.test(n)) return { icon: 'gift' as const, accent }
+  return { icon: 'tag' as const, accent }
+}
 
 const Msg = styled.p<{ $ok?: boolean }>`
   font-size: 0.85rem;
@@ -551,23 +592,40 @@ const StarSelector = styled.div`
   }
 `
 
-/** 收集图集：SKU 图 → media 列表 → 主图，去重 */
-function collectGallery(detail: PublicSPUDetail | null): string[] {
+/** 图集项：图片或视频 */
+type GalleryItem = { kind: 'image' | 'video'; src: string; thumb?: string }
+
+/** 收集图集：SKU 图 → media 列表 → 主图，区分图片/视频并去重 */
+function collectGallery(detail: PublicSPUDetail | null): GalleryItem[] {
   if (!detail) return []
-  const list: string[] = []
+  const list: GalleryItem[] = []
+  const seen = new Set<string>()
+  const push = (item: GalleryItem) => {
+    if (!item.src || seen.has(item.src)) return
+    seen.add(item.src)
+    list.push(item)
+  }
   for (const m of detail.media || []) {
     if (m.media_type === 'video') {
-      const thumb = m.video_large_url || m.video_list_url || m.video_thumb_url
-      if (thumb) list.push(resolveMediaUrl(thumb) || thumb)
+      // 视频用 video_url 真正播放；缩略图优先用视频头帧封面，缺失则回退商品主图，避免把 mp4 当 image 破图
+      const src = resolveMediaUrl(m.video_url) || m.video_url || ''
+      const frame = m.video_large_url || m.video_list_url || m.video_thumb_url
+      const thumb = resolveMediaUrl(frame) || resolveMediaUrl(detail.main_image) || detail.main_image || src
+      push({ kind: 'video', src, thumb })
       continue
     }
     // 详情大图优先用 original（≤2560px 高清），Retina 屏放大不糊；
     // 回退 large(800) → list(400) → thumb(200)。
     const url = m.original_url || m.large_url || m.list_url || m.thumb_url
-    if (url) list.push(resolveMediaUrl(url) || url)
+    const src = resolveMediaUrl(url) || url || ''
+    push({ kind: 'image', src })
   }
-  if (detail.main_image) list.push(resolveMediaUrl(detail.main_image) || detail.main_image)
-  return Array.from(new Set(list.filter(Boolean)))
+  if (detail.main_image) {
+    const src = resolveMediaUrl(detail.main_image) || detail.main_image || ''
+    push({ kind: 'image', src })
+  }
+  // 视频默认放第一位（主图默认显示视频），其余图片保持原顺序
+  return list.filter(i => i.kind === 'video').concat(list.filter(i => i.kind !== 'video'))
 }
 
 export default function ProductDetail() {
@@ -619,7 +677,8 @@ export default function ProductDetail() {
   }, [product])
 
   const gallery = useMemo(() => collectGallery(product), [product])
-  const activeImageUrl = gallery[activeImage] || gallery[0] || ''
+  const activeItem = gallery[activeImage] || gallery[0]
+  const activeImageUrl = activeItem ? activeItem.src : ''
 
   // 多语言：根据当前界面语言选择商品名称/描述
   const localizedName = localizedText(lang, product?.name || '', product?.name_en, product?.name_ar)
@@ -863,15 +922,15 @@ export default function ProductDetail() {
             {/* 左：缩略图列 */}
             {gallery.length > 1 && (
               <ThumbCol>
-                {gallery.map((src, i) => (
+                {gallery.map((item, i) => (
                   <Thumb
-                    key={`${src}-${i}`}
+                    key={`${item.src}-${i}`}
                     $active={i === activeImage}
                     onClick={() => setActiveImage(i)}
                     type="button"
                     aria-label={`${localizedName} ${i + 1}`}
                   >
-                    <img src={src} alt="" loading="lazy" />
+                    <img src={item.thumb || item.src} alt="" loading="lazy" />
                   </Thumb>
                 ))}
               </ThumbCol>
@@ -879,9 +938,19 @@ export default function ProductDetail() {
 
             {/* 中：主图（锁死 3:4） */}
             <StageCol>
-              {activeImageUrl ? (
+              {activeItem ? (
                 <Stage>
-                  <img src={activeImageUrl} alt={localizedName} />
+                  {activeItem.kind === 'video' ? (
+                    <StageVideo
+                      src={activeItem.src}
+                      poster={activeItem.thumb || undefined}
+                      controls
+                      preload="metadata"
+                      playsInline
+                    />
+                  ) : (
+                    <img src={activeItem.src} alt={localizedName} />
+                  )}
                 </Stage>
               ) : (
                 <EmptyStage aria-hidden="true">📦</EmptyStage>
@@ -977,10 +1046,21 @@ export default function ProductDetail() {
                 {addedMsg && <Msg $ok>{addedMsg}</Msg>}
               </ActionStack>
 
-              <PromiseRow>
-                <span>✓ {t('store.product.freeReturn')}</span>
-                <span>✓ {t('store.product.securePay')}</span>
-              </PromiseRow>
+              {product.tags && product.tags.length > 0 && (
+                <PromiseRow>
+                  {product.tags.map((tg) => {
+                    const visual = resolveTagVisual(tg.name, tg.color)
+                    return (
+                      <PromiseTag key={tg.id}>
+                        <PromiseIcon $accent={visual.accent}>
+                          <Icon name={visual.icon} size={13} />
+                        </PromiseIcon>
+                        {tg.name}
+                      </PromiseTag>
+                    )
+                  })}
+                </PromiseRow>
+              )}
             </ParamCol>
           </PdpGrid>
 

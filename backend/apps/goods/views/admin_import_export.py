@@ -2,6 +2,7 @@ import csv
 import io
 import logging
 import os
+import re
 import shutil
 import tempfile
 import zipfile
@@ -32,15 +33,16 @@ _ZIP_SINGLE_FILE_MAX = 200 * 1024 * 1024
 # zip 内允许的文件总数上限
 _ZIP_MAX_ENTRIES = 1000
 
-# Excel 列名 → 内部字段映射（兼容中英文表头）
+# Excel 列名 → 内部字段映射（兼容中英文表头，key 用小写以便与归一化后的表头匹配）
 COLUMN_MAP = {
-    'sku编码': 'sku_code', 'sku': 'sku_code', 'sku_code': 'sku_code',
-    '产品型号': 'model', '型号': 'model', 'model': 'model',
-    '原价': 'price', 'price': 'price',
-    '现价': 'discount_price', 'discount_price': 'discount_price',
-    '标题': 'name', '商品名': 'name', 'name': 'name',
-    '详情描述': 'description', '描述': 'description', 'description': 'description',
-    '服务': 'services', 'service': 'services',
+    'sku': 'sku_code', 'sku_code': 'sku_code', 'sku code': 'sku_code', 'sku编码': 'sku_code',
+    'model': 'model', '型号': 'model', '产品型号': 'model', '产品编码': 'model',
+    'price': 'price', '原价': 'price', '销售价': 'price',
+    'discount_price': 'discount_price', '现价': 'discount_price', '折扣价': 'discount_price', '优惠价': 'discount_price',
+    'name': 'name', '标题': 'name', '商品名': 'name', '产品名称': 'name',
+    'description': 'description', '详情描述': 'description', '描述': 'description', '详情': 'description',
+    'services': 'services', 'service': 'services',
+    '服务': 'services', '服务标签': 'services', '服务项': 'services', 'service_tag': 'services',
 }
 
 
@@ -76,6 +78,31 @@ def _parse_xlsx(uploaded):
     return rows
 
 
+def _extract_model_from_name(name):
+    """从产品名称中提取产品型号。
+
+    产品命名约定「品牌型号 - 描述」，如「LaserPecker LP4 - The World's First...」→ 型号「LP4」。
+    规则：
+      - 仅当名称含分隔符（- — –）时提取：取分隔符前片段，再去掉开头的品牌名（首个空格前的词）。
+      - 名称不含分隔符（纯描述性标题）时返回空，交由 Excel「产品型号」列值或用户在导入预览中
+        修正，避免生成整段错误型号写入 SKU.spec_values['型号']。
+    """
+    name = (name or '').strip()
+    if not name:
+        return ''
+    before = name
+    for sep in ('-', '—', '–'):
+        if sep in name:
+            before = name.split(sep, 1)[0].strip()
+            break
+    else:
+        # 无分隔符，无法可靠定位型号位置，返回空（宁缺毋滥，优先用 Excel 型号列）
+        return ''
+    tokens = before.split()
+    # 去掉开头的品牌词（如 'LaserPecker LP4' → 'LP4'）
+    return ' '.join(tokens[1:]) if len(tokens) > 1 else before
+
+
 def _normalize_row(row):
     """将原始行（任意表头）映射为内部字段。"""
     out = {}
@@ -83,16 +110,34 @@ def _normalize_row(row):
         key = COLUMN_MAP.get((raw_key or '').strip().lower(), (raw_key or '').strip())
         if key not in out or not out[key]:
             out[key] = (value or '').strip()
+    # 需求：产品型号默认取产品名称 '-' 前的一段；仅在显式型号缺失时自动推导
+    if not out.get('model') and out.get('name'):
+        out['model'] = _extract_model_from_name(out['name'])
     return out
 
 
+_SERVICE_SEPARATOR_RE = re.compile(r'[，,、;；|｜/／\n\r]+')
+"""服务标签分隔符（正则）：中英文逗号、顿号、分号、竖线、斜杠、换行。
+
+一个单元格内可以放多个服务标签，用任意上述分隔符分隔都会被拆开。
+"""
+
+
 def _split_services(services_text):
-    """把服务列文本按换行拆成标签列表（忽略空行）。"""
+    """把服务列文本拆成标签列表。
+
+    支持一个单元格内多个标签：按中英文逗号/顿号/分号/竖线/斜杠/换行拆分，
+    过滤空标签与重复标签，并保持原顺序。
+    """
+    if not services_text:
+        return []
+    seen = set()
     tags = []
-    for line in (services_text or '').split('\n'):
-        line = line.strip()
-        if line:
-            tags.append(line)
+    for part in _SERVICE_SEPARATOR_RE.split(str(services_text)):
+        part = part.strip()
+        if part and part not in seen:
+            seen.add(part)
+            tags.append(part)
     return tags
 
 
@@ -161,17 +206,71 @@ def _save_image_to_spu(spu, upload_file, sort_order):
 
 def _match_images_to_spu(images, spu_name):
     """按商品名匹配图片文件（文件名前缀包含商品名）。返回匹配的图片列表。"""
+    return _match_media_files(images, spu_name)
+
+
+def _match_media_files(files, spu_name):
+    """按商品名匹配媒体文件（图片或视频，文件名前缀/后缀包含商品名）。返回匹配列表。
+
+    :param files: 上传文件列表（request.FILES.getlist 或列表）
+    :param spu_name: 商品名（SPU.name），如 'LaserPecker LP4'
+    示例：商品名 'LaserPecker LP4' 匹配文件 'LaserPecker LP4/LaserPecker LP4.mp4'。
+    """
     name = (spu_name or '').strip().lower()
     if not name:
         return []
     matched = []
-    for f in images:
+    for f in files:
         fname = (f.name or '').lower()
-        # 文件名前缀匹配商品名（忽略扩展名）
-        base = fname.rsplit('.', 1)[0] if '.' in fname else fname
-        if name in base or base in name:
+        # 去掉所在目录段（webkitRelativePath 形式 '文件夹名/文件名'）
+        base = fname.rsplit('/', 1)[-1]
+        base = base.rsplit('\\', 1)[-1]
+        # 忽略扩展名
+        base = base.rsplit('.', 1)[0] if '.' in base else base
+        if name in base or base in name or name in fname:
             matched.append(f)
     return matched
+
+
+def _save_video_to_spu(spu, upload_file, sort_order):
+    """把单个视频原样保存到存储并挂到 SPU 的 ProductMedia（media_type='video'）。
+
+    复用 zip 场景的视频保存（_save_video_to_storage）：把内存/磁盘文件落到
+    default_storage，创建 video 记录。不生成头帧（ProductMedia.video_*_url 留空，
+    前端展示原视频，与 zip 导入行为一致）。
+    返回 (ok, error)。
+    """
+    import tempfile
+    try:
+        # 内存上传文件先落到临时文件，转交给统一的磁盘保存逻辑
+        tmp_root = tempfile.mkdtemp(prefix='spu_video_')
+        try:
+            tmp_path = os.path.join(tmp_root, upload_file.name or 'video.mp4')
+            with open(tmp_path, 'wb') as out:
+                for chunk in upload_file.chunks():
+                    out.write(chunk)
+            video_url = _save_video_to_storage(tmp_path, upload_file.name or 'video.mp4')
+        finally:
+            shutil.rmtree(tmp_root, ignore_errors=True)
+
+        ProductMedia.objects.create(
+            spu=spu,
+            media_type='video',
+            video_url=video_url,
+            sort_order=sort_order,
+            status='active',
+            file_size=upload_file.size or 0,
+        )
+        from ..media_service import MediaService
+        MediaService.sync_main_image(spu.id)
+        from ..services import GoodsCacheService
+        GoodsCacheService.invalidate_spu(spu.id)
+        GoodsCacheService.invalidate_media_list(spu.id)
+        GoodsCacheService.invalidate_spu_list()
+        return True, ''
+    except Exception as e:  # noqa: BLE001
+        _logger.warning('导入视频处理失败 spu=%s: %s', spu.id, e)
+        return False, str(e)
 
 
 class ImportProductsView(BaseApiView):
@@ -251,7 +350,9 @@ class ImportProductsView(BaseApiView):
             return Response({'detail': '请选择分类（默认不再自动选用）'}, status=status.HTTP_400_BAD_REQUEST)
 
         # 图片文件夹：按商品名匹配（文件名前缀包含商品名）
+        # 图片/视频文件夹：按商品名匹配（文件名包含商品名），两者均可批量导入
         images = request.FILES.getlist('images')
+        videos = request.FILES.getlist('videos')
 
         imported = 0
         errors = []
@@ -290,9 +391,16 @@ class ImportProductsView(BaseApiView):
 
                 # 按商品名匹配图片并上传（图片按文件名顺序）
                 if images:
-                    matched = _match_images_to_spu(images, name)
+                    matched = _match_media_files(images, name)
                     for sort_idx, img_file in enumerate(matched):
                         _save_image_to_spu(spu, img_file, sort_idx)
+
+                # 按商品名匹配视频并上传（每 SPU 最多 MEDIA_MAX_VIDEOS_PER_SPU，默认 1）
+                if videos:
+                    max_vid = getattr(settings, 'MEDIA_MAX_VIDEOS_PER_SPU', 1)
+                    matched_videos = _match_media_files(videos, name)[:max_vid]
+                    for vid_idx, vid_file in enumerate(matched_videos):
+                        _save_video_to_spu(spu, vid_file, vid_idx)
 
                 imported += 1
             except Exception as e:  # noqa: BLE001

@@ -20,9 +20,6 @@ interface AdminAuthContextType {
   isAuthenticated: boolean
   isLoading: boolean
   isSuperAdmin: boolean
-  /** 组长/组员角色已删除，以下字段保留为恒 false 以兼容旧引用 */
-  isGroupLeader: boolean
-  isGroupMember: boolean
   /** 当前管理员的有效权限码（超管隐式全量；非超管 best-effort 由 RBAC 矩阵解析） */
   permissionCodes: string[]
   /** 权限判定：hasPermission('product.delete')。前端显隐用，后端仍须二次鉴权。 */
@@ -33,7 +30,7 @@ interface AdminAuthContextType {
 
 const AdminAuthContext = createContext<AdminAuthContextType>({
   adminUser: null, role: 'none', isAuthenticated: false, isLoading: true,
-  isSuperAdmin: false, isGroupLeader: false, isGroupMember: false,
+  isSuperAdmin: false,
   permissionCodes: [], hasPermission: () => false,
   login: async () => false, logout: () => undefined,
 })
@@ -129,8 +126,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   return (
     <AdminAuthContext.Provider value={{
       adminUser, role, isAuthenticated: role !== 'none', isLoading,
-      isSuperAdmin: role === 'superadmin', isGroupLeader: role === 'leader',
-      isGroupMember: role === 'member', permissionCodes, hasPermission, login, logout,
+      isSuperAdmin: role === 'superadmin', permissionCodes, hasPermission, login, logout,
     }}>
       {children}
     </AdminAuthContext.Provider>
