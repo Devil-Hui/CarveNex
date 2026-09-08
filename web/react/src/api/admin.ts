@@ -400,14 +400,19 @@ export const adminAPI = {
     postWithProgress<ProductMediaItem>(
       `/goods/media/spu/${spuId}/upload`, formData, onProgress,
     ),
-  /** 1.2 视频上传（编辑模式）：单文件 video/mp4|webm|mov，≤200MB */
+  /** 1.2 视频上传（编辑模式）：单文件 video/mp4|webm|mov，≤200MB
+   *  thumbFile 可选：视频首帧图（WebP），后端存入 video_thumb_url 作为列表缩略图。 */
   uploadVideo: (
     spuId: number,
     file: File,
     onProgress?: (percent: number) => void,
+    thumbFile?: Blob | null,
   ) => {
     const fd = new FormData();
     fd.append('file', file);
+    if (thumbFile) {
+      fd.append('thumb', thumbFile, 'frame.webp');
+    }
     return postWithProgress<ProductMediaItem>(
       `/goods/media/spu/${spuId}/video/upload`, fd, onProgress,
     );

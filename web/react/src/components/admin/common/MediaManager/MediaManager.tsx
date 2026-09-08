@@ -591,9 +591,11 @@ export default function MediaManager({
             }
             setUploadQueue({ status: 'processing', completed: 0, total: 1, percent: 0, currentFileName: item.fileName })
             try {
+              // 首帧：弹窗已提取（1 张 WebP 缩略图），随视频一并上传，
+              // 后端写入 video_thumb_url，列表/详情即以该首帧作为显示图。
               await adminAPI.uploadVideo(spuId, videoFile, (percent) => {
                 setUploadQueue((q) => ({ ...q, percent }))
-              })
+              }, item.videoFrameThumb)
               setUploadQueue({ ...INITIAL_QUEUE, status: 'done' })
               // 刷新已保存媒体列表（视频默认置于队列首位）
               const fresh = await adminAPI.getMediaBySPU(spuId)

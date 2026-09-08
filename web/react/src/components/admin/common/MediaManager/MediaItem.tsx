@@ -91,8 +91,15 @@ export default function MediaItem({ item, index, onRemove, onEdit, onPreview, dr
       }}
       onClick={handlePreviewClick}
     >
+      {/* 视频：若已保存首帧（video_thumb_url），优先以该首帧图作为显示封面；
+          否则回退到 <video preload="metadata"> 由播放器呈现首帧。 */}
       {mediaType === 'image' ? (
         <S.ItemImg src={src} alt={fileName} />
+      ) : saved && (item as ProductMediaItem).video_thumb_url ? (
+        <S.ItemImg
+          src={resolveMediaUrl((item as ProductMediaItem).video_thumb_url || '') || (item as ProductMediaItem).video_thumb_url}
+          alt={fileName}
+        />
       ) : (
         <S.ItemVideo src={src} muted preload="metadata" playsInline />
       )}

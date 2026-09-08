@@ -1662,9 +1662,23 @@ export default function AdminProductForm() {
               }
             }
             setUploadState((s) => ({ ...s, uploaded: s.uploaded + 1, percent: 0 }))
+          } else if (item.mediaType === 'video' && item.videoBlob) {
+            // 视频：/goods/media/spu/{id}/video/upload（与编辑模式同一端点）。
+            // 新建模式下 SPU 刚创建，暂存区视频必须在此上传，否则保存后被清空丢失。
+            const videoFile = new File(
+              [item.videoBlob],
+              item.fileName,
+              { type: item.videoBlob.type || 'video/mp4' },
+            )
+            try {
+              await adminAPI.uploadVideo(spuId, videoFile, (p) => {
+                setUploadState((s) => ({ ...s, percent: p, fileName: item.fileName }))
+              }, item.videoFrameThumb)
+            } catch (e) {
+              console.warn('[AdminProductForm] 上传视频媒体失败 spu=%s:', spuId, e)
+            }
+            setUploadState((s) => ({ ...s, uploaded: s.uploaded + 1, percent: 0 }))
           }
-          // 视频：/goods/media/spu/{id}/upload 当前仅支持 image（video 为独立能力），
-          // create 模式下视频本就未被后端接收，此处不重复塞入被忽略的字段。
         }
         setUploadState((s) => ({ ...s, active: false }))
 

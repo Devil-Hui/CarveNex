@@ -561,10 +561,25 @@ class MediaVideoCreateView(BaseApiView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
+        # 视频首帧：可选字段 thumb（1 张 WebP 缩略图），前端如果提供则一并入库，
+        # 用于列表/详情缩略图显示（无则回退到播放器首帧）。其余 list/large 留空。
+        video_thumb_url = ''
+        thumb = request.FILES.get('thumb')
+        if thumb:
+            try:
+                thumb_path = default_storage.save(
+                    media_key('products/video_thumb', '.webp'),
+                    thumb,
+                )
+                video_thumb_url = default_storage.url(thumb_path)
+            except Exception as exc:  # noqa: BLE001 - 首帧保存失败不影响主视频
+                _logger.warning('SPU %s 视频首帧保存失败: %s', spu_id, exc)
+
         media = ProductMedia.objects.create(
             spu=spu,
             media_type='video',
             video_url=video_url,
+            video_thumb_url=video_thumb_url,
             sort_order=MediaService.get_next_sort_order(spu_id, 'video'),
             status='active',
             file_size=video.size,
