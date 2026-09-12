@@ -1,0 +1,130 @@
+import { type ReactNode } from 'react'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { useAdminAuth } from '../../store/AdminAuthContext'
+
+/**
+ * 基础权限守卫：检查用户是否已认证
+ * 支持两种使用方式：
+ * 1. 作为 layout route element（使用 <Outlet />）: <ProtectedRoute />
+ * 2. 作为 wrapper（使用 children）: <ProtectedRoute><Component /></ProtectedRoute>
+ */
+export function ProtectedRoute({ children }: { children?: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAdminAuth()
+  const location = useLocation()
+
+  if (isLoading) {
+    return (
+      <div style={{
+        display: 'flex', justifyContent: 'center', alignItems: 'center',
+        height: '100vh', fontSize: '1.2rem', color: '#666',
+      }}>
+        Loading...
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/admin/login" state={{ from: location }} replace />
+  }
+
+  return children ? <>{children}</> : <Outlet />
+}
+
+/**
+ * 定义哪些路由需要什么角色权限
+ * 路由路径 → 允许的角色列表
+ */
+// 需求调整：已删除组长/组员角色，后台统一由超管访问。
+const ROUTE_PERMISSIONS: Record<string, string[]> = {
+  '/admin/products': ['superadmin'],
+  '/admin/categories': ['superadmin'],
+  '/admin/brands': ['superadmin'],
+  '/admin/tags': ['superadmin'],
+  '/admin/orders': ['superadmin'],
+  '/admin/chat': ['superadmin'],
+  '/admin/email-templates': ['superadmin'],
+  '/admin/notifications': ['superadmin'],
+  '/admin/coupons': ['superadmin'],
+  '/admin/audit-logs': ['superadmin'],
+  '/admin/recycle-bin': ['superadmin'],
+  '/admin/tasks': ['superadmin'],
+  '/admin/rbac': ['superadmin'],
+  // 工作台：所有管理角色可见（验收默认首页，此前未注册导致 default-deny 误伤而不可达）
+  '/admin/dashboard': ['superadmin'],
+  '/admin/import': ['superadmin'],
+  // 优惠券推广码详情页（coupons 下的子路由），此前未注册导致不可达
+  '/admin/coupons/promo': ['superadmin'],
+}
+
+/**
+ * 获取当前用户的角色标签
+ */
+function getUserRole(isSuperAdmin: boolean): string {
+  if (isSuperAdmin) return 'superadmin'
+  return 'none'
+}
+
+/**
+ * 角色权限守卫：在 ProtectedRoute 基础上增加角色检查
+ * 根据用户角色限制可访问的 admin 路由
+ */
+export function RoleProtectedRoute({ children }: { children?: ReactNode }) {
+  const { role, isLoading } = useAdminAuth()
+  const location = useLocation()
+
+  if (isLoading) {
+    return (
+      <div style={{
+        display: 'flex', justifyContent: 'center', alignItems: 'center',
+        height: '100vh', fontSize: '1.2rem', color: '#666',
+      }}>
+        Loading...
+      </div>
+    )
+  }
+
+  // 未登录或没有任何管理角色 -> 退回登录页
+  // （修复旧逻辑把 'none' 角色重定向到 /admin/products 自身造成的死循环）
+  if (role === 'none') {
+    return <Navigate to="/admin/login" state={{ from: location }} replace />
+  }
+
+  const currentPath = location.pathname
+
+  // 检查是否有匹配的权限规则
+  let matched = false
+  for (const [routePattern, allowedRoles] of Object.entries(ROUTE_PERMISSIONS)) {
+    if (currentPath === routePattern || currentPath.startsWith(routePattern + '/')) {
+      matched = true
+      if (!allowedRoles.includes(role)) {
+        // 角色无权限 -> 退回其默认可访问的产品列表页
+        return <Navigate to="/admin/products" replace />
+      }
+      break
+    }
+  }
+
+  // 安全加固：对于 /admin/ 路径但未在 ROUTE_PERMISSIONS 中注册的，默认拒绝访问
+  // 超管默认放行（未注册的非敏感管理页也不应被误伤）；普通角色保持 default-deny
+  if (!matched && currentPath !== '/admin/login' && currentPath.startsWith('/admin/')) {
+    if (role === 'superadmin') {
+      return children ? <>{children}</> : <Outlet />
+    }
+    return <Navigate to="/admin/products" replace />
+  }
+
+  return children ? <>{children}</> : <Outlet />
+}
+
+/**
+ * 导出菜单权限过滤器，供 AdminLayout 使用
+ * 返回当前用户可访问的菜单项路径列表
+ */
+export function useAllowedMenuPaths(): string[] {
+  const { isSuperAdmin } = useAdminAuth()
+  const role = getUserRole(isSuperAdmin)
+
+  return Object.entries(ROUTE_PERMISSIONS)
+    .filter(([, allowedRoles]) => allowedRoles.includes(role))
+    .map(([path]) => path)
+}

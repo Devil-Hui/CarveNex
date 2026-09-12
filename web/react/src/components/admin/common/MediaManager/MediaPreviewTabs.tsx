@@ -1,0 +1,138 @@
+/** MediaPreviewTabs —— 折叠式场景预览（默认收起）：
+ * 不再按内部尺寸（缩略图/列表图/原图）罗列，改为两个真实场景：
+ * 「列表页」= 商品卡片效果（list 图 + 骨架占位）；「详情页」= 图集主图 + 小图切换条。
+ */
+import { useState, useRef, useCallback, useEffect } from 'react'
+import * as S from './MediaManager.styles'
+import type { StagedMediaItem } from '../../../../utils/mediaStaging'
+import { optionalMediaUrl } from '../../../../utils/mediaUrl'
+import { useTranslation } from '@/i18n'
+
+interface Props {
+  items: StagedMediaItem[]
+}
+
+export default function MediaPreviewTabs({ items }: Props) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [activeIdx, setActiveIdx] = useState(0)
+  // 详情缩略图条横向滚动（图片较多时查看后续图片）
+  const stripRef = useRef<HTMLDivElement>(null)
+  const [canPrev, setCanPrev] = useState(false)
+  const [canNext, setCanNext] = useState(false)
+
+  const images = items.filter((i) => i.mediaType === 'image')
+  const videos = items.filter((i) => i.mediaType === 'video')
+
+  const syncStrip = useCallback(() => {
+    const el = stripRef.current
+    if (!el) return
+    setCanPrev(el.scrollLeft > 2)
+    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
+  }, [])
+  // strip 存在且展开时才绑定（依赖 images 变化；open 时稍后绑定）
+  useEffect(() => {
+    const el = stripRef.current
+    if (!el) return
+    const timer = window.setTimeout(syncStrip, 60)
+    el.addEventListener('scroll', syncStrip, { passive: true })
+    const ro = new ResizeObserver(syncStrip)
+    ro.observe(el)
+    return () => {
+      window.clearTimeout(timer)
+      el.removeEventListener('scroll', syncStrip)
+      ro.disconnect()
+    }
+  }, [open, images, syncStrip])
+  const scrollStrip = useCallback((dir: 1 | -1) => {
+    const el = stripRef.current
+    if (!el) return
+    el.scrollBy({ left: dir * Math.round(el.clientWidth * 0.9), behavior: 'smooth' })
+  }, [])
+
+  if (items.length === 0) return null
+
+  // 防越界：媒体被删除后 activeIdx 可能超限
+  const idx = Math.min(activeIdx, Math.max(images.length - 1, 0))
+  const activeImage = images[idx]
+
+  const listSrc = activeImage
+    ? optionalMediaUrl(activeImage.previewDataUrl || (activeImage.listBlob ? URL.createObjectURL(activeImage.listBlob) : undefined))
+    : ''
+  const detailSrc = activeImage
+    ? optionalMediaUrl(
+        (activeImage.originalBlob ? URL.createObjectURL(activeImage.originalBlob) : undefined) ||
+        (activeImage.largeBlob ? URL.createObjectURL(activeImage.largeBlob) : undefined) ||
+        activeImage.previewDataUrl
+      )
+    : ''
+  const videoSrc = videos[0]
+    ? optionalMediaUrl(videos[0].previewDataUrl || (videos[0].videoBlob ? URL.createObjectURL(videos[0].videoBlob) : undefined))
+    : ''
+
+  return (
+    <S.PreviewArea>
+      <S.PreviewToggleRow type="button" onClick={() => setOpen(!open)}>
+        <S.PreviewChevron $open={open}>▶</S.PreviewChevron>
+        {t('admin.mediaManager.previewToggle')}
+      </S.PreviewToggleRow>
+
+      {open && (
+        <S.PreviewScenes>
+          {/* 场景一：列表页商品卡片 */}
+          <S.SceneCard>
+            <S.SceneCardInner>
+              {listSrc ? (
+                <S.SceneListImg src={listSrc} alt="" />
+              ) : videoSrc ? (
+                <video src={videoSrc} muted style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 6, display: 'block' }} />
+              ) : null}
+              <S.SceneLines>
+                <S.SceneLine $w="80%" />
+                <S.SceneLine $w="45%" />
+              </S.SceneLines>
+            </S.SceneCardInner>
+            <S.SceneLabel>{t('admin.mediaManager.previewList')}</S.SceneLabel>
+          </S.SceneCard>
+
+          {/* 场景二：详情页图集（主图 + 小图切换条） */}
+          <S.SceneCard>
+            <S.SceneCardInner>
+              {detailSrc ? (
+                <S.SceneDetailImg src={detailSrc} alt="" />
+              ) : videoSrc ? (
+                <video src={videoSrc} controls style={{ width: '100%', maxHeight: 240, borderRadius: 6, background: '#000', display: 'block' }} />
+              ) : null}
+              {images.length > 1 && (
+                <S.ThumbStripScroller>
+                  {canPrev && (
+                    <S.ThumbStripArrow $side="left" type="button" onClick={() => scrollStrip(-1)} aria-label="上一个缩略图">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                    </S.ThumbStripArrow>
+                  )}
+                  <S.ThumbStrip ref={stripRef}>
+                    {images.map((it, i) => (
+                      <S.ThumbStripItem
+                        key={it.id ?? i}
+                        src={optionalMediaUrl(it.previewDataUrl || (it.thumbBlob ? URL.createObjectURL(it.thumbBlob) : undefined))}
+                        $active={i === idx}
+                        onClick={() => setActiveIdx(i)}
+                        alt=""
+                      />
+                    ))}
+                  </S.ThumbStrip>
+                  {canNext && (
+                    <S.ThumbStripArrow $side="right" type="button" onClick={() => scrollStrip(1)} aria-label="下一个缩略图">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                    </S.ThumbStripArrow>
+                  )}
+                </S.ThumbStripScroller>
+              )}
+            </S.SceneCardInner>
+            <S.SceneLabel>{t('admin.mediaManager.previewDetail')}</S.SceneLabel>
+          </S.SceneCard>
+        </S.PreviewScenes>
+      )}
+    </S.PreviewArea>
+  )
+}

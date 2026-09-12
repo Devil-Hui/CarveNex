@@ -1,0 +1,20 @@
+# =============================================================================
+# CarveNex 前端 —— Cloudflare Workers 静态资源部署
+# 前端为 React SPA，构建产物在 dist/，由 Workers Static Assets 托管。
+# 部署命令：npx wrangler deploy（需先 npm run build 生成 dist）
+# =============================================================================
+name = "carvenex"
+compatibility_date = "2024-01-01"
+
+# 静态资源：托管 Vite 构建产物 dist/
+# 纯静态资源 Worker 不能使用 binding，否则报错：
+# "Cannot use assets with a binding in an assets-only Worker"
+[assets]
+directory = "./dist"
+# SPA 回退：所有未匹配路由返回 index.html（React Router 需要）
+not_found_handling = "single-page-application"
+
+# 生产环境自定义域名（可选，需先在 Cloudflare DNS 配置）
+# [[assets.routing.rules]]
+# pattern = "www.carvenex.com"
+# custom_domain = true

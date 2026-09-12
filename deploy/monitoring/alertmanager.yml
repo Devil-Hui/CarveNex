@@ -1,0 +1,42 @@
+# CarveNex 生产告警路由（Alertmanager）
+# 邮件模板：templates/alertmanager-email.tmpl（大厂规范结构化邮件）
+# SMTP 密码从 /etc/alertmanager/smtp_password 文件读取（compose 挂载，gitignored）。
+# 渠道：邮件（必达）+ 企业微信 / QQ（webhook-relay，多渠道并行）+ 钉钉（可选保留）
+
+# 告警通知模板（含邮件 HTML 模板 email.carvenex.html）
+templates:
+  - '/etc/alertmanager/templates/alertmanager-email.tmpl'
+
+global:
+  smtp_smarthost: 'smtp.163.com:465'
+  smtp_from: 'deavenhui@163.com'
+  smtp_auth_username: 'deavenhui@163.com'
+  smtp_auth_password_file: '/etc/alertmanager/smtp_password'
+  smtp_require_tls: false
+
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: multi
+
+receivers:
+  # 多渠道并行：邮件 + 企业微信 + QQ + 钉钉（各自独立失败不影响其他渠道）
+  - name: multi
+    email_configs:
+      - to: 'deaven-hui@carvenex.com'
+        send_resolved: true
+        html: '{{ template "email.carvenex.html" . }}'
+    webhook_configs:
+      - url: 'http://carvenex-webhook-relay:8081/wechat'   # 企业微信机器人
+        send_resolved: true
+      - url: 'http://carvenex-webhook-relay:8081/qq'        # QQ（OneBot，未配置则中继静默跳过）
+        send_resolved: true
+      - url: 'http://carvenex-dingtalk-hook:8060/dingtalk/webhook/send'  # 钉钉（保留并行）
+        send_resolved: true
+
+inhibit_rules:
+  - source_matchers: ['severity=critical']
+    target_matchers: ['severity=warning']
+    equal: ['alertname']

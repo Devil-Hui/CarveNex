@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: carvenex
+    orgId: 1
+    folder: CarveNex
+    type: file
+    disableDeletion: true
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

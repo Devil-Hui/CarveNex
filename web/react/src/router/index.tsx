@@ -1,0 +1,136 @@
+// 路由配置集中管理
+
+import { lazy, Suspense } from 'react'
+import { Navigate, type RouteObject } from 'react-router-dom'
+import Home from '../pages/Home/Home'
+const Category = lazy(() => import('../pages/Category/Category'))
+const ProductDetail = lazy(() => import('../pages/ProductDetail/ProductDetail'))
+const Cart = lazy(() => import('../pages/Cart/Cart'))
+const Checkout = lazy(() => import('../pages/Checkout/Checkout'))
+const PaymentReturn = lazy(() => import('../pages/PaymentReturn/PaymentReturn'))
+const MockPayment = lazy(() => import('../pages/MockPayment/MockPayment'))
+const Profile = lazy(() => import('../pages/Profile/Profile'))
+const AuthPage = lazy(() => import('../pages/Auth/AuthPage'))
+const SetPasswordPage = lazy(() => import('../pages/Auth/SetPasswordPage'))
+const ForgotPasswordPage = lazy(() => import('../pages/Auth/ForgotPasswordPage'))
+const CouponShare = lazy(() => import('../pages/CouponShare/CouponShare'))
+const TrackOrder = lazy(() => import('../pages/TrackOrder/TrackOrder'))
+const AboutPage = lazy(() => import('../pages/About/AboutPage'))
+const Chat = lazy(() => import('../pages/Chat/Chat'))
+const OrderDetail = lazy(() => import('../pages/OrderDetail/OrderDetail'))
+const Notifications = lazy(() => import('../pages/Notifications/Notifications'))
+const Favorites = lazy(() => import('../pages/Favorites/Favorites'))
+import { RoleProtectedRoute } from '../components/admin/ProtectedRoute'
+
+// Admin pages — lazy loaded
+const AdminLogin = lazy(() => import('../pages/Admin/AdminLogin'))
+const AdminLayout = lazy(() => import('../pages/Admin/AdminLayout'))
+const AdminDashboard = lazy(() => import('../pages/Admin/AdminDashboard'))
+const AdminProducts = lazy(() => import('../pages/Admin/AdminProducts'))
+const AdminProductForm = lazy(() => import('../pages/Admin/AdminProductForm'))
+
+const AdminCategories = lazy(() => import('../pages/Admin/AdminCategories'))
+const AdminBrands = lazy(() => import('../pages/Admin/AdminBrands'))
+const AdminTags = lazy(() => import('../pages/Admin/AdminTags'))
+const AdminNotifications = lazy(() => import('../pages/Admin/AdminNotifications'))
+const AdminCoupons = lazy(() => import('../pages/Admin/AdminCoupons'))
+const AdminAuditLogs = lazy(() => import('../pages/Admin/AdminAuditLogs'))
+const AdminRecycleBin = lazy(() => import('../pages/Admin/AdminRecycleBin'))
+const AdminTasks = lazy(() => import('../pages/Admin/AdminTasks'))
+const AdminOrders = lazy(() => import('../pages/Admin/AdminOrders'))
+const AdminChatList = lazy(() => import('../pages/Admin/AdminChatList'))
+const AdminChatDetail = lazy(() => import('../pages/Admin/AdminChatDetail'))
+const AdminEmailTemplates = lazy(() => import('../pages/Admin/AdminEmailTemplates'))
+const AdminRbac = lazy(() => import('../pages/Admin/AdminRbac'))
+const AdminImport = lazy(() => import('../pages/Admin/AdminImport'))
+const AdminMediaImport = lazy(() => import('../pages/Admin/AdminMediaImport'))
+const AdminPromoCodes = lazy(() => import('../pages/Admin/AdminPromoCodes'))
+
+const PageLoading = () => (
+  <div style={{
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
+    fontSize: '14px',
+    color: '#999',
+  }}>
+    Loading...
+  </div>
+)
+
+export const routes: RouteObject[] = [
+  // ── admin.carvenex.com → 自动跳转管理登录 ──
+  {
+    path: '/',
+    element: typeof window !== 'undefined' && window.location.hostname === 'admin.carvenex.com'
+      ? <Navigate to="/admin/login" replace />
+      : <Home />,
+  },
+  { path: '/category', element: <Suspense fallback={<PageLoading />}><Category /></Suspense> },
+  { path: '/product/:id', element: <Suspense fallback={<PageLoading />}><ProductDetail /></Suspense> },
+  { path: '/cart', element: <Suspense fallback={<PageLoading />}><Cart /></Suspense> },
+  { path: '/checkout', element: <Suspense fallback={<PageLoading />}><Checkout /></Suspense> },
+  { path: '/payment/return', element: <Suspense fallback={<PageLoading />}><PaymentReturn /></Suspense> },
+  { path: '/mock-payment/:paymentNo', element: <Suspense fallback={<PageLoading />}><MockPayment /></Suspense> },
+  { path: '/profile', element: <Suspense fallback={<PageLoading />}><Profile /></Suspense> },
+  { path: '/auth/set-password', element: <Suspense fallback={<PageLoading />}><SetPasswordPage /></Suspense> },
+  { path: '/forgot-password', element: <Suspense fallback={<PageLoading />}><ForgotPasswordPage /></Suspense> },
+  { path: '/auth', element: <Suspense fallback={<PageLoading />}><AuthPage /></Suspense> },
+  { path: '/login', element: <Navigate to="/auth?tab=login" replace /> },
+  { path: '/register', element: <Navigate to="/auth?tab=register" replace /> },
+  { path: '/coupon/:code', element: <Suspense fallback={<PageLoading />}><CouponShare /></Suspense> },
+  { path: '/coupon', element: <Navigate to="/profile?tab=coupons" replace /> },
+  { path: '/about', element: <Suspense fallback={<PageLoading />}><AboutPage /></Suspense> },
+  { path: '/chat', element: <Suspense fallback={<PageLoading />}><Chat /></Suspense> },
+  { path: '/order/:order_no', element: <Suspense fallback={<PageLoading />}><OrderDetail /></Suspense> },
+  { path: '/notifications', element: <Suspense fallback={<PageLoading />}><Notifications /></Suspense> },
+  { path: '/favorites', element: <Suspense fallback={<PageLoading />}><Favorites /></Suspense> },
+  { path: '/track', element: <Suspense fallback={<PageLoading />}><TrackOrder /></Suspense> },
+
+  // ── Admin login (standalone, no layout) ──
+  {
+    path: '/admin/login',
+    element: (
+      <Suspense fallback={<PageLoading />}>
+        <AdminLogin />
+      </Suspense>
+    ),
+  },
+
+  // ── Admin protected routes (wrapped in layout) ──
+  {
+    path: '/admin',
+    element: (
+      <Suspense fallback={<PageLoading />}>
+        <RoleProtectedRoute>
+          <AdminLayout />
+        </RoleProtectedRoute>
+      </Suspense>
+    ),
+    children: [
+      { index: true, element: <Navigate to="/admin/dashboard" replace /> },
+      { path: 'dashboard', element: <Suspense fallback={<PageLoading />}><AdminDashboard /></Suspense> },
+      { path: 'products', element: <Suspense fallback={<PageLoading />}><AdminProducts /></Suspense> },
+      { path: 'products/create', element: <Suspense fallback={<PageLoading />}><AdminProductForm /></Suspense> },
+      { path: 'products/:id', element: <Suspense fallback={<PageLoading />}><AdminProductForm /></Suspense> },
+      { path: 'import', element: <Suspense fallback={<PageLoading />}><AdminImport /></Suspense> },
+      { path: 'media-import', element: <Suspense fallback={<PageLoading />}><AdminMediaImport /></Suspense> },
+      { path: 'categories', element: <Suspense fallback={<PageLoading />}><AdminCategories /></Suspense> },
+      { path: 'brands', element: <Suspense fallback={<PageLoading />}><AdminBrands /></Suspense> },
+      { path: 'tags', element: <Suspense fallback={<PageLoading />}><AdminTags /></Suspense> },
+      { path: 'notifications', element: <Suspense fallback={<PageLoading />}><AdminNotifications /></Suspense> },
+      { path: 'coupons', element: <Suspense fallback={<PageLoading />}><AdminCoupons /></Suspense> },
+      { path: 'coupons/promo/:couponId', element: <Suspense fallback={<PageLoading />}><AdminPromoCodes /></Suspense> },
+      { path: 'orders', element: <Suspense fallback={<PageLoading />}><AdminOrders /></Suspense> },
+      { path: 'audit-logs', element: <Suspense fallback={<PageLoading />}><AdminAuditLogs /></Suspense> },
+      { path: 'recycle-bin', element: <Suspense fallback={<PageLoading />}><AdminRecycleBin /></Suspense> },
+      { path: 'tasks', element: <Suspense fallback={<PageLoading />}><AdminTasks /></Suspense> },
+      { path: 'rbac', element: <Suspense fallback={<PageLoading />}><AdminRbac /></Suspense> },
+      { path: 'chat', element: <Suspense fallback={<PageLoading />}><AdminChatList /></Suspense> },
+      { path: 'chat/:id', element: <Suspense fallback={<PageLoading />}><AdminChatDetail /></Suspense> },
+      { path: 'email-templates', element: <Suspense fallback={<PageLoading />}><AdminEmailTemplates /></Suspense> },
+      { path: '*', element: <Navigate to="/admin/products" replace /> },
+    ],
+  },
+]

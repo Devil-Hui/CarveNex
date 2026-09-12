@@ -1,0 +1,251 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+    compress: "true"
+
+x-healthcheck: &healthcheck
+  interval: 20s
+  timeout: 5s
+  retries: 3
+  start_period: 30s
+
+x-app-security: &app-security
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+
+# =============================================================================
+# 资源预算（2 vCPU / 4GB RAM 主机）
+# 设计目标：任意负载下 CPU 硬上限之和 = 1.40 vCPU = 70% of 2.0，保证峰值 ≤70%。
+# 内存硬上限之和 ≈ 1.86GB（< 70% of 4GB = 2.8GB）。gunicorn 2×gevent 协程 worker 为内存安全取向。
+# 注意：cpus 为 Docker 硬上限（--cpus），即使满载也不会突破该比例；真实利用率取决于流量。
+# =============================================================================
+services:
+  nginx:
+    build:
+      context: ./web/react
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-v1.0.6}
+        GIT_COMMIT: ${GIT_COMMIT:-latest}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-0x4AAAAAAEod4A8ngpZCK06H}
+    image: carvenex-nginx:${APP_VERSION:-v1.0.6}
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "80:80"
+      - "443:443"
+    secrets:
+      - tls_cert
+      - tls_key
+    volumes:
+      - static_data:/var/www/static:ro
+      - media_data:/var/www/media:ro
+    tmpfs:
+      - /tmp:size=4m,mode=1777
+      - /var/cache/nginx:size=16m,uid=101,gid=101
+      - /var/log/nginx:size=8m,uid=101,gid=101
+    depends_on:
+      web:
+        condition: service_healthy
+    networks: [edge, internal]
+    mem_limit: 64m
+    mem_reservation: 32m
+    memswap_limit: 64m
+    cpus: "0.10"
+    pids_limit: 32
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  web:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      args:
+        APP_VERSION: ${APP_VERSION:-v1.0.6}
+        GIT_COMMIT: ${GIT_COMMIT:-latest}
+    image: carvenex-django:${APP_VERSION:-v1.0.6}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SERVICE_TYPE: django
+      DJANGO_ENV: prod
+      DAPHNE_PORT: "8001"
+      AWS_REGION: ${AWS_REGION:-auto}
+      STATIC_ROOT: /app/static
+      # 无 Redis：缓存/会话走 MySQL，Celery broker&result 走 MySQL（见 settings/base.py）
+      # 2C4G：固定 2 个 gevent 协程 worker，配置：无 Redis、极简架构
+      GUNICORN_WORKERS: "2"
+      GUNICORN_THREADS: "1"
+      GUNICORN_WORKER_CLASS: gevent
+      GUNICORN_MAX_REQUESTS: "1000"
+      GUNICORN_MAX_REQUESTS_JITTER: "100"
+      GUNICORN_TIMEOUT: "300"
+      GUNICORN_GRACEFUL_TIMEOUT: "30"
+      # gevent 协程需纯 Python DB 驱动（mysqlclient 为 C 扩展，gevent 无法协作式调度其 socket）
+      DJANGO_DB_DRIVER: "pymysql"
+    env_file: [.env.prod]
+    volumes:
+      - media_data:/app/media
+      - static_data:/app/static
+      - django_logs:/app/logs
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal, egress]
+    mem_limit: 544m
+    mem_reservation: 384m
+    memswap_limit: 544m
+    cpus: "0.50"
+    pids_limit: 96
+    <<: *app-security
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health/ >/dev/null && curl -fsS http://127.0.0.1:8001/health/ >/dev/null"]
+      <<: *healthcheck
+      start_period: 45s
+
+  celery-worker:
+    image: carvenex-django:${APP_VERSION:-v1.0.6}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SERVICE_TYPE: celery_worker
+      DJANGO_ENV: prod
+      # 无 Redis：Celery broker&result 走 MySQL（见 settings/base.py _celery_mysql_url）
+      # gevent 协程需纯 Python DB 驱动
+      DJANGO_DB_DRIVER: "pymysql"
+      CELERY_CONCURRENCY: "1"
+      # 2C4G：单一 worker（concurrency=1）承载高优队列；image_process 跑 R2 上传（受全局信号量 ≤3 并发）。
+      # batch_import/ranking 为周期性缓存预热任务，essential 保留在同一 worker，避免在 2C4G 上再起第二个 worker 抢内存。
+      CELERY_QUEUE: default,image_process,batch_import,ranking
+      CELERY_MAX_TASKS_PER_CHILD: "40"
+      CELERY_MAX_MEMORY_PER_CHILD: "160000"
+      CELERY_TASK_SOFT_TIME_LIMIT: "240"
+      CELERY_TASK_TIME_LIMIT: "300"
+    env_file: [.env.prod]
+    volumes:
+      - media_data:/app/media
+      - celery_logs:/app/logs
+      - backup_data:/backups
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal, egress]
+    mem_limit: 256m
+    mem_reservation: 160m
+    memswap_limit: 256m
+    cpus: "0.20"
+    pids_limit: 48
+    <<: *app-security
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f '[c]elery.*worker' >/dev/null"]
+      <<: *healthcheck
+
+  celery-beat:
+    image: carvenex-django:${APP_VERSION:-v1.0.6}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SERVICE_TYPE: celery_beat
+      DJANGO_ENV: prod
+      # 无 Redis：Celery broker 走 MySQL（见 settings/base.py _celery_mysql_url），调度器为 DatabaseScheduler
+      DJANGO_DB_DRIVER: "pymysql"
+    env_file: [.env.prod]
+    volumes:
+      - beat_logs:/app/logs
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+    mem_limit: 192m
+    mem_reservation: 128m
+    memswap_limit: 192m
+    cpus: "0.05"
+    pids_limit: 32
+    <<: *app-security
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f '[c]elery.*beat' >/dev/null"]
+      <<: *healthcheck
+
+  db:
+    build:
+      context: ./backend/mysql
+      dockerfile: Dockerfile
+    image: carvenex-mysql:${APP_VERSION:-v1.0.6}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${DB_NAME:-carvenex}
+      MYSQL_USER: ${DB_USER:-carvenex}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    expose: ["3306"]
+    networks: [internal]
+    mem_limit: 640m
+    mem_reservation: 384m
+    memswap_limit: 640m
+    cpus: "0.40"
+    pids_limit: 96
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - --innodb-buffer-pool-size=384M
+      # 连接数上限：2 个 gunicorn worker(各池≤15) + celery(≤15) + daphne/beat 留余量
+      - --max-connections=60
+      - --performance-schema=OFF
+      - --local-infile=OFF
+      # 慢查询阈值 500ms（2C4G：实时联表聚合/未命中索引的查询会被记录，便于定位）
+      - --slow-query-log=ON
+      - --long-query-time=0.5
+      - --log-queries-not-using-indexes=OFF
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  mysql_data:
+  media_data:
+  static_data:
+  django_logs:
+  celery_logs:
+  beat_logs:
+  backup_data:
+
+secrets:
+  tls_cert:
+    file: ${TLS_CERT_PATH:-./deploy/nginx-certs/tunnel.crt}
+  tls_key:
+    file: ${TLS_KEY_PATH:-./deploy/nginx-certs/tunnel.key}
+
+networks:
+  edge:
+  egress: {}
+  internal:
+    internal: true
+

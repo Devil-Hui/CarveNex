@@ -1,0 +1,1141 @@
+// TypeScript strict mode enabled
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import styled from 'styled-components'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { QRCodeSVG } from 'qrcode.react';
+import { Color, Radius, Shadow, Spacing, FontSize, Transition } from '../../theme/tokens';
+import PageHeader from '../../components/admin/common/PageHeader';
+import { Pagination, ConfirmDialog, StatusBadge } from '../../components/admin/design-system';
+import { adminAPI, Coupon, CouponFormData, type PromoCodeItem } from '../../api/admin';
+import { useDebounceSubmit } from '../../hooks/useDebounceSubmit';
+import { useUrlState } from '../../hooks/useUrlState';
+import { useDirtyForm } from '../../hooks/useDirtyForm';
+import { useTranslation } from '../../i18n';
+import { formatDate } from '../../utils/helpers';
+import { Input, Input as SearchInput, PrimaryBtn, Select, SecondaryBtn, SecondaryBtn as GenerateBtn } from '../../components/admin/common/ui';
+
+// ==================== Styled Components ====================
+
+const FormOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+`;
+
+const FormDialog = styled.div`
+  background: ${Color.bg.card};
+  border-radius: ${Radius.sm}px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  width: 560px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: ${Spacing.xxl}px;
+`;
+
+const FormTitle = styled.h3`
+  font-size: 16px;
+  font-weight: 600;
+  color: ${Color.text.heading};
+  margin: 0 0 20px 0;
+`;
+
+const FormGroup = styled.div`
+  margin-bottom: 16px;
+`;
+
+const FormRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const Label = styled.label`
+  display: block;
+  font-size: ${FontSize.sm}px;
+  color: ${Color.text.secondary};
+  margin-bottom: 6px;
+`;
+
+const ToggleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+`;
+
+const ToggleSwitch = styled.label`
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+`;
+
+const ToggleInput = styled.input`
+  opacity: 0;
+  width: 0;
+  height: 0;
+
+  &:checked + span {
+    background: ${Color.primary};
+  }
+
+  &:checked + span::before {
+    transform: translateX(18px);
+  }
+`;
+
+const ToggleSlider = styled.span`
+  position: absolute;
+  inset: 0;
+  background: ${Color.border.dark};
+  border-radius: 22px;
+  cursor: pointer;
+  transition: ${Transition.normal};
+
+  &::before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    left: 3px;
+    bottom: 3px;
+    background: ${Color.bg.card};
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+`;
+
+const ToggleLabel = styled.span`
+  font-size: ${FontSize.sm}px;
+  color: ${Color.text.secondary};
+`;
+
+const ButtonGroup = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+`;
+
+const CodeRow = styled.div`
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  input {
+    flex: 1;
+  }
+`;
+
+const Toast = styled.div<{ $type: 'success' | 'error' }>`
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  border-radius: 2px;
+  font-size: ${FontSize.sm}px;
+  background: ${({ $type }) => ($type === 'success' ? '#e8f5e9' : '#fde8e8')};
+  color: ${({ $type }) => ($type === 'success' ? '#2e7d32' : '#c62828')};
+`;
+
+// ==================== 券卡片行（营销系统重构） ====================
+
+const CouponList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const CouponCard = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 20px;
+  background: #fff;
+  border: 1px solid rgba(26, 23, 18, 0.08);
+  border-radius: ${Radius.md}px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  @media (max-width: 767.98px) {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+`;
+
+/* 左侧：面额大号数字 + 币种符号 + 券码等宽 */
+const CouponFace = styled.div`
+  width: 130px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .amount {
+    font-size: 24px;
+    font-weight: 700;
+    color: ${Color.status.error};
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .code {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 12px;
+    color: ${Color.text.muted};
+    letter-spacing: 0.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+`;
+
+/* 中部：使用条件 + 有效期 */
+const CouponInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+
+  .cond {
+    font-size: 14px;
+    color: ${Color.text.body};
+    margin-bottom: 4px;
+  }
+
+  .meta {
+    font-size: 12px;
+    color: ${Color.text.muted};
+  }
+`;
+
+/* 右侧：进度 + 徽章 + 操作 */
+const CouponRight = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+
+  @media (max-width: 767.98px) {
+    align-items: flex-start;
+    width: 100%;
+  }
+`;
+
+const UsageBarWrap = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const UsageTrack = styled.div`
+  width: 120px;
+  height: 6px;
+  border-radius: 4px;
+  background: ${Color.border.light};
+  overflow: hidden;
+`;
+
+const UsageFill = styled.div<{ $percent: number }>`
+  height: 100%;
+  width: ${({ $percent }) => Math.min(100, Math.max(0, $percent))}%;
+  background: ${Color.status.error};
+  border-radius: 4px;
+  transition: width 0.6s ease;
+`;
+
+const UsageText = styled.span`
+  font-size: 12px;
+  color: ${Color.text.muted};
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+`;
+
+const CardActionBtn = styled.button<{ $tone?: 'default' | 'blue' | 'orange' | 'danger' }>`
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid
+    ${({ $tone }) =>
+      $tone === 'blue' ? '#2d8cf0' : $tone === 'orange' ? '#e65100' : $tone === 'danger' ? Color.status.error : Color.border.medium};
+  background: #fff;
+  color: ${({ $tone }) =>
+    $tone === 'blue' ? '#2d8cf0' : $tone === 'orange' ? '#e65100' : $tone === 'danger' ? Color.status.error : '#666'};
+  border-radius: ${Radius.sm}px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: ${({ $tone }) =>
+      $tone === 'blue' ? '#2d8cf0' : $tone === 'orange' ? '#e65100' : $tone === 'danger' ? Color.status.error : Color.text.secondary};
+    color: #fff;
+  }
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+const SearchBar = styled.div`
+  margin-bottom: 12px;
+`;
+
+// ==================== Constants ====================
+
+const PAGE_SIZE = 20;
+
+// 优惠券生命周期 → 语义 tone
+const couponTone = (active: boolean, status: string): 'success' | 'danger' | 'neutral' =>
+  active ? 'success' : status === 'expired' ? 'danger' : 'neutral';
+
+/**
+ * 数字输入框：内部保留用户正在编辑的原始字符串。
+ * 解决 React 受控 `<input type="number">` 的经典问题——value 绑定为纯数字时，
+ * 清空输入框会被 Number('')=0 立刻顶回 "0"，导致「0 删不掉 / 前导零无法清理」。
+ * 这里在编辑过程中保存 raw text，只有合法数字才回调 on change。
+ */
+function NumField({ value, onChange, min = 0, max, step = 1, placeholder }: {
+  value: number | null | undefined
+  onChange: (n: number | null) => void
+  min?: number
+  max?: number
+  step?: number
+  placeholder?: string
+}) {
+  const [text, setText] = useState<string>(value == null ? '' : String(value))
+  const editing = useRef(false)
+  // 外部值变化（打开表单/生成代码）时同步文本；用户编辑期间不覆盖
+  useEffect(() => {
+    if (!editing.current) setText(value == null ? '' : String(value))
+  }, [value])
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      min={min}
+      max={max}
+      step={step}
+      placeholder={placeholder}
+      value={text}
+      onFocus={() => { editing.current = true }}
+      onBlur={() => {
+        editing.current = false
+        // 边界：失焦时越界值回退（min/max）
+        const n = Number(text)
+        if (text !== '' && Number.isFinite(n)) {
+          let v = n
+          if (min !== undefined && v < min) v = min
+          if (max !== undefined && v > max) v = max
+          if (v !== n) { setText(String(v)); onChange(v) }
+        }
+      }}
+      onChange={(e) => {
+        const raw = e.target.value
+        // 数字/小数过滤（允许空串与首字符删除，避免"0 无法删掉"的 number input 怪癖）
+        if (raw === '' || raw === '-' || raw === '+' || raw === '.') {
+          setText(raw)
+          onChange(null)
+          return
+        }
+        // 仅保留合法数字字符（含一个小数点）
+        const cleaned = raw.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')
+        if (cleaned !== raw) { setText(cleaned); return }
+        const n = Number(cleaned)
+        if (!Number.isFinite(n)) return
+        setText(cleaned)
+        onChange(n)
+      }}
+    />
+  )
+}
+
+const INITIAL_FORM: CouponFormData = {
+  code: '',
+  discount_type: 'fixed',
+  amount: 0,
+  min_amount: 0,
+  max_discount: null,
+  stackable: false,
+  is_active: true,
+  start_time: '',
+  end_time: '',
+  total_count: 1000,
+  per_user_limit: 1,
+};
+
+// 创建优惠券草稿：关闭弹窗保留已填内容（提交成功后清除）
+let couponDraft: CouponFormData | null = null;
+
+// ==================== Component ====================
+
+export default function AdminCoupons() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 搜索词与 URL `?search=` 同步：刷新保留、可复制链接、浏览器 Back 有效
+  const search = searchParams.get('search') ?? '';
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useUrlState<string>('page', '1');
+  const [total, setTotal] = useState(0);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  // Form
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formData, setFormData] = useState<CouponFormData>(INITIAL_FORM);
+  const [initialForm, setInitialForm] = useState<CouponFormData>(INITIAL_FORM);
+
+  // 脏数据保护：编辑字段后关闭需二次确认
+  const { requestClose: requestCloseForm, guardNode: dirtyFormGuard } = useDirtyForm({
+    initial: initialForm,
+    current: formData,
+    onDiscard: () => {
+      couponDraft = null;
+      setFormData(INITIAL_FORM);
+      setShowForm(false);
+    },
+  });
+
+  // Delete
+  const [deleteTarget, setDeleteTarget] = useState<Coupon | null>(null);
+
+  // Promo codes（专属券推广码 / 引流追踪）
+  const [promoTarget, setPromoTarget] = useState<Coupon | null>(null);
+  const [promoList, setPromoList] = useState<PromoCodeItem[]>([]);
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoCreating, setPromoCreating] = useState(false);
+  const [promoCopiedCode, setPromoCopiedCode] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<{ code: string; name: string } | null>(null);
+  const [promoForm, setPromoForm] = useState<{ count: number; prefix: string; name: string; note: string }>({
+    count: 1, prefix: '', name: '', note: '',
+  });
+  const [promoBusyId, setPromoBusyId] = useState<number | null>(null);
+  const [promoDeleteTarget, setPromoDeleteTarget] = useState<PromoCodeItem | null>(null);
+
+  // 推广码看板独立为子页面（非弹窗）：/admin/coupons/promo/:couponId
+  const openPromo = (coupon: Coupon) => {
+    navigate(`/admin/coupons/promo/${coupon.id}`);
+  };
+
+  const fetchPromo = async (couponId: number) => {
+    try {
+      setPromoLoading(true);
+      const data = await adminAPI.getPromoDashboard(couponId);
+      setPromoList(Array.isArray(data) ? data : []);
+    } catch {
+      setPromoList([]);
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
+  const handleCreatePromo = async () => {
+    if (!promoTarget) return;
+    // 8.3 严谨化：推广码必须绑定推广人/渠道；前缀仅大写字母数字
+    if (!promoForm.name.trim()) {
+      showMsg('error', t('admin.coupons.promoNameRequired'));
+      return;
+    }
+    if (promoForm.prefix && !/^[A-Z0-9]{1,8}$/.test(promoForm.prefix.trim())) {
+      showMsg('error', t('admin.coupons.promoPrefixInvalid'));
+      return;
+    }
+    try {
+      setPromoCreating(true);
+      await adminAPI.createPromoCodes(promoTarget.id, {
+        ...promoForm,
+        prefix: promoForm.prefix.trim().toUpperCase(),
+        name: promoForm.name.trim(),
+      });
+      showMsg('success', t('admin.coupons.promoCreateSuccess'));
+      setPromoForm({ count: 1, prefix: '', name: '', note: '' });
+      await fetchPromo(promoTarget.id);
+    } catch (err: any) {
+      showMsg('error', err?.message || t('admin.coupons.promoCreateFailed'));
+    } finally {
+      setPromoCreating(false);
+    }
+  };
+
+  // 启用 / 停用单个推广码
+  const handleTogglePromo = async (pc: PromoCodeItem) => {
+    try {
+      setPromoBusyId(pc.id);
+      await adminAPI.updatePromoCode(pc.id, { is_active: !pc.is_active });
+      showMsg('success', pc.is_active ? t('admin.coupons.promoDisableSuccess') : t('admin.coupons.promoEnableSuccess'));
+      if (promoTarget) await fetchPromo(promoTarget.id);
+    } catch (err: any) {
+      showMsg('error', err?.message || t('admin.coupons.promoToggleFailed'));
+    } finally {
+      setPromoBusyId(null);
+    }
+  };
+
+  // 删除单个推广码（二次确认）
+  const handleDeletePromo = async () => {
+    if (!promoDeleteTarget) return;
+    try {
+      setPromoBusyId(promoDeleteTarget.id);
+      await adminAPI.deletePromoCode(promoDeleteTarget.id);
+      showMsg('success', t('admin.coupons.promoDeleteSuccess'));
+      setPromoDeleteTarget(null);
+      if (promoTarget) await fetchPromo(promoTarget.id);
+    } catch (err: any) {
+      showMsg('error', err?.message || t('admin.coupons.promoDeleteFailed'));
+    } finally {
+      setPromoBusyId(null);
+    }
+  };
+
+  // 直达链接：始终指向商城前台 /coupon/<code>（admin 域名自动回退到 www）
+  const storefrontUrl = (code: string) => {
+    const u = new URL(window.location.origin);
+    if (u.hostname.startsWith('admin.')) u.hostname = u.hostname.slice('admin.'.length);
+    return `${u.origin}/coupon/${encodeURIComponent(code)}`;
+  };
+
+  const copyPromoLink = async (code: string) => {
+    const link = storefrontUrl(code);
+    try {
+      await navigator.clipboard.writeText(link);
+      setPromoCopiedCode(code);
+      setTimeout(() => setPromoCopiedCode(null), 2000);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  // ==================== Data Fetching ====================
+
+  const fetchCoupons = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await adminAPI.getCoupons({ page: Number(page), search });
+      if (data && Array.isArray(data.results)) {
+        setCoupons(data.results);
+        setTotal(data.count || 0);
+      } else if (data && Array.isArray(data.items)) {
+        setCoupons(data.items);
+        setTotal(data.total || 0);
+      } else {
+        setCoupons([]);
+        setTotal(0);
+      }
+    } catch (err: any) {
+      setError(err.message || t('admin.coupons.loadFailed'));
+    } finally {
+      setLoading(false);
+    }
+  }, [page, search, t]);
+
+  useEffect(() => {
+    fetchCoupons();
+  }, [fetchCoupons]);
+
+  // ==================== Toast ====================
+
+  const showMsg = (type: 'success' | 'error', msg: string) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // Random coupon code generator (matches backend: 8 chars, uppercase + digits)
+  const generateCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    updateFormField('code', code);
+  };
+
+  // ==================== Form Handlers ====================
+
+  const openCreate = () => {
+    setEditingId(null);
+    // 保留上次未提交的草稿（关闭弹窗不丢失已填内容）；提交成功后清除
+    const nextForm = couponDraft ?? {
+      ...INITIAL_FORM,
+      start_time: new Date().toISOString().slice(0, 16),
+      end_time: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 16),
+    };
+    setInitialForm(nextForm);
+    setFormData(nextForm);
+    setShowForm(true);
+  };
+
+  const openEdit = (coupon: Coupon) => {
+    setEditingId(coupon.id);
+    const nextForm: CouponFormData = {
+      code: coupon.code,
+      discount_type: coupon.discount_type,
+      amount: coupon.amount,
+      min_amount: coupon.min_amount,
+      max_discount: coupon.max_discount,
+      stackable: coupon.stackable,
+      is_active: (coupon as unknown as Record<string, unknown>).is_active !== false,
+      start_time: coupon.start_time,
+      end_time: coupon.end_time,
+      total_count: coupon.total_count,
+      per_user_limit: coupon.per_user_limit || 1,
+    };
+    setInitialForm(nextForm);
+    setFormData(nextForm);
+    setShowForm(true);
+  };
+
+  const updateFormField = (field: keyof CouponFormData, value: any) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = async () => {
+    const code = formData.code || '';
+    if (!code.trim()) {
+      showMsg('error', t('admin.coupons.codeRequired'));
+      return;
+    }
+    if (formData.amount <= 0) {
+      showMsg('error', t('admin.coupons.amountRequired'));
+      return;
+    }
+    try {
+      if (editingId) {
+        await adminAPI.updateCoupon(editingId, {
+          ...formData,
+          code: code.trim(),
+        });
+        showMsg('success', t('admin.coupons.updateSuccess'));
+      } else {
+        await adminAPI.createCoupon({
+          ...formData,
+          code: code.trim(),
+        });
+        showMsg('success', t('admin.coupons.createSuccess'));
+      }
+      couponDraft = null; // 提交成功：清除草稿
+      setShowForm(false);
+      fetchCoupons();
+    } catch (err: any) {
+      showMsg('error', err.message || t('admin.coupons.operationFailed'));
+    }
+  };
+
+  const { execute: debouncedSave, isPending: isSaving } = useDebounceSubmit(handleSave, 800);
+
+  // ==================== Delete Handler ====================
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await adminAPI.deleteCoupon(deleteTarget.id);
+      showMsg('success', t('admin.coupons.deleteSuccess'));
+      // 后端为软删除（is_active=False），若不清除本地记录，券会以「已停用」残留列表。
+      // 直接从列表移除，保证删除后立即消失。
+      setCoupons((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      fetchCoupons();
+    } catch (err: any) {
+      showMsg('error', err.message || t('admin.coupons.deleteFailed'));
+      setDeleteTarget(null);
+    }
+  };
+
+  // ==================== Helpers ====================
+
+  const getCouponStatus = (record: Coupon): { active: boolean; label: string; status: string } => {
+    if ((record as unknown as Record<string, unknown>).is_active === false) {
+      return { active: false, label: t('admin.coupons.statusDisabled'), status: 'disabled' };
+    }
+    const now = new Date().getTime();
+    const start = new Date(record.start_time).getTime();
+    const end = new Date(record.end_time).getTime();
+    if (now < start) return { active: false, label: t('admin.coupons.statusNotStarted'), status: 'not_started' };
+    if (now > end) return { active: false, label: t('admin.coupons.statusExpired'), status: 'expired' };
+    return { active: true, label: t('admin.coupons.statusActive'), status: 'active' };
+  };
+
+  const handleSearchChange = (value: string) => {
+    // 搜索词即时写入 URL `?search=`，并重置到第一页
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('search', value);
+    else next.delete('search');
+    next.delete('page');
+    setSearchParams(next, { replace: true });
+  };
+
+  // ==================== Render ====================
+
+  return (
+    <div>
+      <PageHeader
+        title={t('admin.coupons.title')}
+        breadcrumb={[{ label: t('admin.coupons.subtitle') }, { label: t('admin.coupons.title') }]}
+        actions={<PrimaryBtn onClick={openCreate}>{t('admin.coupons.createCoupon')}</PrimaryBtn>}
+      />
+
+      {toast && <Toast $type={toast.type}>{toast.msg}</Toast>}
+
+      <SearchBar>
+        <SearchInput
+          type="text"
+          placeholder={t('admin.coupons.searchPlaceholder')}
+          value={search}
+          onChange={(e) => handleSearchChange(e.target.value)}
+        />
+      </SearchBar>
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} style={{ height: 96, borderRadius: 8, background: 'linear-gradient(90deg,#e5e7eb 25%,#f3f4f6 37%,#e5e7eb 63%)', backgroundSize: '400% 100%', animation: 'shimmer 1.4s ease infinite' }} />
+          ))}
+        </div>
+      ) : coupons.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 48, color: Color.text.muted }}>{t('admin.coupons.noCoupons')}</div>
+      ) : (
+        <CouponList>
+          {coupons.map(record => {
+            const s = getCouponStatus(record)
+            const usagePercent = record.total_count > 0 ? ((record.used_count ?? 0) / record.total_count) * 100 : 0
+            const discountText = record.discount_type === 'fixed'
+              ? t('admin.coupons.discountFormat').replace('{amount}', String(record.amount))
+              : `-${record.amount}%`
+            return (
+              <CouponCard key={record.id}>
+                <CouponFace>
+                  <span className="amount">
+                    {record.discount_type === 'fixed' ? `$${record.amount}` : `${record.amount}%`}
+                  </span>
+                  <span className="code">{record.code}</span>
+                </CouponFace>
+                <CouponInfo>
+                  <div className="cond">{discountText} · {t('admin.coupons.columnMinSpend')} ${record.min_amount}</div>
+                  <div className="meta">
+                    {formatDate(record.start_time)} ~ {formatDate(record.end_time)}
+                    {' · '}{t('admin.coupons.usedCountFormat').replace('{used}', String(record.used_count ?? 0)).replace('{total}', String(record.total_count))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                    <StatusBadge tone={couponTone(s.active, s.status)}>{s.label}</StatusBadge>
+                  </div>
+                </CouponInfo>
+                <CouponRight>
+                  <UsageBarWrap>
+                    <UsageTrack><UsageFill $percent={usagePercent} /></UsageTrack>
+                    <UsageText>{Math.round(usagePercent)}%</UsageText>
+                  </UsageBarWrap>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <CardActionBtn onClick={() => openEdit(record)}>{t('admin.coupons.edit')}</CardActionBtn>
+                    <CardActionBtn $tone="blue" onClick={() => openPromo(record)}>{t('admin.coupons.promoBtn')}</CardActionBtn>
+                    <CardActionBtn $tone="danger" onClick={() => setDeleteTarget(record)}>{t('admin.coupons.delete')}</CardActionBtn>
+                  </div>
+                </CouponRight>
+              </CouponCard>
+            )
+          })}
+        </CouponList>
+      )}
+
+      <Pagination
+        page={Number(page)}
+        pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+        total={total}
+        pageSize={PAGE_SIZE}
+        onChange={(p) => setPage(String(p))}
+      />
+
+      {/* Create / Edit Form Dialog */}
+      {showForm && (
+        // 点击遮罩走脏数据保护：未保存修改时弹「放弃修改」二次确认
+        <FormOverlay onClick={() => requestCloseForm()}>
+          <FormDialog onClick={(e) => e.stopPropagation()}>
+            <FormTitle>{editingId ? t('admin.coupons.editCoupon') : t('admin.coupons.newCoupon')}</FormTitle>
+
+            <FormGroup>
+              <Label>{t('admin.coupons.codeLabel')} *</Label>
+              <CodeRow>
+                <Input
+                  value={formData.code}
+                  onChange={(e) => updateFormField('code', e.target.value)}
+                  placeholder={t('admin.coupons.codePlaceholder')}
+                />
+                {!editingId && (
+                  <GenerateBtn type="button" onClick={generateCode}>
+                    {t('admin.coupons.generateCode')}
+                  </GenerateBtn>
+                )}
+              </CodeRow>
+            </FormGroup>
+
+            <FormRow>
+              <FormGroup>
+                <Label>{t('admin.coupons.discountType')}</Label>
+                <Select
+                  value={formData.discount_type}
+                  onChange={(e) =>
+                    updateFormField('discount_type', e.target.value)
+                  }
+                >
+                  <option value="fixed">{t('admin.coupons.fixedAmount')}</option>
+                  <option value="percent">{t('admin.coupons.percentage')}</option>
+                </Select>
+              </FormGroup>
+
+              <FormGroup>
+                <Label>
+                  {formData.discount_type === 'fixed'
+                    ? t('admin.coupons.amountLabel')
+                    : t('admin.coupons.percentLabel')}
+                </Label>
+                <NumField
+                  value={formData.amount}
+                  onChange={(n) => updateFormField('amount', n ?? 0)}
+                  min={0}
+                  step={formData.discount_type === 'fixed' ? 0.01 : 1}
+                  placeholder={
+                    formData.discount_type === 'fixed' ? t('admin.coupons.amountPlaceholder') : t('admin.coupons.percentPlaceholder')
+                  }
+                />
+              </FormGroup>
+            </FormRow>
+
+            <FormRow>
+              <FormGroup>
+                <Label>{t('admin.coupons.minSpendLabel')}</Label>
+                <NumField
+                  value={formData.min_amount}
+                  onChange={(n) => updateFormField('min_amount', n ?? 0)}
+                  min={0}
+                  step={0.01}
+                  placeholder={t('admin.coupons.minSpendPlaceholder')}
+                />
+              </FormGroup>
+
+              <FormGroup>
+                <Label>{t('admin.coupons.maxDiscountLabel')}</Label>
+                <NumField
+                  value={formData.max_discount}
+                  onChange={(n) => updateFormField('max_discount', n)}
+                  min={0}
+                  step={0.01}
+                  placeholder={t('admin.coupons.maxDiscountHint')}
+                />
+              </FormGroup>
+            </FormRow>
+
+            <ToggleRow>
+              <ToggleSwitch>
+                <ToggleInput
+                  type="checkbox"
+                  checked={formData.stackable}
+                  onChange={(e) =>
+                    updateFormField('stackable', e.target.checked)
+                  }
+                />
+                <ToggleSlider />
+              </ToggleSwitch>
+              <ToggleLabel>{t('admin.coupons.stackable')}</ToggleLabel>
+            </ToggleRow>
+
+            <ToggleRow>
+              <ToggleSwitch>
+                <ToggleInput
+                  type="checkbox"
+                  checked={formData.is_active !== false}
+                  onChange={(e) =>
+                    updateFormField('is_active', e.target.checked)
+                  }
+                />
+                <ToggleSlider />
+              </ToggleSwitch>
+              <ToggleLabel>{t('admin.coupons.enabled')}</ToggleLabel>
+            </ToggleRow>
+
+            <FormRow>
+              <FormGroup>
+                <Label>{t('admin.coupons.startTime')}</Label>
+                <Input
+                  type="datetime-local"
+                  value={formData.start_time}
+                  onChange={(e) =>
+                    updateFormField('start_time', e.target.value)
+                  }
+                />
+              </FormGroup>
+
+              <FormGroup>
+                <Label>{t('admin.coupons.endTime')}</Label>
+                <Input
+                  type="datetime-local"
+                  value={formData.end_time}
+                  onChange={(e) =>
+                    updateFormField('end_time', e.target.value)
+                  }
+                />
+              </FormGroup>
+            </FormRow>
+
+            <FormRow>
+              <FormGroup>
+                <Label>{t('admin.coupons.totalQuantity')}</Label>
+                <NumField
+                  value={formData.total_count}
+                  onChange={(n) => updateFormField('total_count', n ?? 0)}
+                  min={0}
+                  step={1}
+                  placeholder={t('admin.coupons.totalQuantityPlaceholder')}
+                />
+              </FormGroup>
+              <FormGroup>
+                <Label>{t('admin.coupons.perUserLimit')}</Label>
+                <NumField
+                  value={formData.per_user_limit}
+                  onChange={(n) => updateFormField('per_user_limit', n ?? 1)}
+                  min={1}
+                  step={1}
+                  placeholder={t('admin.coupons.perUserLimitPlaceholder')}
+                />
+              </FormGroup>
+            </FormRow>
+
+            <ButtonGroup>
+              <SecondaryBtn onClick={requestCloseForm}>
+                {t('admin.coupons.cancel')}
+              </SecondaryBtn>
+              <PrimaryBtn onClick={debouncedSave} disabled={isSaving}>
+                {isSaving ? t('common.saving') : editingId ? t('admin.coupons.save') : t('admin.coupons.create')}
+              </PrimaryBtn>
+            </ButtonGroup>
+          </FormDialog>
+        </FormOverlay>
+      )}
+
+      {/* Delete Confirmation */}
+      {deleteTarget && (
+        <ConfirmDialog
+          open
+          title={t('admin.coupons.deleteCoupon')}
+          message={t('admin.coupons.confirmDeleteCoupon').replace('{code}', deleteTarget.code)}
+          confirmLabel={t('admin.coupons.confirmDelete')}
+          tone="danger"
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* Promo Code Delete Confirmation */}
+      {promoDeleteTarget && (
+        <ConfirmDialog
+          open
+          title={t('admin.coupons.promoDeleteConfirmTitle')}
+          message={t('admin.coupons.promoDeleteConfirmMsg').replace('{code}', promoDeleteTarget.code)}
+          confirmLabel={t('admin.coupons.confirmDelete')}
+          tone="danger"
+          onConfirm={handleDeletePromo}
+          onCancel={() => setPromoDeleteTarget(null)}
+        />
+      )}
+
+      {/* Promo Code Management（专属券推广码 / 引流追踪） */}
+      {promoTarget && (
+        <FormOverlay onClick={() => setPromoTarget(null)}>
+          <FormDialog onClick={(e) => e.stopPropagation()} style={{ width: 760, maxWidth: '94vw' }}>
+            <FormTitle>{t('admin.coupons.promoTitle')} · {promoTarget.code}</FormTitle>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: Color.text.secondary }}>
+              {t('admin.coupons.promoSubtitle')}
+            </p>
+
+            {/* 新建推广码 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16, padding: 16, border: `1px solid ${Color.border.medium}`, borderRadius: 4 }}>
+              <FormGroup style={{ margin: 0 }}>
+                <Label>{t('admin.coupons.promoCount')}</Label>
+                <Input type="number" min={1} max={200} value={promoForm.count}
+                  onChange={(e) => setPromoForm((p) => ({ ...p, count: Math.max(1, Math.min(200, Number(e.target.value) || 1)) }))} />
+              </FormGroup>
+              <FormGroup style={{ margin: 0 }}>
+                <Label>{t('admin.coupons.promoPrefix')}</Label>
+                <Input value={promoForm.prefix} maxLength={8}
+                  onChange={(e) => setPromoForm((p) => ({ ...p, prefix: e.target.value.toUpperCase() }))} />
+              </FormGroup>
+              <FormGroup style={{ margin: 0 }}>
+                <Label>{t('admin.coupons.promoName')}</Label>
+                <Input value={promoForm.name} maxLength={128}
+                  onChange={(e) => setPromoForm((p) => ({ ...p, name: e.target.value }))} />
+              </FormGroup>
+              <FormGroup style={{ margin: 0 }}>
+                <Label>{t('admin.coupons.promoNote')}</Label>
+                <Input value={promoForm.note} maxLength={255}
+                  onChange={(e) => setPromoForm((p) => ({ ...p, note: e.target.value }))} />
+              </FormGroup>
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
+                <SecondaryBtn onClick={handleCreatePromo} disabled={promoCreating}>
+                  {promoCreating ? t('admin.coupons.promoGenerating') : t('admin.coupons.promoCreate')}
+                </SecondaryBtn>
+              </div>
+            </div>
+
+            {/* 推广码列表 + 引流看板 */}
+            <p style={{ margin: '0 0 8px', fontSize: 13, color: Color.text.secondary }}>
+              {t('admin.coupons.promoShareHint')}
+            </p>
+            {promoLoading ? (
+              <p>{t('common.loading')}</p>
+            ) : promoList.length === 0 ? (
+              <div style={{ padding: '28px', textAlign: 'center', color: '#999' }}>
+                {t('admin.coupons.promoEmpty')}
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: Color.text.secondary }}>
+                      <th style={thStyle}>{t('admin.coupons.promoColCode')}</th>
+                      <th style={thStyle}>{t('admin.coupons.promoColName')}</th>
+                      <th style={thStyle}>{t('admin.coupons.promoColStatus')}</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.coupons.promoColClaims')}</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.coupons.promoColUsers')}</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.coupons.promoColPaid')}</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>{t('admin.coupons.promoColGmv')}</th>
+                      <th style={thStyle}>{t('admin.coupons.promoColActions')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {promoList.map((pc) => (
+                      <tr key={pc.id} style={{ borderTop: `1px solid ${Color.border.light}` }}>
+                        <td style={tdStyle}><strong>{pc.code}</strong></td>
+                        <td style={tdStyle}>{pc.name || '-'}</td>
+                        <td style={tdStyle}>
+                          <StatusBadge tone={pc.is_active ? 'success' : 'neutral'}>
+                            {pc.is_active ? t('admin.coupons.promoEnabled') : t('admin.coupons.promoDisabled')}
+                          </StatusBadge>
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{pc.claim_count}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{pc.unique_users ?? '-'}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{pc.paid_order_count}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{Number(pc.gmv || 0).toFixed(2)}</td>
+                        <td style={tdStyle}>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={() => setQrCode({ code: pc.code, name: pc.name })}
+                              style={{ padding: '4px 10px', fontSize: 12, border: `1px solid ${Color.border.medium}`, background: '#fff', borderRadius: 2, cursor: 'pointer' }}
+                            >
+                              {t('admin.coupons.promoQr')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => copyPromoLink(pc.code)}
+                              style={{ padding: '4px 10px', fontSize: 12, border: `1px solid ${Color.border.medium}`, background: '#fff', borderRadius: 2, cursor: 'pointer' }}
+                            >
+                              {promoCopiedCode === pc.code ? t('admin.coupons.promoLinkCopied') : t('admin.coupons.promoCopyLink')}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={promoBusyId === pc.id}
+                              onClick={() => handleTogglePromo(pc)}
+                              style={{
+                                padding: '4px 10px', fontSize: 12,
+                                border: `1px solid ${pc.is_active ? Color.primary : '#2e7d32'}`,
+                                background: '#fff', borderRadius: 2, cursor: 'pointer',
+                                color: pc.is_active ? Color.primary : '#2e7d32',
+                                opacity: promoBusyId === pc.id ? 0.5 : 1,
+                              }}
+                            >
+                              {pc.is_active ? t('admin.coupons.promoDisabled') : t('admin.coupons.promoEnabled')}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={promoBusyId === pc.id}
+                              onClick={() => setPromoDeleteTarget(pc)}
+                              style={{
+                                padding: '4px 10px', fontSize: 12,
+                                border: '1px solid #999', background: '#fff', borderRadius: 2,
+                                cursor: 'pointer', color: '#999',
+                                opacity: promoBusyId === pc.id ? 0.5 : 1,
+                              }}
+                            >
+                              {t('admin.coupons.promoDelete')}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr style={{ borderTop: `2px solid ${Color.border.medium}`, fontWeight: 600 }}>
+                      <td style={tdStyle}>{t('admin.coupons.promoTotalRow')}</td>
+                      <td style={tdStyle}></td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{promoList.reduce((s, p) => s + p.claim_count, 0)}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{promoList.reduce((s, p) => s + (p.unique_users ?? 0), 0)}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{promoList.reduce((s, p) => s + p.paid_order_count, 0)}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>{promoList.reduce((s, p) => s + Number(p.gmv || 0), 0).toFixed(2)}</td>
+                      <td style={tdStyle}></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <ButtonGroup>
+              <SecondaryBtn onClick={() => setPromoTarget(null)}>{t('admin.coupons.promoClose')}</SecondaryBtn>
+            </ButtonGroup>
+          </FormDialog>
+        </FormOverlay>
+      )}
+
+      {/* 推广码二维码 + 直达链接 */}
+      {qrCode && (
+        <FormOverlay onClick={() => setQrCode(null)}>
+          <FormDialog onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: '94vw', textAlign: 'center' }}>
+            <FormTitle>{t('admin.coupons.promoQrTitle')}</FormTitle>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: Color.text.secondary }}>
+              {qrCode.name ? `${qrCode.name} · ${qrCode.code}` : qrCode.code}
+            </p>
+            <div style={{ display: 'grid', placeItems: 'center', padding: 16, background: '#fff', border: `1px solid ${Color.border.light}`, borderRadius: 4, width: 'fit-content', margin: '0 auto 16px' }}>
+              <QRCodeSVG value={storefrontUrl(qrCode.code)} size={200} level="M" includeMargin />
+            </div>
+            <p style={{ margin: '0 0 8px', fontSize: 12, color: Color.text.secondary }}>{t('admin.coupons.promoDirectLink')}</p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <input
+                readOnly
+                value={storefrontUrl(qrCode.code)}
+                onFocus={(e) => e.currentTarget.select()}
+                style={{ flex: 1, padding: '8px 10px', fontSize: 12, border: `1px solid ${Color.border.medium}`, borderRadius: 4, background: '#fafafa', color: Color.text.secondary, minWidth: 0 }}
+              />
+              <SecondaryBtn onClick={() => copyPromoLink(qrCode.code)}>
+                {promoCopiedCode === qrCode.code ? t('admin.coupons.promoLinkCopied') : t('admin.coupons.promoCopyLink')}
+              </SecondaryBtn>
+            </div>
+            <ButtonGroup>
+              <SecondaryBtn onClick={() => setQrCode(null)}>{t('admin.coupons.promoClose')}</SecondaryBtn>
+            </ButtonGroup>
+          </FormDialog>
+        </FormOverlay>
+      )}
+
+      {/* 表单脏数据保护：未保存修改时关闭需二次确认 */}
+      {dirtyFormGuard}
+    </div>
+  );
+}
+
+const thStyle: CSSProperties = {
+  padding: '8px 10px',
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+};
+
+const tdStyle: CSSProperties = {
+  padding: '8px 10px',
+  whiteSpace: 'nowrap',
+};

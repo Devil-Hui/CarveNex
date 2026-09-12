@@ -1,0 +1,136 @@
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { adminAPI } from '../api/admin'
+import { get } from '../api/request'
+
+export type AdminRole = 'superadmin' | 'none'
+
+interface AdminUser {
+  id: number
+  username: string
+  is_superuser: boolean
+  is_group_leader: boolean
+  is_group_member: boolean
+  group_name: string | null
+  group_id: number | null
+}
+
+interface AdminAuthContextType {
+  adminUser: AdminUser | null
+  role: AdminRole
+  isAuthenticated: boolean
+  isLoading: boolean
+  isSuperAdmin: boolean
+  /** 当前管理员的有效权限码（超管隐式全量；非超管 best-effort 由 RBAC 矩阵解析） */
+  permissionCodes: string[]
+  /** 权限判定：hasPermission('product.delete')。前端显隐用，后端仍须二次鉴权。 */
+  hasPermission: (code: string) => boolean
+  login: (username: string, password: string) => Promise<boolean>
+  logout: () => void
+}
+
+const AdminAuthContext = createContext<AdminAuthContextType>({
+  adminUser: null, role: 'none', isAuthenticated: false, isLoading: true,
+  isSuperAdmin: false,
+  permissionCodes: [], hasPermission: () => false,
+  login: async () => false, logout: () => undefined,
+})
+
+function deriveRole(user: AdminUser | null): AdminRole {
+  if (!user) return 'none'
+  // 组长/组员角色已删除：仅超管拥有完整后台权限。
+  if (user.is_superuser) return 'superadmin'
+  return 'none'
+}
+
+export function AdminAuthProvider({ children }: { children: ReactNode }) {
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [permissionCodes, setPermissionCodes] = useState<string[]>([])
+
+  const fetchUser = useCallback(async (attempt = 0): Promise<AdminUser | null> => {
+    try {
+      const user = await get<AdminUser>('/users/me/')
+      setAdminUser(user)
+      setIsLoading(false)
+      return user
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status
+      if (status === 401 || status === 403) {
+        setAdminUser(null)
+        setIsLoading(false)
+        return null
+      }
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))
+        return fetchUser(attempt + 1)
+      }
+      setIsLoading(false)
+      return null
+    }
+  }, [])
+
+  useEffect(() => { void fetchUser() }, [fetchUser])
+
+  // P0-4：非超管按 RBAC 矩阵 best-effort 解析有效权限码（失败保持空，仅影响前端显隐）
+  useEffect(() => {
+    if (!adminUser || adminUser.is_superuser) {
+      setPermissionCodes([])
+      return
+    }
+    let alive = true
+    void (async () => {
+      try {
+        const matrix = await adminAPI.getRbacMatrix()
+        const users = await adminAPI.getRbacUsers({ size: 500 })
+        const me = (users?.items ?? []).find((u) => u.username === adminUser.username)
+        if (!me || !me.roles?.length) return
+        const codes = new Set<string>()
+        for (const role of me.roles) {
+          for (const c of matrix.grants?.[role] ?? []) codes.add(c)
+        }
+        if (alive) setPermissionCodes([...codes])
+      } catch {
+        // best-effort：解析失败保持空；后端鉴权仍兜底，不影响功能
+      }
+    })()
+    return () => { alive = false }
+  }, [adminUser])
+
+  const login = async (username: string, password: string) => {
+    try {
+      const result = await adminAPI.login(username, password)
+      if (!result?.authenticated) return false
+      const user = await fetchUser()
+      if (!user || deriveRole(user) === 'none') {
+        await adminAPI.logout().catch(() => undefined)
+        setAdminUser(null)
+        return false
+      }
+      return true
+    } catch (err) {
+      // 透传后端具体错误（验证码过期/安全验证失败/非管理员等），由调用方展示 detail
+      throw err
+    }
+  }
+
+  const logout = () => {
+    void adminAPI.logout().catch(() => undefined)
+    setAdminUser(null)
+  }
+
+  const role = deriveRole(adminUser)
+  const hasPermission = useCallback(
+    (code: string) => (adminUser?.is_superuser ? true : permissionCodes.includes(code)),
+    [adminUser, permissionCodes],
+  )
+  return (
+    <AdminAuthContext.Provider value={{
+      adminUser, role, isAuthenticated: role !== 'none', isLoading,
+      isSuperAdmin: role === 'superadmin', permissionCodes, hasPermission, login, logout,
+    }}>
+      {children}
+    </AdminAuthContext.Provider>
+  )
+}
+
+export function useAdminAuth() { return useContext(AdminAuthContext) }

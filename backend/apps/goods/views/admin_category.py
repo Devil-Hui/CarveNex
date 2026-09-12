@@ -1,0 +1,198 @@
+"""
+Admin 分类视图 — 分类 CRUD + 子树查询 + 批量迁移
+"""
+
+from rest_framework import status
+from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiTypes
+
+from utils.api_base_view import BaseApiView
+from utils.response_codes import Messages
+from ..models import Category, CategoryStatus, GoodsAuditLog, SPU
+from apps.rbac.permissions import HasPerm
+from apps.rbac.services import has_role
+from apps.rbac.constants import Role
+from ..admin_permissions import get_group_managed_category_ids
+from ..services import GoodsCacheService
+
+
+class CategoryAdminCreateView(BaseApiView):
+    """创建分类（超管 or 组管理员在管辖范围内创建子分类）"""
+    permission_classes = [HasPerm('goods.category.write')]
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        responses={201: OpenApiResponse(description='Category created')}
+    )
+    def post(self, request):
+        name = request.data.get('name', '').strip()
+        parent_id = request.data.get('parent_id')
+        level = request.data.get('level', 1)
+        admin_group_id = request.data.get('admin_group_id')
+
+        if not name:
+            return Response({'detail': 'Name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        parent = None
+        if parent_id:
+            try:
+                parent = Category.objects.get(id=parent_id)
+            except Category.DoesNotExist:
+                return Response({'detail': 'Parent category not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 权限检查：非超管需要验证父分类在管辖范围内
+        if not has_role(request.user, Role.SUPERADMIN.value):
+            managed_ids = get_group_managed_category_ids(request.user)
+            if parent_id and parent_id not in managed_ids:
+                return Response({'detail': Messages.PERMISSION_DENIED}, status=status.HTTP_403_FORBIDDEN)
+            if not parent_id and not managed_ids:
+                return Response({'detail': Messages.PERMISSION_DENIED}, status=status.HTTP_403_FORBIDDEN)
+
+        category = Category.objects.create(
+            name=name, parent=parent, level=level,
+            admin_group_id=admin_group_id,
+            created_by=request.user,
+            # 非超管创建的分类需要审核
+            status=CategoryStatus.APPROVED if has_role(request.user, Role.SUPERADMIN.value) else CategoryStatus.PENDING,
+            submitted_by=request.user,
+        )
+
+        GoodsCacheService.invalidate_category_tree()
+
+        if not has_role(request.user, Role.SUPERADMIN.value):
+            GoodsAuditLog.objects.create(
+                user=request.user,
+                action='category_submitted',
+                resource_type='category',
+                resource_id=category.id,
+                changes={'name': name, 'level': level, 'parent_id': parent_id},
+            )
+
+        return Response({
+            'id': category.id, 'name': category.name,
+            'parent_id': category.parent_id, 'level': category.level,
+            'status': category.status,
+        }, status=status.HTTP_201_CREATED)
+
+
+class CategoryAdminUpdateView(BaseApiView):
+    """更新分类（超管 or 组管理员）"""
+    permission_classes = [HasPerm('goods.category.write')]
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        responses={200: OpenApiResponse(description='Category updated')}
+    )
+    def put(self, request, category_id):
+        try:
+            category = Category.objects.get(id=category_id)
+        except Category.DoesNotExist:
+            return Response({'detail': 'Category not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 权限检查
+        if not has_role(request.user, Role.SUPERADMIN.value):
+            managed_ids = get_group_managed_category_ids(request.user)
+            if category_id not in managed_ids:
+                return Response({'detail': Messages.PERMISSION_DENIED}, status=status.HTTP_403_FORBIDDEN)
+
+        if 'name' in request.data:
+            category.name = request.data['name']
+        if 'is_active' in request.data:
+            category.is_active = request.data['is_active']
+        if 'admin_group_id' in request.data:
+            category.admin_group_id = request.data['admin_group_id']
+        category.save()
+        GoodsCacheService.invalidate_category_tree()
+        return Response({'id': category.id, 'name': category.name, 'is_active': category.is_active})
+
+
+class CategoryAdminDeleteView(BaseApiView):
+    """删除分类（超管 or 组管理员）"""
+    permission_classes = [HasPerm('goods.category.write')]
+
+    @extend_schema(
+        request=None,
+        responses={200: OpenApiResponse(description='Category deleted')}
+    )
+    def delete(self, request, category_id):
+        try:
+            category = Category.objects.get(id=category_id)
+        except Category.DoesNotExist:
+            return Response({'detail': 'Category not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 权限检查
+        if not has_role(request.user, Role.SUPERADMIN.value):
+            managed_ids = get_group_managed_category_ids(request.user)
+            if category_id not in managed_ids:
+                return Response({'detail': Messages.PERMISSION_DENIED}, status=status.HTTP_403_FORBIDDEN)
+
+        if category.children.exists():
+            return Response({'detail': Messages.ADMIN_CATEGORY_HAS_CHILDREN}, status=status.HTTP_400_BAD_REQUEST)
+        # 含软删 SPU：软删商品仍持有外键引用，直接 delete 会触发 ProtectedError -> 500
+        if SPU.objects.filter(category=category).exists():
+            return Response({'detail': Messages.ADMIN_CATEGORY_HAS_SPUS}, status=status.HTTP_400_BAD_REQUEST)
+
+        category.delete()
+        GoodsCacheService.invalidate_category_tree()
+        return Response({'message': 'Deleted successfully.'})
+
+
+class CategoryAdminSubtreeView(BaseApiView):
+    """本组分类子树（嵌套树）。无权限者看不到对应类目：非超管仅返回其管理组类目及祖先链。"""
+    permission_classes = [HasPerm('goods.spu.read')]
+
+    @extend_schema(responses={200: OpenApiResponse(description='Nested category tree of managed groups')})
+    def get(self, request):
+        if has_role(request.user, Role.SUPERADMIN.value):
+            cats = list(Category.objects.filter(is_active=True).select_related('parent'))
+            return Response(GoodsCacheService._build_category_tree(cats))
+
+        category_ids = get_group_managed_category_ids(request.user)
+        if not category_ids:
+            return Response([])
+
+        cats = list(Category.objects.filter(id__in=category_ids, is_active=True).select_related('parent'))
+        if not cats:
+            return Response([])
+
+        # 补祖先链（managed_ids 只向下收集后代，树的父节点必须保留才能完整渲染层级）
+        by_id = {c.id: c for c in Category.objects.filter(is_active=True)}
+        ancestors: set[int] = set()
+        for c in cats:
+            p = c.parent_id
+            while p is not None and p not in ancestors:
+                ancestors.add(p)
+                parent = by_id.get(p)
+                p = parent.parent_id if parent else None
+        if ancestors:
+            cats.extend(Category.objects.filter(id__in=ancestors, is_active=True))
+
+        return Response(GoodsCacheService._build_category_tree(cats))
+
+
+class CategoryAdminMigrateView(BaseApiView):
+    """二级→三级批量迁移 SPU"""
+    permission_classes = [HasPerm('goods.category.write')]
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        responses={200: OpenApiResponse(description='Categories migrated')}
+    )
+    def post(self, request):
+        # 批量迁移 = 跨分类/跨组全局数据操作，仅超管
+        if not has_role(request.user, Role.SUPERADMIN.value):
+            return Response({'detail': Messages.PERMISSION_DENIED}, status=status.HTTP_403_FORBIDDEN)
+
+        from_category_id = request.data.get('from_category_id')
+        to_category_id = request.data.get('to_category_id')
+
+        if not from_category_id or not to_category_id:
+            return Response({'detail': 'from_category_id and to_category_id are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        count = SPU.objects.filter(
+            category_id=from_category_id, deleted_at__isnull=True
+        ).update(category_id=to_category_id)
+
+        return Response({'migrated_count': count})
+
+

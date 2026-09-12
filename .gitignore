@@ -1,0 +1,118 @@
+# =============================================================================
+# CarveNex .gitignore
+# 安全原则：所有含真实凭据/密钥/私钥的文件一律不入库。
+# 仅保留 *.example / *.test 等占位模板（无真实值）。
+# =============================================================================
+
+# ── 环境变量（真实凭据，严禁入库）────────────────────────────
+# 忽略所有 .env 及 .env.*（含 web/react/.env.local、web/react/.env.production 等）
+.env
+.env.*
+# 但保留示例/测试模板（无真实值，可入库）
+!.env.example
+!.env.test
+!backend/.env.example
+!deploy/monitoring/.env.monitoring.example
+# 监控真实凭据（SMTP 密码 / Grafana 密码 / 钉钉 webhook）
+deploy/monitoring/.env.monitoring
+deploy/monitoring/smtp_password
+
+# ── 证书与私钥（真实 TLS/隧道私钥，严禁入库）────────────────
+certs/
+deploy/nginx-certs/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ── 项目说明文档（含部署细节，不入库）────────────────────────
+CLOUDFLARE.md
+DEPLOY-GUIDE.md
+START.md
+
+# ── 测试/验证残留（不允许上传）──────────────────────────────
+backend/_*_test.py
+backend/test/
+web/react/test/
+web/react/test-results/
+web/react/probe_chunk.js
+web/react/scripts_tmp_rm_pb.py
+web/react/overview-*.md
+web/react/dist_*/
+# 本地构建/测试辅助脚本与输出
+web/react/run-build.cjs
+web/react/run-tests.cjs
+web/react/shot.mjs
+web/react/test-output.txt
+web/react/vitest-result.txt
+# PayPal 沙箱冒烟测试（读取 .env.production 凭据，不入库）
+backend/tests/sandbox_paypal.py
+scripts/run_sandbox_paypal.ps1
+# 本地构建改名残留
+web/react/dist-old/
+# git 仓库损坏备份目录
+.git.broken-*/
+# coverage 二进制数据
+backend/.coverage
+backend/coverage*.json
+backend/.pytest_cache/
+backend/allure-results/
+backend/allure-report/
+
+# ── Node ─────────────────────────────────────────────────────
+node_modules/
+web/react/node_modules/
+.wrangler/
+web/react/.wrangler/
+backend/.wrangler/
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ── IDE ───────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Build output & artifacts ─────────────────────────────
+dist/
+.webpack/
+*.tsbuildinfo
+
+# ── OS ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Docker ───────────────────────────────────────────────
+.docker/
+
+# ── Logs ─────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Media (user uploaded files) ──────────────────────────
+web/react/dist/
+web/react/dist_verify/
+# Vite 构建前的临时重命名产物
+web/react/dist-*/
+backend/media/
+backend/static/
+
+# ── Python caches (in case backend/.gitignore misses) ─────
+*.pyc
+__pycache__/
+# 临时/杂项文件（不上传）
+check_admin.py
+inspect_xlsx.py
+*.xlsx
+交接文档.md
