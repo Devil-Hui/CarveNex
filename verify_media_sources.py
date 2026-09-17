@@ -72,35 +72,64 @@ def check_seed_dir(results, seed_dir, required_xlsx=True):
     print('=' * 62)
     print(f'路径: {seed_dir}')
 
+    # 区分「不存在」「不是目录」「无权限」三种情况，分别给出可操作的修复建议
+    if not os.path.exists(seed_dir):
+        results.append(False)
+        print(f'{FAIL} 数据源目录不存在: {seed_dir}')
+        print('       修复：把 products.xlsx 与 images/ 放到你定义的目录，')
+        print('             并用 --dir 或环境变量 SEED_PRODUCTS_DIR 指向它。')
+        return
     if not os.path.isdir(seed_dir):
         results.append(False)
-        print(f'{FAIL} 数据源目录不存在。')
-        print('       修复：把 products.xlsx 与 images/ 放到该目录，')
-        print('             或用 --dir / 环境变量 SEED_PRODUCTS_DIR 指向正确位置。')
+        print(f'{FAIL} 路径存在但不是目录: {seed_dir}')
+        print('       修复：SEED_PRODUCTS_DIR 应指向“目录”，不是文件。')
+        return
+    if not os.access(seed_dir, os.R_OK):
+        results.append(False)
+        print(f'{FAIL} 数据源目录无读取权限: {seed_dir}')
+        print('       修复：chmod +r 该目录；容器内注意运行用户（uid 1000）是否有权限。')
         return
 
     results.append(True)
-    print(f'{PASS} 数据源目录存在。')
+    print(f'{PASS} 数据源目录存在且可读。')
 
     # products.xlsx —— 建商品必需
     xlsx = os.path.join(seed_dir, 'products.xlsx')
     if os.path.isfile(xlsx):
-        size_kb = os.path.getsize(xlsx) / 1024.0
-        results.append(True)
-        print(f'{PASS} products.xlsx 存在（{size_kb:.1f} KB）—— 建商品依赖它。')
+        if not os.access(xlsx, os.R_OK):
+            results.append(not required_xlsx)
+            mark = FAIL if required_xlsx else WARN
+            print(f'{mark} products.xlsx 无读取权限: {xlsx}')
+            print('       修复：chmod +r 该文件，或以有权限的用户运行。')
+        else:
+            size_kb = os.path.getsize(xlsx) / 1024.0
+            results.append(True)
+            print(f'{PASS} products.xlsx 存在且可读（{size_kb:.1f} KB）—— 建商品依赖它。')
     else:
         results.append(not required_xlsx)
         mark = FAIL if required_xlsx else WARN
-        print(f'{mark} products.xlsx 缺失: {xlsx}')
+        print(f'{mark} 缺少 products.xlsx: {xlsx}')
         if required_xlsx:
-            print('       影响：seed_products 会「非阻断跳过」→ 部署后没有任何商品。')
-            print('       修复：把商品信息表放入该目录，或修正 SEED_PRODUCTS_DIR。')
+            print('       影响：seed_products 依赖它建商品（价格/描述等字段都在表里），')
+            print('             缺失时只会打印 WARNING 并「非阻断跳过」——不报错、不中断，')
+            print('             结果就是部署后没有任何商品，且很难察觉。')
+            print('       修复：把商品信息表放到该目录，或用 SEED_PRODUCTS_DIR 指向正确位置。')
 
     # images/
     images_root = os.path.join(seed_dir, 'images')
-    if not os.path.isdir(images_root):
+    if not os.path.exists(images_root):
         results.append(False)
         print(f'{FAIL} images/ 目录不存在: {images_root}')
+        print('       修复：数据源目录下需有 images/，其每个子目录 = 一个商品的原图。')
+        return
+    if not os.path.isdir(images_root):
+        results.append(False)
+        print(f'{FAIL} images 存在但不是目录: {images_root}')
+        return
+    if not os.access(images_root, os.R_OK):
+        results.append(False)
+        print(f'{FAIL} images/ 无读取权限: {images_root}')
+        print('       修复：chmod +r 该目录。')
         return
     folders, total, unreadable = count_images(images_root)
     if unreadable:
