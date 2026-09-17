@@ -11,7 +11,9 @@
   2) 确保英文分类树存在（Laser Engravers / Accessories / Materials & Blanks）
   3) 逐行读取 xlsx → 创建 SPU(ON_SALE) + SKU（原价/现价 → price/discount_price）
   4) 从 images/<目录名>/ 导入图片到 ProductMedia（复用后台转码 → 四尺寸 WebP）
-  5) 幂等：已存在同名 SPU 则跳过，不重复建、不重复导媒体
+  5) 幂等：已存在同名 SPU 则跳过（不重复建 SPU、不重复导媒体）。
+     例外：若该 SPU 的媒体文件在磁盘上已缺失（如 media 卷被清空，而
+     ProductMedia 记录仍在），会自动补回图片，避免「有商品无图」。
 
 用法（在 setup.sh 的 init_system 中调用）：
     python manage.py seed_products --env=prod
@@ -185,7 +187,7 @@ class Command(BaseCommand):
         ) if os.path.isdir(images_root) else []
         self.stdout.write(f'图片目录商品数: {len(folder_list)}')
 
-        created = skipped = no_img = 0
+        created = skipped = no_img = fixed = 0
         for folder in folder_list:
             mapping = FOLDER_TO_CATEGORY.get(folder)
             if not mapping:
@@ -204,11 +206,14 @@ class Command(BaseCommand):
                 no_img += 1
             elif result == 'created':
                 created += 1
+            elif result == 'media_fixed':
+                fixed += 1
             # 'noop'（预览/分类缺失）不计数
 
         after = '预览' if dry_run else '完成'
         self.stdout.write(self.style.SUCCESS(
-            f'\n=== {after}: 新建 {created}, 已存在跳过 {skipped}, 无图 {no_img} ==='))
+            f'\n=== {after}: 新建 {created}, 已存在跳过 {skipped}, '
+            f'无图 {no_img}, 补回媒体 {fixed} ==='))
 
     # ── xlsx 解析 ──
     def _parse_xlsx(self, path):
@@ -280,11 +285,26 @@ class Command(BaseCommand):
 
         # 幂等：按「中文名(name) 或 英文标准列(name_en)」匹配，soft 删除的也算已存在，
         # 避免因名称语言不一致（后台中文名 vs xlsx 英文名）导致每次重启重复建 SPU。
-        dup = SPU.objects.filter(
+        dup_spu = SPU.objects.filter(
             Q(name=name) | Q(name_en=name),
             deleted_at__isnull=True,
-        ).exists()
-        if dup:
+        ).first()
+        if dup_spu is not None:
+            # 幂等：不重复建 SPU。但若媒体文件已丢失（例如更换/清空 media 卷，
+            # 而数据库里的 ProductMedia 记录仍在），则补齐文件并重建记录，
+            # 避免部署后出现「商品有数据但没有图」。
+            if self._media_files_missing(dup_spu):
+                folder_path = os.path.normpath(os.path.join(images_root, folder))
+                self.stdout.write(
+                    self.style.WARNING(f'  [修复] 媒体文件缺失，重新导入: {name[:40]}')
+                )
+                dup_spu.media.all().delete()
+                count = self._import_images(dup_spu, folder_path)
+                if count:
+                    MediaService.sync_main_image(spu_id=dup_spu.id)
+                    GoodsCacheService.invalidate_spu_list()
+                    self.stdout.write(f'  ~ {name[:40]} 补回 {count} 张图')
+                    return 'media_fixed'
             self.stdout.write(f'  [SKIP] 已存在 SPU: {name[:40]}')
             return 'skip'
 
@@ -327,6 +347,36 @@ class Command(BaseCommand):
         GoodsCacheService.invalidate_spu_list()
         self.stdout.write(f'  + {name[:40]} ({count} 图)')
         return 'created'
+
+    @staticmethod
+    def _media_files_missing(spu) -> bool:
+        """判断 SPU 的媒体文件是否在磁盘上真实缺失。
+
+        只查 ProductMedia 记录是不够的：清空 media 卷后记录仍在、文件已丢，
+        此时必须按物理文件是否存在判定，才能触发自动补回。
+
+        安全约束（避免误判导致每次启动都重导）：
+        - MEDIA_ROOT 未配置时一律返回 False（视为未缺失）；
+        - 绝对 URL（如 CDN）无法本地校验，同样视为存在；
+        - 无任何媒体记录时才判定为缺失（需要补图）。
+        """
+        from django.conf import settings
+
+        media_root = getattr(settings, 'MEDIA_ROOT', '') or ''
+        if not media_root:
+            return False
+
+        qs = spu.media.filter(status='active')
+        if not qs.exists():
+            return True
+        for m in qs:
+            url = m.list_url or m.thumb_url or ''
+            if not url.startswith('/media/'):
+                continue
+            rel = url[len('/media/'):]
+            if not os.path.isfile(os.path.join(media_root, rel)):
+                return True
+        return False
 
     def _split_services(self, text):
         return [t for t in re.split(r'[，,、;；|｜/／\n\r]+', text or '') if t.strip()]
