@@ -2,6 +2,8 @@ import { useState } from 'react'
 import styled from 'styled-components'
 import { Color, Radius, Spacing, FontSize } from '../../../theme/tokens'
 import { useCurrency } from '../../../store/CurrencyContext'
+import { useTranslation } from '../../../i18n'
+import { localizedText } from '../../../utils/localizedText'
 import ProductCard from './ProductCard'
 import type { ProductCardData } from './ProductCard'
 import { resolveMediaUrl } from '../../../api/chat'
@@ -13,6 +15,9 @@ export type MessageType = 'text' | 'image' | 'video' | 'product_link' | 'product
 export interface ProductSnapshot {
   id: number
   name: string
+  /** 多语言商品名（英文 / 阿拉伯语） */
+  name_en?: string
+  name_ar?: string
   main_image: string
   price: string
   link?: string
@@ -322,6 +327,7 @@ export default function ChatBubble({
   receipt,
 }: ChatBubbleProps) {
   const { format } = useCurrency()
+  const { lang } = useTranslation()
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
 
   const renderContent = () => {
@@ -371,10 +377,10 @@ export default function ChatBubble({
               >
                 <ProductCardImg
                   src={resolveMediaUrl(productSnapshot.main_image) || productSnapshot.main_image}
-                  alt={productSnapshot.name}
+                  alt={localizedText(lang, productSnapshot.name, productSnapshot.name_en, productSnapshot.name_ar)}
                 />
                 <ProductCardInfo>
-                  <ProductCardName $isMine={isMine}>{productSnapshot.name}</ProductCardName>
+                  <ProductCardName $isMine={isMine}>{localizedText(lang, productSnapshot.name, productSnapshot.name_en, productSnapshot.name_ar)}</ProductCardName>
                   <ProductCardPrice $isMine={isMine}>{format(Number(productSnapshot.price))}</ProductCardPrice>
                   <ProductCardLink $isMine={isMine}>
                     {isMine ? '点击查看详情' : '点击查看商品'}
@@ -394,7 +400,7 @@ export default function ChatBubble({
             {!productCardData && productSnapshot && (
               <ProductCard product={{
                 id: productSnapshot.id,
-                name: productSnapshot.name,
+                name: localizedText(lang, productSnapshot.name, productSnapshot.name_en, productSnapshot.name_ar),
                 main_image: resolveMediaUrl(productSnapshot.main_image) || productSnapshot.main_image,
                 price: productSnapshot.price,
               }} />

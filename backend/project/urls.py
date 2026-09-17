@@ -14,17 +14,18 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+import os
 from django.contrib import admin
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.http import JsonResponse
-from django.urls import path, include
+from django.urls import path, re_path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from django.conf import settings
 from django.conf.urls.static import static
 from utils.health_check import HealthCheckView
 from utils.versioned_router import router
 from utils.upload_async import get_upload_status, async_upload_enabled
-from apps.media.views import serve_db_media
+from apps.media.views import serve_db_media, serve_r2_media
 
 
 def media_upload_status(request, upload_id):
@@ -57,12 +58,13 @@ _API_APPS = [
     "apps.support.urls",
     "apps.customer_service.urls",
     "apps.rbac.urls",
+    "apps.ads.urls",
 ]
 
 _APP_NAMES = [
     "users", "goods", "cart", "order", "address", "payment",
     "review", "notification", "promotion", "lovegoods",
-    "tracking", "logistics", "support", "chat", "rbac",
+    "tracking", "logistics", "support", "chat", "rbac", "ads",
 ]
 
 for name, url_conf in zip(_APP_NAMES, _API_APPS):
@@ -78,6 +80,9 @@ urlpatterns = [
     path('api/v1/media/status/<str:upload_id>/', media_upload_status, name='media-upload-status'),
     # 数据库回退媒体读取（断网/R2 不可达时的媒体回传端点）
     path('api/media/db/<path:key>/', serve_db_media, name='serve-db-media'),
+    # R2 代理读取（CDN 公网不可达时，经后端直接读 R2 对象字节兜底）
+    # key 含子目录、末位是文件名（无尾斜杠），故路由末尾不加 /，避免 APPEND_SLASH 301。
+    re_path(r'^api/media/r2/(?P<key>.+)$', serve_r2_media, name='serve-r2-media'),
 ]
 
 # 通过 VersionedAPIRouter 注册所有 API 路由
@@ -100,5 +105,7 @@ if settings.DEBUG:
         path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
     ]
     urlpatterns += staticfiles_urlpatterns()
-    if settings.FILE_STORAGE == 'local' and settings.MEDIA_URL.strip('/'):
+    # 开发环境始终挂载本地 /media/ 静态服务（R2/CDN 不可达时回退读取本地磁盘副本，
+    # 保证 前端 resolveMediaUrl('/media/...') 在 DEBUG 下能正常取图）。
+    if settings.MEDIA_URL.strip('/') and os.path.isdir(settings.MEDIA_ROOT):
         urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -3,8 +3,12 @@
 export interface CartItem {
   id: number
   sku_id: number
-  sku_code: string
+  sku_name: string
+  sku_code?: string
   spu_name: string
+  /** 多语言商品名（英文 / 阿拉伯语） */
+  spu_name_en?: string
+  spu_name_ar?: string
   price: number
   stock: number
   image: string

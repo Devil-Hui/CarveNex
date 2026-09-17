@@ -262,7 +262,7 @@ class OrderItem(models.Model):
         verbose_name='SKU',
     )
     spu_name = models.CharField(max_length=200, verbose_name='商品名称')
-    sku_code = models.CharField(max_length=100, verbose_name='SKU 编码')
+    sku_name = models.CharField(max_length=100, verbose_name='SKU 名称')
     spec_snapshot = models.JSONField(default=list, verbose_name='规格快照')
     price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='下单时单价')
     quantity = models.PositiveIntegerField(verbose_name='数量')
@@ -278,7 +278,7 @@ class OrderItem(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.spu_name} [{self.sku_code}] × {self.quantity}'
+        return f'{self.spu_name} [{self.sku_name}] × {self.quantity}'
 
 
 # ==================== AfterSale ====================

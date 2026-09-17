@@ -7,6 +7,7 @@ import { Color } from '../../theme/tokens'
 import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from '../../i18n'
 import { getSafeLoginRedirect } from './loginRedirect'
+import { getSocialProviders } from '../../api/social'
 
 // ==================== 样式组件 ====================
 
@@ -142,10 +143,9 @@ export default function LoginForm() {
     setError('')
 
     try {
-      // Fetch provider config to get client_id（统一 v1 路径）
-      const res: any = await fetch('/api/v1/users/social/providers/')
-      const data = await res.json()
-      const prov = data?.providers?.find((p: any) => p.provider === provider)
+      // Fetch provider config to get client_id（走统一 BASE_URL，避免硬编码前缀漂移）
+      const providers = await getSocialProviders()
+      const prov = providers.find((p) => p.provider === provider)
 
       if (!prov || !prov.client_id) {
         setError(t('store.auth.socialNotConfigured').replace('{provider}', provider))

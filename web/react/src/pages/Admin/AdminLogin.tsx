@@ -57,7 +57,17 @@ const Brand = styled.h1`
   color: ${INK};
   text-align: center;
   margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   span { color: ${CLAY}; }
+`
+
+const Logo = styled.img`
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
 `
 
 const Subtitle = styled.p`
@@ -170,7 +180,12 @@ export default function AdminLogin() {
   return (
     <Container>
       <Card>
-        <Brand>Carve<span>Nex</span></Brand>
+        <Brand>
+          <Logo />
+          <span>
+            Carve<span>Nex</span>
+          </span>
+        </Brand>
         <Subtitle>{t('admin.login.subtitle')}</Subtitle>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
           <LanguageSwitch position="login" />

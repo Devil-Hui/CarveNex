@@ -31,6 +31,8 @@ export interface PublicSPU {
   /** 多语言字段（英文 / 阿拉伯语） */
   name_en?: string;
   name_ar?: string;
+  description_en?: string;
+  description_ar?: string;
   status: string;
   brand_name?: string;
   category_name?: string;
@@ -100,6 +102,7 @@ export interface PublicSKU {
   spec_values: Record<string, string>;
   image_url?: string;
   shelf_status?: string;
+  sku_name?: string;
   sku_code?: string;
   spu_id?: number;
 }
@@ -108,6 +111,10 @@ export interface PublicSKU {
 export interface PublicCategory {
   id: number;
   name: string;
+  /** 多语言名称（英文 / 中文 / 阿拉伯语），供前台按界面语言渲染 */
+  name_en?: string;
+  name_zh?: string;
+  name_ar?: string;
   level: number;
   parent_id?: number;
   children?: PublicCategory[];
@@ -160,7 +167,11 @@ export interface ApiCartItem {
   id: number
   sku_id: number
   spu_name: string
-  sku_code: string
+  /** 多语言商品名（英文 / 阿拉伯语） */
+  spu_name_en?: string
+  spu_name_ar?: string
+  sku_name: string
+  sku_code?: string
   price: string
   stock: number
   image: string
@@ -216,6 +227,9 @@ export interface FavoriteItem {
   id: number;
   spu_id: number;
   spu_name: string;
+  /** 多语言商品名（英文 / 阿拉伯语） */
+  spu_name_en?: string;
+  spu_name_ar?: string;
   spu_image?: string;
   spu_price?: string;
   created_at: string;

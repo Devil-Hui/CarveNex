@@ -11,7 +11,7 @@ from .views import (
     SPUAdminShelfView, SPUAdminScheduleView,
     SPUAdminDuplicateView, SPUTranslateView,
     # Admin Batch
-    SPUAdminBatchView, SPUAdminBatchTaskView,
+    SPUAdminBatchView,
     # Admin SKU
     SKUAdminListView, SKUAdminBatchCreateView, SKUAdminUpdateView,
     SKUAdminDeleteView, SKUSearchView,
@@ -26,20 +26,15 @@ from .views import (
     SPUTagSetView, SPUTagRemoveView,
     # Admin Recycle
     RecycleListView, RecycleRestoreView, RecyclePermanentDeleteView,
-    # Admin Audit
-    AuditLogListView, SPUAuditLogView,
-    AuditLogStatsView, OperationLogListView,
     # Admin Notification
     NotificationListView, NotificationUnreadCountView,
     NotificationReadView, NotificationReadAllView,
     # Admin Stats
     AdminStatsView,
-    # Admin Task
-    TaskProgressView, TaskListView,
     # Admin Import/Export
     ImportProductsView, ExportProductsView, ImportProductMediaZipView,
     # Admin Media
-    MediaListBySPUView, MediaDeleteView, MediaReorderView, MediaUpdateView, MediaCreateView, MediaVideoCreateView,
+    MediaListBySPUView, MediaDeleteView, MediaReorderView, MediaUpdateView, MediaCreateView, MediaReplaceView, MediaVideoCreateView,
 )
 
 urlpatterns = [
@@ -70,7 +65,6 @@ urlpatterns = [
     path('spu/<int:spu_id>/duplicate', SPUAdminDuplicateView.as_view(), name='admin-spu-duplicate'),
     path('spu/translate', SPUTranslateView.as_view(), name='admin-spu-translate'),
     path('spu/batch', SPUAdminBatchView.as_view(), name='admin-spu-batch'),
-    path('spu/batch/task/<str:task_id>', SPUAdminBatchTaskView.as_view(), name='admin-spu-batch-task'),
     path('spu/import', ImportProductsView.as_view(), name='admin-spu-import'),
     path('spu/import/media-zip', ImportProductMediaZipView.as_view(), name='admin-spu-import-media-zip'),
     path('spu/export', ExportProductsView.as_view(), name='admin-spu-export'),
@@ -118,20 +112,10 @@ urlpatterns = [
     # ==================== Admin Stats ====================
     path('stats', AdminStatsView.as_view(), name='admin-stats'),
 
-    # ==================== Admin Audit ====================
-    path('audit_log', AuditLogListView.as_view(), name='admin-audit-log'),
-    path('audit_log/stats', AuditLogStatsView.as_view(), name='admin-audit-log-stats'),
-    path('audit_log/<int:spu_id>', SPUAuditLogView.as_view(), name='admin-spu-audit-log'),
-    path('operation_log', OperationLogListView.as_view(), name='admin-operation-log'),
-
     # ==================== Admin Recycle ====================
     path('recycle', RecycleListView.as_view(), name='admin-recycle-list'),
     path('recycle/<int:spu_id>/restore', RecycleRestoreView.as_view(), name='admin-recycle-restore'),
     path('recycle/<int:spu_id>/permanent', RecyclePermanentDeleteView.as_view(), name='admin-recycle-permanent'),
-
-    # ==================== Admin Task ====================
-    path('task/<str:task_id>', TaskProgressView.as_view(), name='admin-task-progress'),
-    path('task', TaskListView.as_view(), name='admin-task-list'),
 
     # ==================== Admin Media ====================
     path('media/spu/<int:spu_id>', MediaListBySPUView.as_view(), name='media-spu-list'),
@@ -139,5 +123,6 @@ urlpatterns = [
     path('media/spu/<int:spu_id>/video/upload', MediaVideoCreateView.as_view(), name='media-video-create'),
     path('media/<int:media_id>/delete', MediaDeleteView.as_view(), name='media-delete'),
     path('media/<int:media_id>/update', MediaUpdateView.as_view(), name='media-update'),
+    path('media/<int:media_id>/replace', MediaReplaceView.as_view(), name='media-replace'),
     path('media/reorder', MediaReorderView.as_view(), name='media-reorder'),
 ]

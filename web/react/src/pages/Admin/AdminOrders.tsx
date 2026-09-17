@@ -6,6 +6,7 @@ import { Select, Input as SearchInput } from '../../components/admin/common/ui'
 import PromptDialog from '../../components/admin/common/PromptDialog'
 import { RefreshButton } from '../../components/admin/common'
 import { useTranslation } from '../../i18n'
+import { localizedText } from '../../utils/localizedText'
 import { formatDateTime } from '../../utils/helpers'
 import { orderAPI, type OrderSummary, type ChannelStatsItem } from '../../api/order'
 import {
@@ -22,7 +23,7 @@ import { orderTone, type OrderStatus } from '../../theme/business'
 import type { StatusTone } from '../../theme'
 import { useUrlState } from '../../hooks/useUrlState'
 
-type TabKey = 'orders' | 'aftersales'
+type TabKey = 'orders' | 'aftersales' | 'advertising'
 
 interface AfterSaleRow {
   id: number
@@ -288,7 +289,7 @@ const STEP_LABEL_KEY: Record<string, string> = {
 const PAGE_SIZE = 20
 
 export default function AdminOrders() {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
 
   /* URL State：Tab / 订单筛选 / 售后筛选 / 分页（刷新不丢、可分享、Back 有效） */
   const [tab, setTab] = useUrlState<TabKey>('tab', 'orders')
@@ -639,6 +640,7 @@ export default function AdminOrders() {
       <Tabs>
         <TabBtn $active={tab === 'orders'} onClick={() => setTab('orders')}>{t('admin.orders.tabOrders')}</TabBtn>
         <TabBtn $active={tab === 'aftersales'} onClick={() => setTab('aftersales')}>{t('admin.orders.tabAfterSales')}</TabBtn>
+        <TabBtn $active={tab === 'advertising'} onClick={() => setTab('advertising')}>{t('admin.orders.tabAdvertising')}</TabBtn>
       </Tabs>
 
       {toast && <Toast $type={toast.type}>{toast.message}</Toast>}
@@ -755,6 +757,18 @@ export default function AdminOrders() {
         </>
       )}
 
+      {/* 广告投放：占位面板（内容待接入，排版沿用订单/售后区块样式） */}
+      {tab === 'advertising' && (
+        <>
+          <FilterBar>
+            <span style={{ fontSize: 14, color: 'var(--text-secondary, #6b7280)' }}>
+              {t('admin.orders.advertisingPlaceholder')}
+            </span>
+          </FilterBar>
+          <Empty>{t('admin.orders.advertisingEmpty')}</Empty>
+        </>
+      )}
+
       {/* 订单详情 Drawer（右侧滑入，不遮挡列表） */}
       <DetailDrawer
         open={!!selected}
@@ -807,7 +821,7 @@ export default function AdminOrders() {
               </thead>
               <tbody>
                 {(selected.items || []).map((it: any) => (
-                  <tr key={it.id || it.sku_code}>
+                  <tr key={it.id ?? it.sku_name}>
                     <td>
                       {it.spu_id ? (
                         <ItemNameLink
@@ -816,13 +830,13 @@ export default function AdminOrders() {
                           onClick={() => setItemPreview(it)}
                           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}
                         >
-                          {it.spu_name}
+                          {localizedText(lang, it.spu_name, it.spu_name_en, it.spu_name_ar)}
                         </ItemNameLink>
                       ) : (
-                        it.spu_name
+                        localizedText(lang, it.spu_name, it.spu_name_en, it.spu_name_ar)
                       )}
                     </td>
-                    <td style={{ fontFamily: 'monospace' }}>{it.sku_code}</td>
+                    <td style={{ fontFamily: 'monospace' }}>{it.sku_name ?? it.sku_code}</td>
                     <td style={{ textAlign: 'right' }}><Amount>{money(it.price)}</Amount></td>
                     <td style={{ textAlign: 'right' }}>{it.quantity}</td>
                     <td style={{ textAlign: 'right' }}><Amount>{money(it.subtotal)}</Amount></td>
@@ -875,15 +889,15 @@ export default function AdminOrders() {
             {itemPreview.image ? (
               <img
                 src={itemPreview.image}
-                alt={itemPreview.spu_name}
+                alt={localizedText(lang, itemPreview.spu_name, itemPreview.spu_name_en, itemPreview.spu_name_ar)}
                 style={{ width: 96, height: 96, objectFit: 'contain', borderRadius: 8, border: '1px solid #eee', background: '#fafafa' }}
               />
             ) : null}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>{itemPreview.spu_name}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>{localizedText(lang, itemPreview.spu_name, itemPreview.spu_name_en, itemPreview.spu_name_ar)}</div>
               <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '96px 1fr', gap: '6px 12px', fontSize: 13 }}>
                 {[
-                  ['SKU', itemPreview.sku_code],
+                  ['SKU', itemPreview.sku_name ?? itemPreview.sku_code],
                   [t('admin.orders.unitPrice'), money(itemPreview.price)],
                   [t('admin.orders.quantity'), itemPreview.quantity],
                   [t('admin.orders.subtotal'), money(itemPreview.subtotal)],

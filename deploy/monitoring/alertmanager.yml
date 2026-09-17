@@ -8,9 +8,9 @@ templates:
   - '/etc/alertmanager/templates/alertmanager-email.tmpl'
 
 global:
-  smtp_smarthost: 'smtp.163.com:465'
-  smtp_from: 'deavenhui@163.com'
-  smtp_auth_username: 'deavenhui@163.com'
+  smtp_smarthost: 'smtp.qq.com:465'
+  smtp_from: 'carvenex@qq.com'
+  smtp_auth_username: 'carvenex@qq.com'
   smtp_auth_password_file: '/etc/alertmanager/smtp_password'
   smtp_require_tls: false
 

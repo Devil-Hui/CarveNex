@@ -49,6 +49,12 @@ class SKUAdminListView(BaseApiView):
                 'image_url': sku.image_url,
                 'shelf_status': sku.shelf_status,
                 'alert_threshold': sku.alert_threshold,
+                'sku_name': sku.sku_name,
+                # 兼容别名，旧调用方正取 sku_code
+                'sku_code': sku.sku_name,
+                'barcode': sku.barcode,
+                'weight': str(sku.weight),
+                'track_inventory': sku.track_inventory,
                 'created_at': sku.created_at,
                 'updated_at': sku.updated_at,
             })
@@ -97,6 +103,12 @@ class SKUAdminBatchCreateView(BaseApiView):
                     discount_price=dp,
                     stock=int(sku_item.get('stock', 0)),
                     shelf_status=sku_item.get('shelf_status'),
+                    # 透传 SKU 级字段，避免用户填写的 SKU 名称等数据被静默丢弃
+                    # 兼容新旧字段名：优先新契约 sku_name，回退旧 sku_code
+                    sku_name=sku_item.get('sku_name') if 'sku_name' in sku_item else sku_item.get('sku_code', ''),
+                    barcode=sku_item.get('barcode', ''),
+                    weight=sku_item.get('weight', 0),
+                    track_inventory=sku_item.get('track_inventory', True),
                 )
                 # 防御：shelf_status 缺省或非法值统一回落到上架，避免产生不可售 SKU
                 if sku.shelf_status not in ShelfStatus.values:
@@ -163,9 +175,15 @@ class SKUAdminUpdateView(BaseApiView):
         old_price = sku.price
         old_discount_price = sku.discount_price
 
-        for field in ['price', 'discount_price', 'stock', 'image_url', 'shelf_status', 'alert_threshold']:
+        for field in ['price', 'discount_price', 'stock', 'image_url', 'shelf_status', 'alert_threshold',
+                      'sku_name', 'barcode', 'weight', 'track_inventory']:
             if field in request.data:
                 setattr(sku, field, request.data[field])
+        # 兼容旧契约字段名 sku_code → 映射到新字段 sku_name
+        if 'sku_code' in request.data:
+            sku.sku_name = request.data['sku_code']
+        if 'spec_values' in request.data:
+            sku.spec_values = request.data['spec_values']
         sku.save()
 
         # 记录价格变更历史
@@ -214,12 +232,12 @@ class SKUAdminDeleteView(BaseApiView):
 
 
 class SKUSearchView(BaseApiView):
-    """全局 SKU 搜索（按 sku_code / 商品名 模糊匹配），供活动关联 SKU 等场景使用"""
+    """全局 SKU 搜索（按 sku_name / 商品名 模糊匹配），供活动关联 SKU 等场景使用"""
     permission_classes = [HasPerm('goods.sku.write')]
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('q', OpenApiTypes.STR, description='sku_code 或商品名关键词'),
+            OpenApiParameter('q', OpenApiTypes.STR, description='sku_name 或商品名关键词'),
             OpenApiParameter('limit', OpenApiTypes.INT, description='返回条数上限（默认 20）'),
         ],
         responses={200: OpenApiResponse(description='Search results')},
@@ -234,7 +252,7 @@ class SKUSearchView(BaseApiView):
             return Response({'items': []})
         skus = (
             SKU.objects
-            .filter(Q(sku_code__icontains=q) | Q(spu__name__icontains=q), spu__deleted_at__isnull=True)
+            .filter(Q(sku_name__icontains=q) | Q(spu__name__icontains=q), spu__deleted_at__isnull=True)
             .select_related('spu')
             .order_by('-id')[:limit]
         )
@@ -246,9 +264,13 @@ class SKUSearchView(BaseApiView):
             skus = skus.filter(spu__category_id__in=managed_ids)
         items = [{
             'id': s.id,
-            'sku_code': s.sku_code,
+            'sku_name': s.sku_name,
+            # 兼容别名，旧调用方正取 sku_code
+            'sku_code': s.sku_name,
             'spu_id': s.spu_id,
             'spu_name': s.spu.name,
+            'spu_name_en': s.spu.name_en,
+            'spu_name_ar': s.spu.name_ar,
             'price': str(s.price),
             'stock': s.stock,
             'spec_values': s.spec_values,

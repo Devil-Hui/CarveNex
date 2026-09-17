@@ -37,10 +37,12 @@ logs/*.log
 *.log
 
 # ── Media & Static (mounted at runtime) ──
-media/*
-!media/.gitkeep
-static/*
-!static/.gitkeep
+# 必须加 / 锚定构建上下文根：写成 media/* 会连带排除 apps/media/*，
+# 导致镜像里缺失 media 这个 Django app（ModuleNotFoundError: No module named 'apps.media'）
+/media/*
+!/media/.gitkeep
+/static/*
+!/static/.gitkeep
 
 # ── Test ──
 .tox/

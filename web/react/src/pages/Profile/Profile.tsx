@@ -1027,7 +1027,7 @@ export default function Profile() {
       {reviewsLoading ? (
         <EmptyState>{t('common.loading')}</EmptyState>
       ) : reviews.length === 0 ? (
-        <EmptyState>{t('store.profile.noReviews')}</EmptyState>
+        <EmptyState>{t('store.product.noReviews')}</EmptyState>
       ) : (
         reviews.map((review: ReviewItem) => (
           <OrderItem key={review.id} onClick={() => navigate(`/product/${review.spu_id}`)}>

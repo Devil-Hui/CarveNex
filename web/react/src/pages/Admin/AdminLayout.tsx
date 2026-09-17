@@ -10,7 +10,6 @@ import { orderAPI, type OrderSummary } from '../../api/order'
 import { useAllowedMenuPaths } from '../../components/admin/ProtectedRoute'
 import { useIsMobile } from '../../hooks/useBreakpoint'
 import { Icon } from '../../components/admin/common/Icon'
-import { TaskCenter } from '../../components/admin/TaskCenter'
 import { CommandPalette, type PaletteSection } from '../../components/admin/CommandPalette'
 import { ToastProvider, toast } from '../../components/admin/common/Toast'
 import { Badge, Avatar } from '../../components/admin/common'
@@ -51,6 +50,16 @@ const SidebarLogo = styled.div`
   border-bottom: 1px solid #16213e;
   white-space: nowrap;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`
+
+const BrandLogoImg = styled.img`
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 4px;
 `
 
 const SidebarNav = styled.nav`
@@ -519,6 +528,7 @@ function useMenuItems() {
       section: t('admin.layout.sidebar.productOps'),
       items: [
         { to: '/admin/products', label: t('admin.layout.menu.products'), icon: 'package' },
+        { to: '/admin/ads', label: t('admin.layout.menu.adsPrecision'), icon: 'trending' },
         { to: '/admin/categories', label: t('admin.layout.menu.categories'), icon: 'grid' },
         { to: '/admin/brands', label: t('admin.layout.menu.brands'), icon: 'brand' },
         { to: '/admin/tags', label: t('admin.layout.menu.tags'), icon: 'tag' },
@@ -547,11 +557,8 @@ function useMenuItems() {
     {
       section: t('admin.layout.sidebar.systemMgmt'),
       items: [
-        // 管理组（组长/组员）已删除，不展示 Groups 菜单
-        { to: '/admin/audit-logs', label: t('admin.layout.menu.auditLogs'), icon: 'edit' },
+        // 管理组（组长/组员）已删除，不复用 Groups 菜单
         { to: '/admin/recycle-bin', label: t('admin.layout.menu.recycleBin'), icon: 'trash' },
-        { to: '/admin/tasks', label: t('admin.layout.menu.asyncTasks'), icon: 'clock' },
-        { to: '/admin/rbac', label: t('admin.layout.menu.rbac'), icon: 'shield' },
         { to: '/admin/email-templates', label: t('admin.layout.menu.emailTemplates'), icon: 'mail' },
       ],
     },
@@ -567,6 +574,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   '/admin': 'admin.layout.breadcrumb.home',
   '/admin/dashboard': 'admin.layout.breadcrumb.dashboard',
   '/admin/products': 'admin.layout.breadcrumb.products',
+  '/admin/ads': 'admin.layout.breadcrumb.adsPrecision',
   '/admin/media-import': 'admin.layout.breadcrumb.mediaImport',
   '/admin/categories': 'admin.layout.breadcrumb.categories',
   '/admin/brands': 'admin.layout.breadcrumb.brands',
@@ -584,6 +592,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
 
 const GROUP_MAP: Record<string, string> = {
   products: 'admin.layout.sidebar.productOps',
+  ads: 'admin.layout.sidebar.productOps',
   categories: 'admin.layout.sidebar.productOps',
   brands: 'admin.layout.sidebar.productOps',
   tags: 'admin.layout.sidebar.productOps',
@@ -841,7 +850,16 @@ export default function AdminLayout() {
         {/* 桌面侧边栏 */}
         {!isMobile && (
           <Sidebar $collapsed={collapsed}>
-            <SidebarLogo>{collapsed ? 'C' : 'CarveNex'}</SidebarLogo>
+            <SidebarLogo>
+              {collapsed ? (
+                <BrandLogoImg src="/static/images/logo-trimmed.png" alt="CarveNex" />
+              ) : (
+                <>
+                  <BrandLogoImg src="/static/images/logo-trimmed.png" alt="CarveNex" />
+                  <span>CarveNex</span>
+                </>
+              )}
+            </SidebarLogo>
             {renderNav(collapsed)}
             <SidebarToggle onClick={toggleSidebar}>
               <Icon name="chevron-left" size={14} />
@@ -855,7 +873,10 @@ export default function AdminLayout() {
           <>
             <MobileDrawerOverlay onClick={() => setMobileNavOpen(false)} />
             <MobileDrawer>
-              <SidebarLogo>CarveNex</SidebarLogo>
+              <SidebarLogo>
+                <BrandLogoImg src="/static/images/logo-trimmed.png" alt="CarveNex" />
+                <span>CarveNex</span>
+              </SidebarLogo>
               {renderNav(false, () => setMobileNavOpen(false))}
             </MobileDrawer>
           </>
@@ -924,9 +945,6 @@ export default function AdminLayout() {
               </SearchWrap>
 
               <LanguageSwitch position="header" />
-
-              {/* 全局任务中心（↻ 任务 + 进度） */}
-              <TaskCenter />
 
               {/* 命令面板入口（⌘K） */}
               <button

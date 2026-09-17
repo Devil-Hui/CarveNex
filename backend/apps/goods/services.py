@@ -155,7 +155,7 @@ class GoodsCacheService:
             if sku_ids:
                 _sku_bloom.batch_add([f'sku:{sku_id}' for sku_id in sku_ids])
         except Exception:
-            pass  # Redis 不可用时静默降级
+            pass  # 缓存不可用时静默降级
 
     @staticmethod
     def add_spu_to_bloom(spu_id: int):
@@ -177,22 +177,39 @@ class GoodsCacheService:
 
     @staticmethod
     def _build_category_tree(categories):
-        """将扁平的分类列表转为嵌套树结构"""
+        """将扁平的分类列表转为嵌套树结构。
+
+        防御：分类数据若出现自环 / 循环父节点（如 parent 指向自身或后代），
+        原函数会无限递归触发 RecursionError → 500。这里用 visited 集合截断环，
+        保证无论数据是否合法都返回有限结果，绝不 500。
+        """
         by_parent = {}
         for cat in categories:
             by_parent.setdefault(cat.parent_id, []).append({
                 'id': cat.id,
                 'name': cat.name,
+                'name_en': cat.name_en or cat.name,
+                'name_zh': cat.name_zh or cat.name,
+                'name_ar': cat.name_ar or cat.name,
                 'parent_id': cat.parent_id,
                 'level': cat.level,
                 'is_active': cat.is_active,
                 'children': [],
             })
+        visited: set = set()
+
         def attach(parents):
             for node in parents:
-                node['children'] = by_parent.get(node['id'], [])
-                attach(node['children'])
+                if node['id'] in visited:
+                    # 已访问过：说明出现环，截断，不再向下展开
+                    node['children'] = []
+                    continue
+                visited.add(node['id'])
+                children = [c for c in by_parent.get(node['id'], []) if c['id'] not in visited]
+                node['children'] = children
+                attach(children)
             return parents
+
         return attach(by_parent.get(None, []))
 
 
@@ -203,7 +220,7 @@ class GoodsQueryService:
 
     @staticmethod
     def get_category_tree():
-        # 二级缓存（L1 LocMem → L2 Redis）：分类树读多写少，近缓存命中省 Redis 往返
+        # 二级缓存（L1 LocMem → L2 DB 缓存）：分类树读多写少，近缓存命中省远端往返
         cached = _goods_cache.two_level_get('category:tree:active')
         if cached:
             return cached
@@ -314,7 +331,7 @@ class GoodsQueryService:
     def get_spu_list(page=1, size=20, status=None, category_id=None, brand_id=None):
         """Public SPU list with pagination and filters. Excludes suspended SPUs.
         
-        🔥 Uses Redis caching with mutex lock (get_or_set_with_lock) to prevent
+        🔥 Uses DB caching with mutex lock (get_or_set_with_lock) to prevent
         cache penetration and avalanche.
         """
         from .models import SPU, SPUStatus, Category
@@ -369,8 +386,11 @@ class GoodsQueryService:
                 results.append({
                     'id': spu.id,
                     'name': spu.name,
-                    'name_en': spu.name_en,
-                    'name_ar': spu.name_ar,
+                    'name_en': spu.name_en or '',
+                    'name_ar': spu.name_ar or '',
+                    'description': spu.description or '',
+                    'description_en': spu.description_en or '',
+                    'description_ar': spu.description_ar or '',
                     'main_image': spu.main_image,
                     'status': spu.status,
                     'brand_name': spu.brand.name if spu.brand_id else '',
@@ -426,15 +446,17 @@ class GoodsQueryService:
         """计算商品活动标签。
         items: [{'id': int, 'category_id': int|None, 'brand_id': int|None}]
         返回 {spu_id: [{'type':'primary'|'secondary','label':str}, ...]}
-        - 活动价(primary): 在售 SKU 含 discount_price
+        - 活动价(primary): 在售 SKU 的折扣价 < 原价（真降价才算活动价，避免占位 discount_price 误标）
         - 可领券(secondary): 命中活动券 scope，或存在无 scope 的全场券
         """
         if not items:
             return {}
         spu_ids = [i['id'] for i in items]
+        from django.db.models import F
         from apps.goods.models import SKU
         activity_hit = set(SKU.objects.filter(
-            spu_id__in=spu_ids, shelf_status='on', discount_price__isnull=False,
+            spu_id__in=spu_ids, shelf_status='on',
+            discount_price__isnull=False, discount_price__lt=F('price'),
         ).values_list('spu_id', flat=True))
         cidx = _get_active_coupon_index()
         result = {}
@@ -498,15 +520,15 @@ def _get_active_coupon_index():
     return idx
 
 
-# ==================== SPU 状态缓存服务（Redis 前置缓存） ====================
+# ==================== SPU 状态缓存服务（DB 前置缓存） ====================
 
 class SPUStatusCache:
     """
-    SPU 状态 Redis 前置缓存。
+    SPU 状态 DB 前置缓存。
     
     设计目的：
-    - Admin 状态变更（上架/下架/挂起/恢复）时，同步写入 Redis
-    - 公开端 API 和管理端列表优先读取 Redis 缓存，实现即时响应
+    - Admin 状态变更（上架/下架/挂起/恢复）时，同步写入缓存
+    - 公开端 API 和管理端列表优先读取缓存，实现即时响应
     - 避免"admin 改了状态但页面刷新不及时"的问题
     - TTL = 1小时，状态变更时刷新
     """
@@ -548,7 +570,7 @@ class SPUStatusCache:
 
     @classmethod
     def sync_from_db(cls, spu_id: int):
-        """从数据库同步状态到 Redis（缓存 miss 时回填）"""
+        """从数据库同步状态到 DB 缓存（缓存 miss 时回填）"""
         from .models import SPU
         spu = SPU.objects.filter(id=spu_id, deleted_at__isnull=True).only('status').first()
         if spu:

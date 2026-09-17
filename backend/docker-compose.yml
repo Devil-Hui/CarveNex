@@ -29,6 +29,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # dev 镜像内自带 pytest 等测试依赖，可直接跑 make test-contract
+        INSTALL_TEST_DEPS: "true"
     environment:
       SERVICE_TYPE: django
       DJANGO_ENV: ${DJANGO_ENV:-dev}
@@ -41,56 +44,35 @@ services:
       DB_NAME: ${DB_NAME:-backend}
       DB_USER: ${DB_USER:-admin}
       DB_PASSWORD: ${DB_PASSWORD:-admin123456}
-      # 无 Redis：缓存/会话走 MySQL，Celery broker&result 走 MySQL（见 settings/base.py）
+      # 缓存/会话走 MySQL，Celery broker&result 走 MySQL（见 settings/base.py）
       STATIC_ROOT: /backend/static
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-only-change-in-prod}
       # 不注入 DJANGO_SUPERUSER_*：确保容器创建不自动生成超级管理员。
       # 需要超管时手动执行：docker compose exec web python manage.py createsuperuser
+      # 商品媒体导入源根目录（import_media_dir 默认读取）；宿主机 产品资料/ → /media_import
+      PRODUCT_IMAGES_ROOT: /media_import
     env_file: [../.env]
     ports: ["8000:8000", "8001:8001"]
     volumes:
       - .:/backend
       - media_data:/backend/media
       - static_data:/backend/static
-      # 批量导入素材目录：把本机 CarveNex/_media_import/ 挂进容器固定路径 /media_import。
-      # 之后只需把「商品名」文件夹丢进宿主该目录，无需再操作 Docker。
+      # 商品媒体导入源：把本机 CarveNex/产品资料/（一级目录=产品名，内含原图/视频）
+      #  挂进容器固定路径 /media_import。之后只需丢「商品名」文件夹即可再导入，无需动 Docker。
       # 说明：bind 挂载需在容器重启（docker compose up -d）后生效，属一次性设置。
-      - ../_media_import:/media_import
+      # 导入路径已抽成环境变量 PRODUCT_IMAGES_ROOT（默认 /media_import），不再硬编码。
+      - ../../产品资料:/media_import
+      # 补充素材目录（前端切图/占位等），按需使用；不做路径变量化。
+      - ../_media_import:/media_import_extra
     depends_on:
       db:
         condition: service_healthy
-    mem_limit: 448m
-    memswap_limit: 448m
+    # 原 448m 且 memswap_limit == mem_limit（等于禁止 swap），gunicorn worker 稍有波动
+    # 就被 OOM killer 直接 SIGKILL（日志：Worker (pid:xxx) was sent SIGKILL）。
+    # 放宽到 1.5G，并让 memswap > mem 以允许 512m 交换，超限先换页而非杀进程。
+    mem_limit: 1536m
+    memswap_limit: 2048m
     cpus: 0.5
-
-  celery_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: ["celery_worker"]
-    mem_limit: 448m
-    memswap_limit: 448m
-    cpus: 0.5
-    environment:
-      DJANGO_ENV: ${DJANGO_ENV:-dev}
-      # 邮件账号池（QQ，.env 配置，验证码异步发送需要）
-      EMAIL_ACCOUNTS: ${EMAIL_ACCOUNTS:-}
-      DB_HOST: db
-      DB_PORT: "3306"
-      DB_NAME: ${DB_NAME:-backend}
-      DB_USER: ${DB_USER:-admin}
-      DB_PASSWORD: ${DB_PASSWORD:-admin123456}
-      # 无 Redis：Celery broker&result 走 MySQL（见 settings/base.py _celery_mysql_url）
-      CELERY_CONCURRENCY: "1"
-      CELERY_BEAT_ENABLED: "true"
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-only-change-in-prod}
-    env_file: [../.env]
-    volumes:
-      - .:/backend
-      - media_data:/backend/media
-    depends_on:
-      db:
-        condition: service_healthy
 
 volumes:
   mysql_data:

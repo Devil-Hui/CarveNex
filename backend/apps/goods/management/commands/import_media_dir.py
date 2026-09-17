@@ -34,8 +34,11 @@ class Command(BaseCommand):
     help = '从目录批量导入商品媒体（每个子文件夹=一个商品）到 ProductMedia'
 
     def add_arguments(self, parser):
-        parser.add_argument('--dir', type=str, default='/media_import',
-                            help='媒体根目录，其下每个子文件夹=一个商品（文件夹名=SPU.name）')
+        parser.add_argument(
+            '--dir', type=str, default=os.getenv('PRODUCT_IMAGES_ROOT', '/media_import'),
+            help='媒体根目录（默认取环境变量 PRODUCT_IMAGES_ROOT，未设则为 /media_import）；'
+                 '其下每个子文件夹=一个商品（文件夹名=SPU.name）'
+        )
         parser.add_argument('--ratio', type=str, default='1:1',
                             help='图片裁切比例，默认 1:1；none/original 表示不裁切')
         parser.add_argument('--concurrency', type=int, default=0,
@@ -75,7 +78,17 @@ class Command(BaseCommand):
                 f'以下文件夹未匹配到同名 SPU（跳过）：\n  ' + '\n  '.join(missing)
             ))
 
+        # 2C4G 护栏：解码一张高分辨率原图的内存峰值约 3 bytes/px 再叠加 PIL 内部缓冲，
+        # 并发数必须封顶。注意 os.cpu_count() 读到的是「宿主」核数（不受容器 cgroup 限制），
+        # 8 核宿主会算出 7 → 7 张图同时全分辨率解码足以打爆 web 容器的内存上限。
+        max_concurrency = max(1, int(os.getenv('MEDIA_IMPORT_MAX_CONCURRENCY', '2')))
         concurrency = options['concurrency'] or max(1, (os.cpu_count() or 2) - 1)
+        concurrency = max(1, min(concurrency, max_concurrency))
+        self.stdout.write(
+            f'并发数: {concurrency}（上限 {max_concurrency}，'
+            f'可用环境变量 MEDIA_IMPORT_MAX_CONCURRENCY 调整）'
+        )
+
         results = []
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = {

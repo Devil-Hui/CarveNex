@@ -127,6 +127,19 @@ class Category(models.Model):
         validators=[MaxLengthValidator(100)],
         verbose_name='分类名称',
     )
+    # 多语言展示名：供前台按界面语言渲染 header 分类导航 / 分类页
+    name_en = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='分类名称（英语）',
+    )
+    name_zh = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='分类名称（中文）',
+    )
+    name_ar = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='分类名称（阿拉伯语）',
+    )
     parent = models.ForeignKey(
         'self',
         null=True,
@@ -519,7 +532,6 @@ class ProductMedia(models.Model):
         max_length=20, choices=MediaStatus.choices,
         default=MediaStatus.PENDING, verbose_name='状态',
     )
-    redis_key = models.CharField(max_length=64, blank=True, default='', verbose_name='Redis 暂存 Key')
     file_size = models.PositiveIntegerField(default=0, verbose_name='文件大小 (bytes)')
     alt_text = models.CharField(
         max_length=200, blank=True, default='',
@@ -570,13 +582,13 @@ class SKU(models.Model):
     price = models.DecimalField(
         max_digits=10, decimal_places=2,
         validators=[MinValueValidator(0)],
-        verbose_name='售价（元）',
+        verbose_name='售价（$）',
     )
     discount_price = models.DecimalField(
         max_digits=10, decimal_places=2,
         null=True, blank=True,
         validators=[MinValueValidator(0)],
-        verbose_name='折扣价（元）',
+        verbose_name='折扣价（$）',
     )
     stock = models.PositiveIntegerField(
         default=0,
@@ -608,9 +620,9 @@ class SKU(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
     sales = models.PositiveIntegerField(default=0, verbose_name='销量')
     version = models.PositiveIntegerField(default=0, verbose_name='乐观锁版本号')
-    sku_code = models.CharField(
+    sku_name = models.CharField(
         max_length=64, blank=True, default='',
-        verbose_name='SKU编码',
+        verbose_name='SKU名称',
     )
 
     class Meta:

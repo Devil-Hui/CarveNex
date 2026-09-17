@@ -1,4 +1,4 @@
-"""Health check endpoint — MySQL-only (DB + DatabaseCache + optional Celery ping)."""
+"""Health check endpoint — MySQL-only (DB + DatabaseCache)."""
 import logging
 
 from django.db import connections
@@ -28,14 +28,7 @@ def health_check(request):
     except Exception as e:
         statuses['cache'] = f'error: {e}'
 
-    # Celery 可选：worker 未起时标记 degraded 但不强制 503（单机可先起 API）
-    try:
-        from project.celery import app as celery_app
-        result = celery_app.control.ping(timeout=2)
-        statuses['celery'] = 'ok' if result else 'warn: no workers'
-    except Exception as e:
-        statuses['celery'] = f'warn: {e}'
-
+    # 部署：Celery 已下线，不再探测 worker 存活
     critical_ok = statuses.get('db') == 'ok' and statuses.get('cache') == 'ok'
     return JsonResponse(
         {

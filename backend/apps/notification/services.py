@@ -13,7 +13,7 @@ class NotificationService:
             per_page = getattr(settings, 'NOTIFICATION_DEFAULT_PAGE_SIZE', 20)
         cache_ttl = getattr(settings, 'NOTIFICATION_LIST_CACHE_TTL', 120)
         # 每用户 list 缓存版本：标记已读时自增，旧版本 key 自然失效，
-        # 不再依赖 clear_by_prefix 的 SCAN（Redis 上可能静默 no-op）。
+        # 不再依赖 clear_by_prefix 的 SCAN。
         version = _cache.get(f'list_version:{user.id}') or 0
         cache_key = f'list:{user.id}:{version}:{unread_only}:{page}:{per_page}:{type}'
         cached = _cache.get(cache_key)
@@ -48,8 +48,8 @@ class NotificationService:
     def _bump_list_version(user):
         """自增每用户 list 缓存版本，使旧的 list 缓存 key 失效。
 
-        优先用 Redis 原子 incr；非 Redis 后端（如 DatabaseCache）incr 缺键会抛错，
-        退化为 get+set。替换原先依赖 SCAN 前缀删除的方案（Redis 上可能静默 no-op）。
+        优先用后端原子 incr；DatabaseCache 等后端 incr 缺键会抛错，
+退化为 get+set。替换原先依赖 SCAN 前缀删除的方案。
         """
         version_key = f'list_version:{user.id}'
         try:

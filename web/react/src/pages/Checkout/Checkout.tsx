@@ -9,6 +9,7 @@ import { useCurrency } from '../../store/CurrencyContext'
 import { paymentAPI } from '../../api/payment'
 import { publicAPI, type UserCoupon } from '../../api/public'
 import { useTranslation } from '../../i18n'
+import { localizedText } from '../../utils/localizedText'
 import { Color, Radius, Shadow, Layout, Spacing, FontSize, FontWeight, Transition } from '../../theme/tokens'
 import { getCheckoutPaymentMethods, type CheckoutPaymentMethod } from './checkoutPaymentMethods'
 import {
@@ -762,7 +763,7 @@ export default function Checkout() {
   const { items, total, clearCart } = useCart()
   const { isLoggedIn, isLoading } = useUser()
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const { format } = useCurrency()
 
   // ── 状态 ──
@@ -1057,11 +1058,13 @@ export default function Checkout() {
                   <CardIcon><IconCart /></CardIcon>
                   <CardTitle>{t('store.orderSummary.yourCart').replace('{count}', String(items.length))}</CardTitle>
                 </CardHeader>
-                {items.map(item => (
+                {items.map(item => {
+                  const localizedName = localizedText(lang, item.spu_name, item.spu_name_en, item.spu_name_ar)
+                  return (
                   <SummaryItemRow key={item.id}>
                     <SummaryItemThumb $src={item.image || undefined} />
                     <SummaryItemInfo>
-                      <div className="name" title={item.spu_name}>{item.spu_name}</div>
+                      <div className="name" title={localizedName}>{localizedName}</div>
                       <div className="meta">
                         {t('store.orderSummary.qty')}: {item.quantity}
                         {item.spec_values && item.spec_values.length > 0 && (
@@ -1081,7 +1084,8 @@ export default function Checkout() {
                       </span>
                     </SummaryItemPrice>
                   </SummaryItemRow>
-                ))}
+                  )
+                })}
               </Card>
             </CenterColumn>
 

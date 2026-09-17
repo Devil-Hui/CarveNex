@@ -97,20 +97,36 @@ migrate() {
 # 顺序约束（重要）：
 #   1) 先建表（migrate）
 #   2) 再确保存在超级管理员：从 DJANGO_SUPERUSER_* 自动创建/修复（幂等；未设密码则跳过，不阻断）
-#   3) 播种 RBAC 角色权限矩阵 + 同步审核组角色
-#   4) 创建 Django 角色组
-#   5) 收集静态资源
+#   3) 播种基础数据（分类/品牌/标签/券）+ 初始商品（xlsx+图片，见 seed_products/）
+#   4) 播种 RBAC 角色权限矩阵
+#   5) 创建 Django 角色组
+#   6) 收集静态资源
 init_system() {
     mkdir -p logs  # dev compose 卷挂载会覆写容器内的 logs/, 需重建
     migrate
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Ensuring superuser (from DJANGO_SUPERUSER_*)..."
     python manage.py ensure_superuser
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Seeding initial data (categories/brands/tags)..."
-    python manage.py seed_data --env=prod || echo "[WARN] seed_data 执行失败，请检查"
+    # 幂等 seed 需全量跑（分类/商品/xlsx/图），在前台（非列表页）重建可能极慢。
+    # 默认执行；显式 SKIP_SEED=1 可跳过（适合已初始化、仅需快速重启的 dev 场景）。
+    if [ "${SKIP_SEED:-0}" = "1" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] SKIP_SEED=1 → 跳过种子数据（快速重启）。"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Seeding initial data (categories/brands/tags)..."
+        python manage.py seed_data --env=prod || echo "[WARN] seed_data 执行失败，请检查"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Seeding initial products (xlsx + images) from seed_products/..."
+        python manage.py seed_products --env=prod || echo "[WARN] seed_products 执行失败，请检查"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completing multilingual fields (zh/ar) via TMT..."
+        python manage.py seed_products_i18n || echo "[WARN] seed_products_i18n 执行失败，请检查"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Seeding demo data (orders/reviews/favorites/carts/etc.)..."
+        python manage.py seed_demo_data || echo "[WARN] seed_demo_data 执行失败，请检查"
+    fi
+    # 广告投放每日指标（幂等：bulk_create ignore_conflicts + 固定种子）。
+    # 放到 seed 分支之外，确保【首次创建】和【每次更新/重启】都会自动刷新
+    # 过去 7 天数据（同一天同一平台/商品数据不变，重复执行不产生重复行）。
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Seeding ad daily metrics (last 7 days)..."
+    python manage.py seed_daily_metrics --days=7 || echo "[WARN] seed_daily_metrics 执行失败，请检查"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Bootstrapping RBAC role-permission matrix..."
     python manage.py rbac_bootstrap
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Syncing admin-group roles to RBAC..."
-    python manage.py sync_admin_group_roles
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Setting up Django role groups..."
     python manage.py setup_groups || echo "[WARN] setup_groups 执行失败，请检查"
     collectstatic

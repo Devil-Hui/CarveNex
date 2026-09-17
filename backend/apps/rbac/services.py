@@ -1,8 +1,8 @@
 """
 RBAC 判定与缓存 —— 全站权限判断的唯一入口。
 
-缓存策略（Redis + 版本号，满足多 worker 实时失效）：
-  - 角色权限矩阵   `rbac:role_perms:v{N}`  随版本号失效（TTL 300s 兜底）
+缓存策略（DB 缓存 + 版本号，满足多 worker 实时失效）：
+  - 角色权限矩阵   `rbac:role_perms:v{N}`  版本号失效（TTL 300s 兜底）
   - 用户角色       `rbac:user_roles:{uid}`  变更时显式删除（TTL 300s 兜底）
   - 版本号         `rbac:version`           权限矩阵变更时 INCR，所有进程读新版本即 miss 重载，
                                             消除多 worker 场景下的最终一致窗口。
@@ -32,8 +32,8 @@ _VERSION_KEY = 'version'
 # ==================== 缓存失效 ====================
 
 def _bump_version() -> None:
-    """递增缓存版本号。django_redis 的 incr 对不存在的 key 抛 ValueError（首次启动/新环境），
-    需先初始化 key 再递增，否则启动期 rbac_bootstrap 等管理命令会中断容器启动。"""
+    """递增缓存版本号。多后端 incr 对不存在的 key 抛 ValueError（首次启动/新环境），
+需先初始化 key 再递增，否则启动期 rbac_bootstrap 等管理命令会中断容器启动。"""
     if _cache.get(_VERSION_KEY) is None:
         _cache.set(_VERSION_KEY, 1)
     _cache.incr(_VERSION_KEY)
@@ -77,7 +77,7 @@ def _load_role_perms() -> dict[str, frozenset[str]]:
 
 
 def get_role_perms() -> dict[str, frozenset[str]]:
-    """角色 → 权限点集合。Redis 缓存 + 版本号：矩阵变更 INCR 版本号即全进程即时失效。"""
+    """角色 → 权限点集合。DB 缓存 + 版本号：矩阵变更 INCR 版本号即全进程即时失效。"""
     version = _get_version()
     key = f'role_perms:v{version}'
     cached = _cache.get_json(key)
@@ -109,7 +109,7 @@ def _user_identity(user_or_id) -> tuple[int, str | None]:
 
 
 def get_user_roles(user_or_id) -> frozenset[str]:
-    """用户的角色集合。Redis 缓存；角色变更时 invalidate_user 删除该 key 即时失效。
+    """用户的角色集合。DB 缓存；角色变更时 invalidate_user 删除该 key 即时失效。
 
     ABAC：expires_at 到期的临时角色自动剔除；conditions 中的 time 条件不满足同样剔除。
     """

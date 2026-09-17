@@ -12,8 +12,62 @@ import { Icon } from '../../components/admin/common/Icon'
 import {
   getAllStagedItems,
   clearAllStaged,
+  deleteStagedItem,
 } from '../../utils/mediaStaging'
 import { Input, Select, PrimaryBtn, SecondaryBtn } from '../../components/admin/common/ui'
+
+// ── 多语言：与后端 TMT LANG_MAP 对齐 ──
+
+const SUPPORTED_LANGS = ['zh', 'en', 'ar'] as const
+type SupportedLang = (typeof SUPPORTED_LANGS)[number]
+
+/**
+ * 依据文本内容判断语种，用于「同步翻译」确定来源语言。
+ * 判定顺序：阿拉伯字符 → 中日韩字符 → 其余按英文处理。
+ * 这样用户填英文时也能正确补出中文，而不必假定输入恒为中文。
+ */
+function detectLang(text: string): SupportedLang {
+  if (/[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF]/.test(text)) return 'ar'
+  if (/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF]/.test(text)) return 'zh'
+  return 'en'
+}
+
+/**
+ * 把「上传失败的媒体」拼成一条**说真话**的错误文案。
+ *
+ * 背景（本次故障根因之一）：后端 400 响应体里的 `detail` 才是真实原因
+ * （如「「original_主图-06.webp」文件为空（0 字节）…」），`postWithProgress`
+ * 已经把它放进了 `Error.message`；但旧代码只 push 文件名、把 message 丢掉，
+ * 再用一句写死的「请检查存储空间是否充足后重试」兜底——
+ * 于是「0 字节 / 超 10MB / 像素超限 / 内容损坏 / 类型不支持」全部被误报成
+ * 「存储满了」，用户只能反复重试，还不断产生空商品。
+ *
+ * 现在：优先展示后端给的原因；拿不到时给中性文案，绝不臆测为容量问题。
+ */
+function buildMediaFailureMessage(
+  t: (key: string) => string,
+  failures: { name: string; reason?: string }[],
+): string {
+  if (failures.length === 0) return ''
+  const files = failures.map((f) => f.name).join('、')
+  const reasons = Array.from(
+    new Set(failures.map((f) => (f.reason || '').trim()).filter(Boolean)),
+  )
+  if (reasons.length === 0) {
+    return t('admin.productForm.mediaUploadFailedUnknown').replace('{files}', files)
+  }
+  // 同一原因只展示一次，避免 3 张图重复刷同一句话
+  return t('admin.productForm.mediaUploadFailed')
+    .replace('{files}', files)
+    .replace('{reason}', reasons.join('；'))
+}
+
+/** 从上传异常里取出后端返回的真实原因（detail / message / HTTP 状态）。 */
+function extractUploadReason(e: unknown): string {
+  if (e instanceof Error && e.message) return e.message
+  if (typeof e === 'string') return e
+  return ''
+}
 
 // ── Types ──
 
@@ -33,7 +87,7 @@ interface SKUFormItem {
   stock: string
   discount_price: string
   shelf_status: string
-  sku_code: string
+  sku_name: string
   barcode: string
   weight: string
   track_inventory: string
@@ -636,6 +690,13 @@ const SyncTranslateBar = styled.div`
   margin-bottom: 4px;
 `
 
+const LangHint = styled.p`
+  margin: 10px 0 0;
+  font-size: ${FontSize.xs}px;
+  color: ${Color.text.muted};
+  line-height: 1.5;
+`
+
 // ── 新建模式：提交时图片上传进度遮罩 ──
 
 const UploadOverlay = styled.div`
@@ -909,8 +970,29 @@ const VariantFieldLabel = styled.label`
   font-weight: ${FontWeight.medium};
 `
 
+/**
+ * 价格输入容器：左侧固定货币符号。
+ * 站点基准货币为 USD（见 store/CurrencyContext.tsx），后台录入的价格一律是美元，
+ * 因此这里硬编码 '$'，不跟随前台的展示货币切换器（切换器只做展示换算）。
+ */
+const VariantPriceWrap = styled.div`
+  position: relative;
+  width: 100%;
+`
+
+const VariantPriceSymbol = styled.span`
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: ${FontSize.sm}px;
+  color: ${Color.text.muted};
+  line-height: 1;
+  pointer-events: none;
+`
+
 const VariantPriceInput = styled.input`
-  padding: 8px 12px;
+  padding: 8px 12px 8px 24px;
   border: 1px solid ${Color.border.medium};
   border-radius: ${Radius.sm}px;
   font-size: ${FontSize.sm}px;
@@ -1000,7 +1082,7 @@ const VariantStockInput = styled.input`
 `
 
 const VariantDiscountInput = styled.input`
-  padding: 8px 12px;
+  padding: 8px 12px 8px 24px;
   border: 1px solid ${Color.border.medium};
   border-radius: ${Radius.sm}px;
   font-size: ${FontSize.sm}px;
@@ -1211,7 +1293,7 @@ export default function AdminProductForm() {
 
   // SKU
   const [skus, setSkus] = useState<SKUFormItem[]>([
-    { spec_values: {}, price: '', stock: '', discount_price: '', shelf_status: 'on_shelf', sku_code: '', barcode: '', weight: '', track_inventory: 'true' },
+    { spec_values: {}, price: '', stock: '', discount_price: '', shelf_status: 'on_shelf', sku_name: '', barcode: '', weight: '', track_inventory: 'true' },
   ])
 
   // Schedule
@@ -1386,7 +1468,7 @@ export default function AdminProductForm() {
   const addSKU = () => {
     const emptySpec: Record<string, string> = {}
     specs.forEach(s => { if (s.name.trim()) emptySpec[s.name.trim()] = '' })
-    setSkus([...skus, { spec_values: emptySpec, price: '', stock: '', discount_price: '', shelf_status: 'on_shelf', sku_code: '', barcode: '', weight: '', track_inventory: 'true' }])
+    setSkus([...skus, { spec_values: emptySpec, price: '', stock: '', discount_price: '', shelf_status: 'on_shelf', sku_name: '', barcode: '', weight: '', track_inventory: 'true' }])
     markDirty()
   }
 
@@ -1412,6 +1494,12 @@ export default function AdminProductForm() {
 
   // ── Stock +/- with long-press rapid change ──
   const stockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // 新建模式下「已创建但媒体未传完」的 SPU id。
+  // 保存失败时旧实现会保留暂存区让用户修正后重试，但重试又会 createSPU 一次 ——
+  // 于是每失败一次就多一个空商品（线上一次排查就产生了 SPU 61→68 共 8 个）。
+  // 这里记住首次创建的 id，重试时改为 updateSPU 复用，避免空商品堆积。
+  const createdSpuIdRef = useRef<number | null>(null)
 
   const clearStockInterval = useCallback(() => {
     if (stockIntervalRef.current !== null) {
@@ -1472,9 +1560,17 @@ export default function AdminProductForm() {
   const [translating, setTranslating] = useState(false)
   const [translateError, setTranslateError] = useState('')
 
-  // 同步翻译：一键把名称 + 描述翻译成英文和阿拉伯语
+  /**
+   * 同步翻译：按「实际输入语种」自动判断来源语言，再翻译填充其余语言。
+   * 不再假定输入一定是中文 —— 例如用户填英文时，英文归位到英文名称，
+   * 中文名称由译文补齐，避免出现空值或占位文案。
+   */
   const handleSyncTranslate = async () => {
-    if (!name.trim() && !description.trim()) {
+    // 名称 / 描述都允许「任意语言列」作为输入源：三列取第一个非空值当原文。
+    // 此前只认中文列，导致用户只填英文 / 阿拉伯语时点击翻译提示「请先输入内容」。
+    const sourceName = name.trim() || nameEn.trim() || nameAr.trim()
+    const sourceDescription = description.trim() || descriptionEn.trim() || descriptionAr.trim()
+    if (!sourceName && !sourceDescription) {
       setTranslateError(t('admin.productForm.translateEmpty'))
       return
     }
@@ -1482,21 +1578,45 @@ export default function AdminProductForm() {
     setTranslateError('')
     try {
       const tasks: Promise<void>[] = []
-      if (name.trim()) {
-        tasks.push(
-          adminAPI.translateText({ text: name, source: 'auto', target: 'en' })
-            .then((r) => setNameEn(r.translated_text)),
-          adminAPI.translateText({ text: name, source: 'auto', target: 'ar' })
-            .then((r) => setNameAr(r.translated_text)),
-        )
+
+      /**
+       * 把原文归入它自己语种的字段，其余语种用译文补齐。
+       * @param text 原文
+       * @param setters 各语种对应的字段写入函数
+       */
+      const fillByDetectedLang = (
+        text: string,
+        setters: Record<SupportedLang, (v: string) => void>,
+      ) => {
+        const src = detectLang(text)
+        // 原文归位：确保来源语言字段拿到用户真正输入的内容
+        setters[src](text)
+        const targets = SUPPORTED_LANGS.filter((l) => l !== src)
+        for (const target of targets) {
+          tasks.push(
+            adminAPI
+              .translateText({ text, source: 'auto', target })
+              .then((r) => {
+                // 译文为空时不覆盖，避免把已有内容清成空串
+                if (r.translated_text) setters[target](r.translated_text)
+              }),
+          )
+        }
       }
-      if (description.trim()) {
-        tasks.push(
-          adminAPI.translateText({ text: description, source: 'auto', target: 'en' })
-            .then((r) => setDescriptionEn(r.translated_text)),
-          adminAPI.translateText({ text: description, source: 'auto', target: 'ar' })
-            .then((r) => setDescriptionAr(r.translated_text)),
-        )
+
+      if (sourceName) {
+        fillByDetectedLang(sourceName, {
+          zh: setName,
+          en: setNameEn,
+          ar: setNameAr,
+        })
+      }
+      if (sourceDescription) {
+        fillByDetectedLang(sourceDescription, {
+          zh: setDescription,
+          en: setDescriptionEn,
+          ar: setDescriptionAr,
+        })
       }
       await Promise.all(tasks)
       markDirty()
@@ -1515,7 +1635,12 @@ export default function AdminProductForm() {
   // ── Submit ──
 
   const doSubmit = async () => {
-    if (!name.trim()) { setError(t('admin.productForm.productNameRequired')); return }
+    // 名称 / 描述支持「任意语言列填写」：中文 / 英文 / 阿拉伯语任一列有值即可保存。
+    // 主字段（name / description）为空时用已填写的那份兜底——后端 name 必填，
+    // 且前台 localizedText 也会回退到主字段，兜底后各语言站展示都不会空白。
+    const finalName = name.trim() || nameEn.trim() || nameAr.trim()
+    const finalDescription = description.trim() || descriptionEn.trim() || descriptionAr.trim()
+    if (!finalName) { setError(t('admin.productForm.productNameRequiredAny')); return }
     if (!brandId) { setError(t('admin.productForm.brandRequired')); return }
     if (!categoryId) { setError(t('admin.productForm.categoryRequired')); return }
 
@@ -1524,10 +1649,10 @@ export default function AdminProductForm() {
     try {
       const validSpecs = specs.filter(s => s.name.trim() && s.values.length > 0)
       const spuData = {
-        name: name.trim(),
+        name: finalName,
         brand_id: Number(brandId),
         category_id: Number(categoryId),
-        description: description.trim(),
+        description: finalDescription,
         name_en: nameEn.trim(),
         description_en: descriptionEn.trim(),
         name_ar: nameAr.trim(),
@@ -1563,7 +1688,7 @@ export default function AdminProductForm() {
               stock: Number(sku.stock),
               discount_price: sku.discount_price || null,
               shelf_status: sku.shelf_status,
-              sku_code: sku.sku_code || '',
+              sku_name: sku.sku_name || '',
               barcode: sku.barcode || '',
               weight: sku.weight || '0',
               track_inventory: sku.track_inventory === 'true',
@@ -1577,7 +1702,7 @@ export default function AdminProductForm() {
                 stock: Number(sku.stock),
                 discount_price: sku.discount_price || null,
                 shelf_status: sku.shelf_status,
-                sku_code: sku.sku_code || '',
+                sku_name: sku.sku_name || '',
                 barcode: sku.barcode || '',
                 weight: sku.weight || '0',
                 track_inventory: sku.track_inventory === 'true',
@@ -1588,10 +1713,12 @@ export default function AdminProductForm() {
 
         // 编辑模式：上传「新裁剪、尚未提交」的暂存媒体（IndexedDB）到该 SPU。
         // 裁剪时仅暂存浏览器端，点保存/提交才真正上传 R2，避免无效存储。
-        const editStaged = await getAllStagedItems()
+        const editStaged = (await getAllStagedItems())
+          .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
         const editImageItems = editStaged.filter(
           (it) => it.mediaType === 'image' && it.thumbBlob && it.listBlob && it.largeBlob && it.originalBlob,
         )
+        const editFailures: { name: string; reason?: string }[] = []
         if (editImageItems.length > 0) {
           setUploadState({ active: true, uploaded: 0, total: editImageItems.length, percent: 0, fileName: '' })
           for (const item of editImageItems) {
@@ -1605,12 +1732,25 @@ export default function AdminProductForm() {
               await adminAPI.uploadMedia(spuId, fd, (p) => {
                 setUploadState((s) => ({ ...s, percent: p, fileName: item.fileName || 'image' }))
               })
+              // 上传成功即从暂存区移除：失败重试时只补传失败项，避免同一张图重复上传。
+              if (item.id != null) await deleteStagedItem(item.id)
             } catch (e) {
+              // 保留后端 detail：它是唯一能说明「为什么失败」的信息，不能丢。
               console.warn('[AdminProductForm] 编辑模式上传图片媒体失败 spu=%s:', spuId, e)
+              editFailures.push({
+                name: item.fileName || 'image',
+                reason: extractUploadReason(e),
+              })
             }
             setUploadState((s) => ({ ...s, uploaded: s.uploaded + 1, percent: 0 }))
           }
           setUploadState((s) => ({ ...s, active: false }))
+        }
+        // 新增图片上传失败时不静默吞掉，明确提示用户哪些图没传上去，
+        // 避免「主图没了」且无从补救。失败时保留暂存区，用户可修正后再保存，
+        // 且不清空已保存的原有媒体。
+        if (editFailures.length > 0) {
+          throw new Error(buildMediaFailureMessage(t, editFailures))
         }
         await clearAllStaged()
       } else {
@@ -1625,13 +1765,27 @@ export default function AdminProductForm() {
           }
         }
 
-        const stagedItems = await getAllStagedItems()
+        const stagedItems = (await getAllStagedItems())
+          .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+
+        // 收集创建模式下图片/视频上传失败的文件名，结束时统一提示。
+        // 此前失败被静默吞掉（仅 console.warn），会直接跳转到列表页，
+        // 结果商品「没有主图 / 媒体缺失」且不自知，无法在创建后补救。
+        const mediaFailures: { name: string; reason?: string }[] = []
 
         // 新建商品：后端 /goods/spu/create 不处理媒体文件，必须先把 SPU 建出来拿到 spuId，
         // 再逐项调用「已验证」的 /goods/media/spu/{id}/upload 端点上传（与编辑模式同一路径，
         // 该端点负责校验、WebP 转码、ProductMedia 落库与 main_image 同步）。
-        const spuRes = await adminAPI.createSPU(spuData) as unknown as { id: number }
-        spuId = spuRes.id
+        if (createdSpuIdRef.current) {
+          // 上次保存时已建过 SPU（媒体失败后重试）：复用它并覆盖最新表单数据，
+          // 绝不重复 createSPU，否则每重试一次就留下一个空商品。
+          await adminAPI.updateSPU(createdSpuIdRef.current, spuData)
+          spuId = createdSpuIdRef.current
+        } else {
+          const spuRes = await adminAPI.createSPU(spuData) as unknown as { id: number }
+          spuId = spuRes.id
+          createdSpuIdRef.current = spuId
+        }
 
         // 仅统计有效图片（四尺寸齐全）用于进度总数
         const imageItems = stagedItems.filter(
@@ -1657,8 +1811,15 @@ export default function AdminProductForm() {
                 await adminAPI.uploadMedia(spuId, fd, (p) => {
                   setUploadState((s) => ({ ...s, percent: p, fileName: item.fileName || 'image' }))
                 })
+                // 上传成功即从暂存区移除：重试时只补传失败项，避免同一张图重复上传。
+                if (item.id != null) await deleteStagedItem(item.id)
               } catch (e) {
+                // 保留后端 detail：它是唯一能说明「为什么失败」的信息，不能丢。
                 console.warn('[AdminProductForm] 上传图片媒体失败 spu=%s:', spuId, e)
+                mediaFailures.push({
+                  name: item.fileName || 'image',
+                  reason: extractUploadReason(e),
+                })
               }
             }
             setUploadState((s) => ({ ...s, uploaded: s.uploaded + 1, percent: 0 }))
@@ -1674,13 +1835,23 @@ export default function AdminProductForm() {
               await adminAPI.uploadVideo(spuId, videoFile, (p) => {
                 setUploadState((s) => ({ ...s, percent: p, fileName: item.fileName }))
               }, item.videoFrameThumb)
+              if (item.id != null) await deleteStagedItem(item.id)
             } catch (e) {
               console.warn('[AdminProductForm] 上传视频媒体失败 spu=%s:', spuId, e)
+              mediaFailures.push({
+                name: item.fileName || 'video',
+                reason: extractUploadReason(e),
+              })
             }
             setUploadState((s) => ({ ...s, uploaded: s.uploaded + 1, percent: 0 }))
           }
         }
         setUploadState((s) => ({ ...s, active: false }))
+
+        // 媒体全部上传成功后才继续 SKU 保存并跳转；只要有失败就不再静默缺失主图。
+        if (mediaFailures.length > 0) {
+          throw new Error(buildMediaFailureMessage(t, mediaFailures))
+        }
 
         if (skus.length > 0) {
           await adminAPI.batchCreateSKU({
@@ -1691,7 +1862,7 @@ export default function AdminProductForm() {
               stock: Number(s.stock),
               discount_price: s.discount_price || null,
               shelf_status: s.shelf_status,
-              sku_code: s.sku_code || '',
+              sku_name: s.sku_name || '',
               barcode: s.barcode || '',
               weight: s.weight || '0',
               track_inventory: s.track_inventory === 'true',
@@ -1711,6 +1882,9 @@ export default function AdminProductForm() {
         })
       }
 
+      // 保存真正完成：清空「重试复用」标记，下次新建仍走 createSPU
+      createdSpuIdRef.current = null
+
       // 编辑即上架：保存后商品直接可见，无需提交/审核流程
       navigate('/admin/products')
     } catch (err: unknown) {
@@ -1729,7 +1903,8 @@ export default function AdminProductForm() {
 
   // ── 区块完成状态（用于左侧状态栏标记） ──
   const sectionState = (key: string): 'done' | 'todo' | 'optional' => {
-    if (key === 'basic') return name.trim() ? 'done' : 'todo'
+    // 名称在任意语言列填写即视为完成（中文 / 英文 / 阿拉伯语）
+    if (key === 'basic') return (name.trim() || nameEn.trim() || nameAr.trim()) ? 'done' : 'todo'
     if (key === 'orgSku') return (brandId && categoryId) ? 'done' : 'todo'
     if (key === 'media') return productKind === 'virtual' ? 'optional' : 'todo'
     return 'done'
@@ -1854,12 +2029,13 @@ export default function AdminProductForm() {
                   {t('admin.productForm.syncTranslateHint')}
                 </span>
               </SyncTranslateBar>
+              <LangHint>{t('admin.productForm.nameDescAnyLangHint')}</LangHint>
               <LangGrid>
                 <LangCol>
                   <LangColTitle>{t('admin.productForm.langDefault')}</LangColTitle>
                   <Field>
                     <Label style={{ marginBottom: 0 }}>{t('admin.productForm.productName')} *</Label>
-                    <Input value={name} onChange={(e) => { setName(e.target.value); markDirty() }} required placeholder={t('admin.productForm.productNamePlaceholder')} />
+                    <Input value={name} onChange={(e) => { setName(e.target.value); markDirty() }} placeholder={t('admin.productForm.productNamePlaceholder')} />
                   </Field>
                   <Field>
                     <Label style={{ marginBottom: 0 }}>{t('admin.productForm.descriptionLabel')}</Label>
@@ -2032,21 +2208,24 @@ export default function AdminProductForm() {
                       <VariantMainRow>
                         <VariantField>
                           <VariantFieldLabel title={t('admin.productForm.unitPriceTitle')}>{t('admin.productForm.unitPrice')} *</VariantFieldLabel>
-                          <VariantPriceInput
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={sku.price}
-                            onChange={(e) => updateSKU(idx, 'price', e.target.value)}
-                            onBlur={() => {
-                              const raw = sku.price
-                              const formatted = raw === '' || raw == null
-                                ? ''
-                                : Number(raw).toFixed(2)
-                              if (formatted !== raw) updateSKU(idx, 'price', formatted)
-                            }}
-                          />
+                          <VariantPriceWrap>
+                            <VariantPriceSymbol>$</VariantPriceSymbol>
+                            <VariantPriceInput
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={sku.price}
+                              onChange={(e) => updateSKU(idx, 'price', e.target.value)}
+                              onBlur={() => {
+                                const raw = sku.price
+                                const formatted = raw === '' || raw == null
+                                  ? ''
+                                  : Number(raw).toFixed(2)
+                                if (formatted !== raw) updateSKU(idx, 'price', formatted)
+                              }}
+                            />
+                          </VariantPriceWrap>
                         </VariantField>
                         <VariantField>
                           <VariantFieldLabel>Stock</VariantFieldLabel>
@@ -2105,14 +2284,17 @@ export default function AdminProductForm() {
                         </VariantField>
                         <VariantField>
                           <VariantFieldLabel>{t('admin.productForm.skuDiscountPrice')}</VariantFieldLabel>
-                          <VariantDiscountInput
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={sku.discount_price}
-                            onChange={(e) => updateSKU(idx, 'discount_price', e.target.value)}
-                          />
+                          <VariantPriceWrap>
+                            <VariantPriceSymbol>$</VariantPriceSymbol>
+                            <VariantDiscountInput
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={sku.discount_price}
+                              onChange={(e) => updateSKU(idx, 'discount_price', e.target.value)}
+                            />
+                          </VariantPriceWrap>
                         </VariantField>
                       </VariantMainRow>
 
@@ -2122,8 +2304,8 @@ export default function AdminProductForm() {
                           <VariantMetaInput
                             type="text"
                             placeholder="e.g. TS-RED-S"
-                            value={sku.sku_code || ''}
-                            onChange={(e) => updateSKU(idx, 'sku_code', e.target.value)}
+                            value={sku.sku_name || ''}
+                            onChange={(e) => updateSKU(idx, 'sku_name', e.target.value)}
                           />
                           <span style={{ fontSize: FontSize.xs, color: Color.text.muted }}>
                             {t('admin.productForm.skuCodeHint')}

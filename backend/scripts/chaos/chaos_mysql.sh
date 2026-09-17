@@ -11,7 +11,6 @@
 set -uo pipefail
 
 TEST_MYSQL=${TEST_MYSQL:-carvenex-test-mysql}
-TEST_REDIS=${TEST_REDIS:-carvenex-test-redis}
 WEB_CONTAINER=carvenex-chaos-web
 PROBE_URL="http://localhost:8001/api/v1/goods/spu"
 BACKEND_SRC="$(cd "$(dirname "$0")/../../.." && pwd)/backend"
@@ -30,9 +29,8 @@ docker run -d --name "$WEB_CONTAINER" --network carvenex-test-net \
   -e DJANGO_SETTINGS_MODULE=project.config.settings.dev \
   -e DB_ENGINE=django.db.backends.mysql -e DB_HOST="$TEST_MYSQL" -e DB_PORT=3306 \
   -e DB_NAME=carvenex_test -e DB_USER=carvenex_test -e DB_PASSWORD=carvenex_test \
-  -e REDIS_URL="redis://$TEST_REDIS:6379/1" -e REDIS_SLAVE_URL="redis://$TEST_REDIS:6379/1" \
   -e DJANGO_SECRET_KEY=test-only-secret-key-not-for-production \
-  -e THROTTLE_RATES='{"anon":"100000/hour","user":"100000/hour"}' -e RATE_LIMITS='{}' \
+  -e THROTTLE_RATES='{"http":"100000/hour","user":"100000/hour"}' \
   -e ENABLE_MOCK_PAYMENT=true -e FILE_STORAGE=local \
   --entrypoint python carvenex-django:v1.0.2 manage.py runserver 0.0.0.0:8001 --noreload >/dev/null 2>&1
 

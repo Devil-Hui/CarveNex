@@ -89,7 +89,7 @@ class SKUDetailView(PublicApiView):
 
 
 class HotProductsView(PublicApiView):
-    """热销商品排行（Redis有序集合），公开访问。"""
+    """热销商品排行（DB 缓存），公开访问。"""
 
     @extend_schema(
         parameters=[OpenApiParameter(name='category_id', type=int, required=False, description='分类筛选')],
@@ -177,7 +177,7 @@ class SPUListView(PublicApiView):
 
 
 class TagListView(PublicApiView):
-    """公开标签列表（仅生效的，Redis缓存）。"""
+    """公开标签列表（仅生效的，DB 缓存）。"""
 
     @extend_schema(responses={200: OpenApiResponse(description='Active tag list (cached)')})
     def get(self, request):
@@ -223,9 +223,10 @@ class AdminImageUploadView(BaseApiView):
         )
         try:
             ext, _mime = validate_image_upload(file, max_bytes=self.MAX_UPLOAD_SIZE)
-        except UploadValidationError:
+        except UploadValidationError as exc:
+            # 回传精确原因（0 字节 / 超大小 / 内容损坏 / 扩展名不符…），不要糊成一句
             return Response(
-                {'detail': '不支持或损坏的图片文件'},
+                {'detail': str(exc), 'code': exc.reason},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # 2C4G：R2 上传异步化 —— 主线程立即返回 202，前端轮询 /api/v1/media/status/{id}/

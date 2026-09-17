@@ -38,7 +38,7 @@ _CS_WINDOW = getattr(settings, 'CS_RATE_LIMIT_WINDOW', 60)       # 窗口 60 秒
 _CS_MAX = getattr(settings, 'CS_RATE_LIMIT_MAX', 30)           # 用户端每分钟最多 30 条
 
 def _check_user_rate_limit(user_id: int) -> bool:
-    """用户消息限流（Redis ZSET 或 DatabaseCache 桶，MySQL-only 可用）。"""
+    """用户消息限流（DatabaseCache 桶，MySQL-only 可用）。"""
     from utils.sliding_window import check_sliding_window
 
     return check_sliding_window(
@@ -177,10 +177,8 @@ def _strip_card_data_to_refs(card_data: dict) -> dict:
 def _create_attachment_messages(conv, user, sender_type: str, attachments: list) -> int:
     """为会话批量创建附件消息（图片/视频）并实时广播。返回创建的消息条数。
 
-    关键：附件消息是独立于主消息的 Message 行，主消息广播（_broadcast_new_message）
-    只携带主 payload，不会包含这些附件。若此处不单独广播，对方 WebSocket
-    只能收到主消息（或空文本），图片/视频要等到整页刷新（loadDetail）才出现，
-    表现为「媒体消息延迟 / 需刷新才看到」。
+    关键：附件消息是独立于主消息的 Message 行，前端的断线重连/轮询拉取会把
+    主消息与附件一并拿到，图片/视频无需整页刷新（loadDetail）即可展示。
     """
     created = 0
     for att in attachments or []:
@@ -206,42 +204,7 @@ def _create_attachment_messages(conv, user, sender_type: str, attachments: list)
         if sender_type == 'user':
             conv.increment_msg_count()
         created += 1
-        # 实时推送给对方 WebSocket，使图片/视频即时出现
-        _broadcast_new_message(conv.id, att_msg, sender_type)
     return created
-
-
-def _broadcast_new_message(conv_id, message_obj, sender_type: str) -> None:
-    """
-    通过 Redis Pub/Sub 将新消息实时推送给会话组内所有 WebSocket 连接。
-
-    REST 由 gunicorn 处理、WS 由 daphne 处理，二者跨进程：consumer 在
-    connect() 时订阅 chat_{conv_id}（admin 额外订阅 chat_admin_broadcast），
-    此处 publish 后 daphne 直接推送 WS。channels_redis 4.2.0 的
-    group_send(zset) 与 receive(brpop) 类型不匹配导致跨进程广播不可靠，
-    故改用 Pub/Sub。失败仅告警（消息已落库），不影响发送主流程。
-    """
-    try:
-        import json as _json
-
-        import redis as redis_sync
-
-        payload = MessageSerializer(message_obj).data
-        event = {
-            'type': 'chat.message',
-            'payload': payload,
-            'msg_id': str(message_obj.id),
-            'timestamp': message_obj.created_at.isoformat(),
-            'sender_type': sender_type,
-        }
-        redis_url = getattr(settings, 'CHANNEL_REDIS_URL', 'redis://redis:6379/4')
-        r = redis_sync.from_url(redis_url)
-        r.publish(f'chat_{conv_id}', _json.dumps(event, ensure_ascii=False))
-        if sender_type == 'user':
-            # 用户发消息时同步推送给所有在线的客服（会话列表/详情实时刷新）
-            r.publish('chat_admin_broadcast', _json.dumps(event, ensure_ascii=False))
-    except Exception as e:
-        logger.warning(f'Broadcast new message (conv={conv_id}) failed: {e}')
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -267,9 +230,10 @@ class UploadFileView(BaseApiView):
                 image_max_bytes=_IMG_SIZE,
                 video_max_bytes=_VID_SIZE,
             )
-        except UploadValidationError:
+        except UploadValidationError as exc:
+            # 回传精确原因（0 字节 / 超大小 / 内容损坏 / 扩展名不符…），不要糊成一句
             return Response(
-                {'detail': '文件扩展名、真实内容或大小不符合要求'},
+                {'detail': str(exc), 'code': exc.reason},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         is_image = content_type.startswith('image/')
@@ -366,7 +330,8 @@ class ProductSearchView(BaseApiView):
                 'skus': [
                     {
                         'sku_id': sku.id,
-                        'sku_code': sku.sku_code,
+                        'sku_name': sku.sku_name,
+                        'sku_code': sku.sku_name,  # 兼容别名
                         'spec_values': sku.spec_values,
                         'price': str(sku.price),
                         'discount_price': str(sku.discount_price) if sku.discount_price else None,
@@ -420,7 +385,8 @@ class ProductDetailView(BaseApiView):
             'skus': [
                 {
                     'sku_id': sku.id,
-                    'sku_code': sku.sku_code,
+                    'sku_name': sku.sku_name,
+                        'sku_code': sku.sku_name,  # 兼容别名
                     'spec_values': sku.spec_values,
                     'price': str(sku.price),
                     'discount_price': str(sku.discount_price) if sku.discount_price else None,
@@ -844,7 +810,7 @@ class MessageView(BaseApiView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # ── 限流检查（仅用户端，Redis 滑动窗口） ──
+        # ── 限流检查（仅用户端，DatabaseCache 滑动窗口） ──
         if not _is_cs_staff(request.user):
             if not _check_user_rate_limit(request.user.id):
                 return Response(
@@ -905,9 +871,7 @@ class MessageView(BaseApiView):
         if attachments:
             _create_attachment_messages(conv, request.user, sender_type, attachments)
 
-        # 实时推送：让对方（买家/客服）的 WebSocket 立即收到新消息并刷新
-        _broadcast_new_message(conv.id, msg, sender_type)
-
+        # 前端依赖断线重连 + 轮询拉取新消息
         return Response(
             MessageSerializer(msg).data,
             status=status.HTTP_201_CREATED,

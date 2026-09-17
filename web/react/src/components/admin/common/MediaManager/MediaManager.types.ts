@@ -22,6 +22,8 @@ export interface ImageUploadDialogProps {
   open: boolean
   /** 预选文件（来自 dropzone 队列），存在时直接进入裁剪 */
   file?: File | null
+  /** 原地重新裁剪的目标已保存媒体（设置后对话框进入「重新裁剪」模式） */
+  replaceMedia?: ProductMediaItem | null
   onClose: () => void
   /** 裁剪完成回调，返回四尺寸结果 + 源文件 */
   onConfirm: (result: import('../ImageCropper/ImageCropper.types').MultiSizeCropResult, sourceFile: File) => void

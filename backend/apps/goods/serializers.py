@@ -20,7 +20,9 @@ class SKUSimpleSerializer(serializers.Serializer):
     discount_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     stock = serializers.IntegerField()
     shelf_status = serializers.CharField()
-    sku_code = serializers.CharField(required=False, allow_blank=True)
+    # 新契约主字段为 sku_name；sku_code 保留为向后兼容别名（写入时回填 sku_name）
+    sku_name = serializers.CharField(required=False, allow_blank=True)
+    sku_code = serializers.CharField(source='sku_name', required=False, allow_blank=True)
     barcode = serializers.CharField(required=False, allow_blank=True)
     weight = serializers.DecimalField(max_digits=8, decimal_places=2, required=False)
     cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)

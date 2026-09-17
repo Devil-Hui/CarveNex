@@ -16,19 +16,24 @@ BUSINESS_TABLES = [
     'payment_payment_log', 'order_order_item', 'order_order', 'order_after_sale',
     'cart_cart_item', 'cart_cart',
     'review_review', 'lovegoods_favorite',
-    'promotion_activity_sku', 'promotion_coupon_scope', 'promotion_user_coupon',
-    'promotion_activity', 'promotion_coupon',
+    'promotion_coupon_scope', 'promotion_user_coupon',
+    'promotion_coupon',
     'notification_notification',
     'goods_operation_log', 'goods_price_history', 'goods_audit_log',
     'goods_spu_tag_relation', 'goods_spu_attribute',
     'goods_spu_spec_value', 'goods_spu_spec',
     'goods_sku_spec_value', 'goods_sku', 'goods_spu',
+    'goods_product_media',
     'goods_spec_value', 'goods_spec_name', 'goods_attribute_value', 'goods_attribute',
-    'goods_admin_notification', 'goods_leader_change_app', 'goods_coupon_app',
-    'goods_category_rename_app', 'goods_brand_rename_app',
+    # 注：以下表对应的 model 已下线删除，不再列入清理清单：
+    #   goods_leader_change_app / goods_category_rename_app / goods_brand_rename_app（goods.0025 删除）
+    #   goods_coupon_app（优惠券申请已迁至 promotion_coupon_application）
+    #   promotion_activity / promotion_activity_sku（活动模块已下线）
+    #   users_sms_verification_code（短信验证码模块已下线）
+    'goods_admin_notification',
     'goods_tag', 'goods_brand', 'goods_category',
     'goods_admin_group_member', 'goods_admin_group',
-    'users_sms_verification_code', 'users_expiringtoken', 'users_userprofile',
+    'users_expiringtoken', 'users_userprofile',
     'address_address',
     'token_blacklist_blacklistedtoken', 'token_blacklist_outstandingtoken',
 ]

@@ -30,8 +30,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 
 # 安装 Python 依赖
+# INSTALL_TEST_DEPS=true 时额外安装 requirements/test.txt（pytest / factory_boy / locust 等），
+# 便于在容器内直接跑契约测试与压测；生产构建默认不带（见 docker-compose.prod.yml）。
+ARG INSTALL_TEST_DEPS=false
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements/base.txt && \
+    if [ "$INSTALL_TEST_DEPS" = "true" ]; then pip install --no-cache-dir -r requirements/test.txt; fi && \
     mkdir -p logs
 
 RUN chmod +x setup.sh

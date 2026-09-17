@@ -270,10 +270,13 @@ type PageState = 'upload' | 'parsing' | 'preview' | 'importing' | 'result'
 interface PreviewRow {
   row: number
   name: string
+  name_en?: string
+  name_ar?: string
   model: string
   price: string
   discount_price: string
-  sku_code: string
+  sku_name: string
+  sku_code?: string
   description: string
   tags: string[]
   valid: boolean
@@ -294,6 +297,9 @@ export default function AdminImport() {
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  // 仅当导入文件里存在英文 / 阿拉伯语名称时才展示这两列，避免表格无谓变宽
+  const hasMultiLangNames = previewData.some((r) => r.name_en || r.name_ar)
 
   // 品牌/分类
   const [brands, setBrands] = useState<BrandOption[]>([])
@@ -534,6 +540,8 @@ export default function AdminImport() {
                   <tr>
                     <PreviewTh style={{ width: 40 }}>#</PreviewTh>
                     <PreviewTh>{t('admin.productForm.productName')}</PreviewTh>
+                    {hasMultiLangNames && <PreviewTh>{t('admin.productForm.nameEn')}</PreviewTh>}
+                    {hasMultiLangNames && <PreviewTh>{t('admin.productForm.nameAr')}</PreviewTh>}
                     <PreviewTh>{t('admin.dataImport.model')}</PreviewTh>
                     <PreviewTh>{t('admin.dataImport.price')}</PreviewTh>
                     <PreviewTh>{t('admin.dataImport.discountPrice')}</PreviewTh>
@@ -546,10 +554,20 @@ export default function AdminImport() {
                     <tr key={idx}>
                       <PreviewTd style={{ color: '#999' }}>{row.row}</PreviewTd>
                       <PreviewTd>{row.name}</PreviewTd>
+                      {hasMultiLangNames && (
+                        <PreviewTd style={{ color: row.name_en ? undefined : '#bbb' }}>
+                          {row.name_en || '-'}
+                        </PreviewTd>
+                      )}
+                      {hasMultiLangNames && (
+                        <PreviewTd style={{ color: row.name_ar ? undefined : '#bbb' }}>
+                          {row.name_ar || '-'}
+                        </PreviewTd>
+                      )}
                       <PreviewTd>{row.model}</PreviewTd>
                       <PreviewTd>{row.price}</PreviewTd>
                       <PreviewTd>{row.discount_price}</PreviewTd>
-                      <PreviewTd>{row.sku_code}</PreviewTd>
+                      <PreviewTd>{row.sku_name ?? row.sku_code}</PreviewTd>
                       <PreviewTd style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', minWidth: 120 }}>
                         {(row.tags || []).join(' / ')}
                       </PreviewTd>

@@ -7,7 +7,7 @@ DEBUG = False
 # 生产环境日志级别：WARNING（减少 IO，仅记录警告和错误）
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'WARNING')
 # 覆盖 base.py 中已创建的 LOGGING 配置（base.py 在导入时已用 DEBUG 级别固化）
-for _logger_name in ('django', 'django.request', 'celery', 'celery.task', 'celery.worker', 'celery.beat'):
+for _logger_name in ('django', 'django.request'):
     if _logger_name in LOGGING.get('loggers', {}):
         LOGGING['loggers'][_logger_name]['level'] = LOG_LEVEL
 
@@ -50,6 +50,10 @@ FILE_STORAGE = os.getenv('FILE_STORAGE', 'local')  # 'local' 或 'r2' (Cloudflar
 MEDIA_PATH = os.getenv('MEDIA_PATH', 'media') or 'media'
 MEDIA_URL = f"/{MEDIA_PATH.strip('/')}/"
 MEDIA_ROOT = os.path.join(BASE_DIR, MEDIA_PATH)
+# 上传临时目录指向 media 数据卷（见 base.resolve_upload_temp_dir 注释：
+# 生产 web 容器 /tmp 是 32MB tmpfs，而容器 rootfs 是 read_only，
+# 只有 media_data/static_data/django_logs 三个卷可写）
+FILE_UPLOAD_TEMP_DIR = resolve_upload_temp_dir(MEDIA_ROOT) or None
 # 公网媒体域名（本地存储时上传返回公网 URL，根治回环地址 Mixed Content；R2 模式下用 R2_PUBLIC_URL）
 PUBLIC_MEDIA_URL = os.getenv('PUBLIC_MEDIA_URL', '')
 FILE_STORAGE_MAX_SIZE = int(os.getenv('FILE_STORAGE_MAX_SIZE', '5'))  # 5MB
@@ -61,6 +65,12 @@ R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '')
 R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '')
 R2_BUCKET = os.getenv('R2_BUCKET', '')
 R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL', '')  # e.g. https://cdn.carvenex.com
+
+# 本地应急磁盘回退：未显式配置 LOCAL_FALLBACK_ROOT 时，默认落到 MEDIA_ROOT/pic，
+# 便于 R2 在本机不可达时读取回退到已同步的 pic/ 目录副本（见 utils.storage.R2DBFallbackStorage）。
+if not os.getenv('LOCAL_FALLBACK_ROOT'):
+    LOCAL_FALLBACK_ROOT = os.path.join(MEDIA_ROOT, 'pic')
+R2_FALLBACK_ENABLED = os.getenv('R2_FALLBACK_ENABLED', 'true').lower() == 'true'
 
 # ── R2 对象存储（凭据齐全时启用；上传失败自动回退数据库，见 utils.storage）──
 if R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET:

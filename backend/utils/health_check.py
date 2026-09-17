@@ -12,7 +12,7 @@ class HealthCheckView(View):
     def get(self, request):
         status_code = 200
         database_status = "up"
-        redis_status = "up"
+        cache_status = "up"
         try:
             with connections["default"].cursor() as cursor:
                 cursor.execute("SELECT 1")
@@ -29,7 +29,7 @@ class HealthCheckView(View):
                 raise RuntimeError("cache health check failed")
             cache.delete("_health")
         except Exception:
-            redis_status = "down"
+            cache_status = "down"
             status_code = 503
 
         body = json.dumps({
@@ -38,6 +38,6 @@ class HealthCheckView(View):
             "git_commit": settings.GIT_COMMIT,
             "environment": settings.DJANGO_ENV,
             "database": database_status,
-            "redis": redis_status,
+            "cache": cache_status,
         })
         return HttpResponse(body, content_type="application/json", status=status_code)

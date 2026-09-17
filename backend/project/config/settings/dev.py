@@ -93,9 +93,48 @@ SIMPLE_JWT = {
 }
 
 # 文件存储配置
-FILE_STORAGE = os.getenv('FILE_STORAGE', 'local')  # 可选 'local' 或 'tencent'
+FILE_STORAGE = os.getenv('FILE_STORAGE', 'local')  # 可选 'local' 或 'r2'
 MEDIA_PATH = os.getenv('MEDIA_PATH', 'media') or 'media'
 MEDIA_URL = f"/{MEDIA_PATH.strip('/')}/"
 MEDIA_ROOT = os.path.join(BASE_DIR, MEDIA_PATH)
+# 上传临时目录指向 media 数据卷（见 base.resolve_upload_temp_dir 注释：
+# 生产 /tmp 只有 32MB tmpfs，并发四尺寸上传会 ENOSPC）
+FILE_UPLOAD_TEMP_DIR = resolve_upload_temp_dir(MEDIA_ROOT) or None
 FILE_STORAGE_MAX_SIZE = int(os.getenv('FILE_STORAGE_MAX_SIZE', '5'))  # 5MB
 FILE_STORAGE_ALLOWED_TYPES = os.getenv('FILE_STORAGE_ALLOWED_TYPES', "image/jpeg,image/png,image/webp").split(',')
+
+# ── R2 对象存储（凭据齐全时启用；上传失败自动回退数据库，见 utils.storage）──
+# Cloudflare R2 (fill in after creating R2 bucket)
+R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID', '')
+R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID', '')
+R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '')
+R2_BUCKET = os.getenv('R2_BUCKET', '')
+R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL', '')  # e.g. https://cdn.carvenex.com
+
+# 本地应急磁盘回退：未显式配置 LOCAL_FALLBACK_ROOT 时，默认落到 MEDIA_ROOT/pic，
+# 便于 R2 在本机不可达时读取回退到已同步的 pic/ 目录副本（见 utils.storage.R2DBFallbackStorage）。
+if not os.getenv('LOCAL_FALLBACK_ROOT'):
+    LOCAL_FALLBACK_ROOT = os.path.join(MEDIA_ROOT, 'pic')
+R2_FALLBACK_ENABLED = os.getenv('R2_FALLBACK_ENABLED', 'true').lower() == 'true'
+
+# dev 默认用本地存储（图片存本地磁盘、/media/ 直接 serve），
+# 这样开发时在「无 R2/CND 访问环境」下图片也能正常显示。
+# 仅当显式 env DEV_R2_STORAGE=1 时才切换 R2 端到端验证。
+if os.getenv('DEV_R2_STORAGE', '').lower() in ('1', 'true', 'yes') \
+        and R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET:
+    # 带「S3→R2」回退的后端：断网/S2/R2 不可达时自动落库 MediaBlob（上传/展示回退）
+    STORAGES['default']['BACKEND'] = 'utils.storage.R2DBFallbackStorage'
+    AWS_ACCESS_KEY_ID = R2_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY = R2_SECRET_ACCESS_KEY
+    AWS_STORAGE_BUCKET_NAME = R2_BUCKET
+    AWS_S3_ENDPOINT_URL = f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com'
+    AWS_S3_REGION_NAME = 'auto'
+    AWS_S3_FILE_OVERWRITE = True
+    AWS_QUERYSTRING_AUTH = False
+    AWS_DEFAULT_ACL = None
+    if R2_PUBLIC_URL:
+        # 开发调试环境：不上 R2/CDN 覆盖 MEDIA_URL，保持本地相对 `/media/`，
+        # 前端 resolveMediaUrl('/media/...') → 后端 apiOrigin + '/media/...'（本地磁盘兜底，
+        # DEBUG 下 urls.py 已把 MEDIA_ROOT serve 到 /media/），确保本地图片正常显示。
+        # 生产(prod.py)才使用 CDN 域名作为对外图床。
+        AWS_S3_CUSTOM_DOMAIN = R2_PUBLIC_URL.replace('https://', '').replace('http://', '').rstrip('/')

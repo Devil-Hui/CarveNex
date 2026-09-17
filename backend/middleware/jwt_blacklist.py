@@ -1,7 +1,7 @@
 """
 JWT Access Token Blacklist middleware.
-Checks every authenticated API request against a Redis blacklist.
-When user logs out, the access token's JTI is stored in Redis for its remaining lifetime.
+Checks every authenticated API request against a key-value blacklist.
+When user logs out, the access token's JTI is stored in the cache for its remaining lifetime.
 """
 import logging
 import base64
@@ -25,7 +25,7 @@ SKIP_PATHS = (
 
 
 class JWTBlacklistMiddleware:
-    """Check Redis blacklist on every authenticated API request."""
+    """Check blacklist on every authenticated API request."""
 
     def __init__(self, get_response):
         self.get_response = get_response

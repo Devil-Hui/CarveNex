@@ -4,12 +4,15 @@ from .models import Favorite
 
 class FavoriteSerializer(serializers.ModelSerializer):
     spu_name = serializers.CharField(source='spu.name', read_only=True)
+    # 多语言商品名：供前端按当前界面语言（en-US / ar）渲染收藏夹商品名称
+    spu_name_en = serializers.CharField(source='spu.name_en', read_only=True)
+    spu_name_ar = serializers.CharField(source='spu.name_ar', read_only=True)
     spu_image = serializers.CharField(source='spu.main_image', read_only=True)
     min_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Favorite
-        fields = ['id', 'spu_id', 'spu_name', 'spu_image', 'min_price', 'created_at']
+        fields = ['id', 'spu_id', 'spu_name', 'spu_name_en', 'spu_name_ar', 'spu_image', 'min_price', 'created_at']
 
     def get_min_price(self, obj):
         # 适配 dict（缓存数据）和 model 实例

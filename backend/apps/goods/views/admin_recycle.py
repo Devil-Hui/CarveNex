@@ -27,7 +27,7 @@ class RecycleListView(BaseApiView):
         items = []
         for spu in spus:
             items.append({
-                'id': spu.id, 'name': spu.name,
+                'id': spu.id, 'name': spu.name, 'name_en': spu.name_en, 'name_ar': spu.name_ar,
                 'brand_name': spu.brand.name,
                 'category_path': self._get_category_path(spu.category),
                 'category_name': spu.category.name,

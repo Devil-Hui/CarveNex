@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import obfuscator from 'vite-plugin-javascript-obfuscator'
 import path from 'path'
 
+// 首页「应用场景视频画廊」视频已统一存放于 public/videos/laserpeck/，
+// 由 Vite（dev/preview）与 nginx（prod）直接静态服务，无需自定义中间件。
+
 // Vite 仅把 .env 注入客户端 import.meta.env；server 端配置(vite.config.ts)需经
 // loadEnv 才能读到 .env / .env.local 中的变量（直接读 process.env 在 dev 下取不到
 // .env.local 的覆盖值，会回退到默认的 http://web:8001，而 host 上的 Vite 解析不到

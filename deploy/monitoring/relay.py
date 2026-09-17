@@ -31,8 +31,7 @@ STATUS_CN = {"firing": "🔥 触发 FIRING", "resolved": "✅ 恢复 RESOLVED"}
 SUGGESTIONS = {
     "HostLoadHigh": "检查宿主 top 定位高负载进程；docker stats 看容器占用；持续 >3.0 值班介入",
     "ContainerMemoryHigh": "docker stats 看该容器内存；查日志找泄漏；必要时重启并评估扩容",
-    "RedisMemoryHigh": "redis-cli info memory 看构成；--bigkeys 清大键；确认 maxmemory 策略",
-    "DjangoDown": "检查 django-app 容器状态与日志；确认 DB/Redis 健康后重启",
+    "DjangoDown": "检查 django-app 容器状态与日志；确认 DB 健康后重启",
 }
 
 

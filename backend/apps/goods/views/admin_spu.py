@@ -67,7 +67,7 @@ class SPUAdminListView(BaseApiView):
         if q:
             queryset = queryset.filter(
                 Q(name__icontains=q) |
-                Q(skus__sku_code__icontains=q) |
+                Q(skus__sku_name__icontains=q) |
                 Q(skus__barcode__icontains=q)
             ).distinct()
 
@@ -96,6 +96,8 @@ class SPUAdminListView(BaseApiView):
             items.append({
                 'id': spu.id,
                 'name': spu.name,
+                'name_en': spu.name_en,
+                'name_ar': spu.name_ar,
                 'brand_id': spu.brand_id,
                 'brand_name': spu.brand.name,
                 'category_id': spu.category_id,
@@ -113,15 +115,15 @@ class SPUAdminListView(BaseApiView):
                 'updated_at': spu.updated_at,
             })
 
-        # 🔥 合并 Redis 状态缓存（确保最新状态覆盖数据库读取）
+        # 🔥 合并状态缓存（DB 缓存，确保存储值覆盖数据库读取）
         if spu_ids:
-            redis_statuses = SPUStatusCache.get_bulk(spu_ids)
+            cached_statuses = SPUStatusCache.get_bulk(spu_ids)
             for item in items:
-                if item['id'] in redis_statuses:
-                    redis_status = redis_statuses[item['id']]
-                    if redis_status != item['status']:
-                        item['status'] = redis_status
-                        item['status_display'] = dict(SPUStatus.choices).get(redis_status, redis_status)
+                if item['id'] in cached_statuses:
+                    cached_status = cached_statuses[item['id']]
+                    if cached_status != item['status']:
+                        item['status'] = cached_status
+                        item['status_display'] = dict(SPUStatus.choices).get(cached_status, cached_status)
 
         return Response({
             'total': total,
@@ -149,14 +151,14 @@ class SPUAdminCreateView(BaseApiView):
         responses={201: OpenApiResponse(description='SPU created')}
     )
     def post(self, request):
-        name = request.data.get('name', '').strip()
+        name = (request.data.get('name') or '').strip()
         brand_id = request.data.get('brand_id')
         category_id = request.data.get('category_id')
-        description = request.data.get('description', '')
-        name_en = request.data.get('name_en', '')
-        description_en = request.data.get('description_en', '')
-        name_ar = request.data.get('name_ar', '')
-        description_ar = request.data.get('description_ar', '')
+        description = request.data.get('description') or ''
+        name_en = (request.data.get('name_en') or '').strip()
+        description_en = request.data.get('description_en') or ''
+        name_ar = (request.data.get('name_ar') or '').strip()
+        description_ar = request.data.get('description_ar') or ''
         main_image = request.data.get('main_image', '')
         meta_title = request.data.get('meta_title', '')
         meta_description = request.data.get('meta_description', '')
@@ -174,6 +176,12 @@ class SPUAdminCreateView(BaseApiView):
                 specs_raw = json.loads(specs_raw)
             except json.JSONDecodeError:
                 specs_raw = []
+
+        # 名称支持「任意语言填写」：主名称为空时用英文 / 阿拉伯语兜底。
+        # 前端已保证三列任一有值即可提交，这里再兜一层，保护直接调 API 的调用方
+        # （如批量导入、脚本），避免出现「有英文名但被判为无名称」的 400。
+        if not name:
+            name = name_en or name_ar
 
         if not name:
             return Response({'detail': Messages.BAD_REQUEST}, status=status.HTTP_400_BAD_REQUEST)
@@ -222,15 +230,19 @@ class SPUAdminCreateView(BaseApiView):
         # 预热 SPU 商品类型缓存
         GoodsCacheService.warm_spu_kind(spu.id)
 
-        # 自动生成 SKU（如果提供了 specs 规格定义）
+        # 创建时若前端显式传入 skus（含 sku_name/价格/库存等），或未提供规格级默认价
+        # （SPU 表单流程：前端随后单独调用 /sku/batch 用明细 SKU 创建，请求不带顶层 price/stock），
+        # 则这里不再自动生成，否则同一批规格组合会被创建两次（重复 SKU）。
+        explicit_skus = request.data.get('skus')
+        has_default_price = request.data.get('price') not in (None, '')
         sku_created = 0
-        if specs_raw:
+        if not explicit_skus and specs_raw and has_default_price:
             try:
                 combinations = SKUAdminBatchCreateView._generate_combinations(specs_raw)
-                for combo in combinations:
+                for spec in combinations:
                     SKU.objects.create(
                         spu=spu,
-                        spec_values=combo,
+                        spec_values=spec,
                         price=request.data.get('price', 0),
                         discount_price=request.data.get('discount_price'),
                         stock=request.data.get('stock', 0),
@@ -270,25 +282,36 @@ class SPUAdminUpdateView(BaseApiView):
         if not can_operate_spu(request.user, spu):
             return Response({'detail': Messages.ADMIN_SPU_NOT_IN_GROUP}, status=status.HTTP_403_FORBIDDEN)
 
+        # 名称支持「任意语言填写」：主名称被传成空串时用英文 / 阿拉伯语兜底；
+        # 三列都为空则丢弃该字段（保留原值），避免把已有商品名清成空白
+        # （后台列表、订单快照、前台搜索都会用到主名称）。
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        if 'name' in data and not str(data.get('name') or '').strip():
+            fallback_name = str(data.get('name_en') or '').strip() or str(data.get('name_ar') or '').strip()
+            if fallback_name:
+                data['name'] = fallback_name
+            else:
+                data.pop('name', None)
+
         for field in ['name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'specs', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind']:
-            if field in request.data:
-                setattr(spu, field, request.data[field])
-        if 'brand_id' in request.data:
+            if field in data:
+                setattr(spu, field, data[field])
+        if 'brand_id' in data:
             try:
-                spu.brand = Brand.objects.get(id=request.data['brand_id'], is_active=True)
+                spu.brand = Brand.objects.get(id=data['brand_id'], is_active=True)
             except Brand.DoesNotExist:
                 return Response({'detail': Messages.SPU_NOT_FOUND}, status=status.HTTP_404_NOT_FOUND)
-        if 'category_id' in request.data:
+        if 'category_id' in data:
             try:
-                spu.category = Category.objects.get(id=request.data['category_id'], is_active=True)
+                spu.category = Category.objects.get(id=data['category_id'], is_active=True)
             except Category.DoesNotExist:
                 return Response({'detail': Messages.SPU_NOT_FOUND}, status=status.HTTP_404_NOT_FOUND)
 
-        spu.save(update_fields=[f for f in request.data if f in ('name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'specs', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')])
+        spu.save(update_fields=[f for f in data if f in ('name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'specs', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')])
         create_audit_log(request.user, 'update', 'spu', spu.id,
-                         changes={k: str(v) for k, v in request.data.items() if k in ('name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')},
+                         changes={k: str(v) for k, v in data.items() if k in ('name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')},
                          ip_address=request.META.get('REMOTE_ADDR'))
-        create_operation_log(spu, request.user, 'update', field_name=', '.join(k for k in request.data if k in ('name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'specs', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')))
+        create_operation_log(spu, request.user, 'update', field_name=', '.join(k for k in data if k in ('name', 'description', 'name_en', 'description_en', 'name_ar', 'description_ar', 'main_image', 'specs', 'brand_id', 'category_id', 'meta_title', 'meta_description', 'product_type', 'tags', 'requires_shipping', 'taxable', 'product_kind')))
         # 失效 SPU 商品类型缓存 + SPU 详情缓存
         GoodsCacheService.invalidate_spu_kind(spu_id)
         GoodsCacheService.invalidate_spu(spu_id)
@@ -350,6 +373,12 @@ class SPUAdminDetailView(BaseApiView):
                 'image_url': sku.image_url,
                 'shelf_status': sku.shelf_status,
                 'alert_threshold': sku.alert_threshold,
+                'sku_name': sku.sku_name,
+                # 兼容别名，旧调用方正取 sku_code
+                'sku_code': sku.sku_name,
+                'barcode': sku.barcode,
+                'weight': str(sku.weight),
+                'track_inventory': sku.track_inventory,
             })
 
         tags = []

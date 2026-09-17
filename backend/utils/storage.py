@@ -10,6 +10,8 @@ Usage:
 """
 
 import logging
+import os
+import time as _time
 import traceback
 import uuid as _uuid
 from abc import ABC, abstractmethod
@@ -141,6 +143,18 @@ class R2Storage(BaseStorage):
     def get_url(self, file_name: str) -> str:
         return f'{self.base_url}/{file_name}'
 
+    def read(self, file_name: str):
+        """从 R2 读取对象字节，返回 (bytes, content_type)；不存在/不可达返回 (None, None)。"""
+        try:
+            obj = self.client.get_object(Bucket=self.bucket_name, Key=file_name)
+            body = obj.get('Body')
+            data = body.read() if body is not None else b''
+            ctype = obj.get('ContentType') or 'application/octet-stream'
+            return data, ctype
+        except Exception as e:
+            logger.warning('R2 读取失败: %s | %s', file_name, e)
+            return None, None
+
 
 # ==================== 数据库回退存储 ====================
 
@@ -221,29 +235,112 @@ if S3Boto3Storage is None:  # pragma: no cover
 else:
 
     class R2DBFallbackStorage(S3Boto3Storage):
-        """S3/R2 上传失败（断网）时自动落库；url()/delete()/exists() 感知 DB 回退。
+        """R2 + 读取侧双兜底（DB + 本地 pic/）。复用 S3Boto3Storage 读写配置。
 
-        作为 STORAGES['default'] 的后端，复用 S3Boto3Storage 的读配（settings 里的
-        AWS_* 与 R2 相关类属性），仅对存储/寻址做「S3 → DB」回退降级。
+        处理顺序严格保持「R2 → DB 回退 → 本地 pic/ 回退」：
+          1. R2 可用  → 走 S3（原行为，不做任何探测）；
+          2. R2 不可达 → 先查 DB 回退（MediaBlob，既有逻辑）；
+          3. DB 也无   → 若启用本地回退（R2_FALLBACK_ENABLED）且本地 pic/
+                        下存在同 key 文件，则回退到本地磁盘副本（读取侧兜底）。
+        回退仅在确证 R2 不可达（含未配置/无外网/凭据缺失）且本地副本真实存在时
+        发生，绝不静默伪造实体；最终 URL 恒以 pic/ 为前缀。
+
+        R2 连通性探测结果做进程内短缓存（R2_AVAIL_PROBE_TTL），避免高并发下
+        每个请求反复访问 R2 延迟判定。
         """
 
+        # ── R2 连通性探测（进程级短缓存）──────────────────────────────
+        _r2_avail_ts = 0.0          # 上次探测时刻（time.time）
+        _r2_avail_value = True      # 上次探测结论；初始化默认可用（不阻断快路径）
+
+        def _r2_available(self, force: bool = False) -> bool:
+            """探测 R2 是否真正可写读；异常一律按「不可达」处理。
+
+            判定方式：对 bucket 做一次无副作用探测（head_bucket），200 即视为
+            可用；受网络/凭据/Endpoint 解析影响，任何异常都视为不可达。结果按
+            R2_AVAIL_PROBE_TTL 缓存，force=True 强制刷新（健康检查用）。
+            """
+            ttl = float(getattr(settings, 'R2_AVAIL_PROBE_TTL', '30') or 30)
+            now = _time.monotonic()
+            if not force and now - self._r2_avail_ts < ttl:
+                return self._r2_avail_value
+            if not self.bucket_name:
+                # 未配置 bucket（本地未注入 R2 凭据/未连外网）→ 直接判定不可达，免网络请求。
+                ok = False
+            else:
+                try:
+                    # S3Storage.connection 是 boto3 ServiceResource（含 .meta.client）。
+                    # head_bucket 无副作用：200 = 可读写可达；任何错误（网络/凭据/404）→ 不可达。
+                    self.connection.meta.client.head_bucket(Bucket=self.bucket_name)
+                    ok = True
+                except Exception as e:
+                    logger.warning('R2 不可达（将尝试回退）: %s', e, exc_info=True)
+                    ok = False
+            self._r2_avail_ts = now
+            self._r2_avail_value = ok
+            return ok
+
+        # ── 本地 pic/ 回退定位 ─────────────────────────────────────────
+        @staticmethod
+        def _local_fallback_root() -> str:
+            """备用磁盘根：优先 settings.LOCAL_FALLBACK_ROOT，否则 MEDIA_ROOT/pic。"""
+            root = getattr(settings, 'LOCAL_FALLBACK_ROOT', '') or ''
+            if root:
+                return root
+            media_root = getattr(settings, 'MEDIA_ROOT', '') or ''
+            return os.path.join(media_root, 'pic') if media_root else ''
+
+        def _local_abs(self, name: str) -> str:
+            """对象 key → 本地回退目录里的物理绝对路径（pic/<key>）。
+
+            key 形如 products/2026/01/01/uuid.jpg（含日期分区子路径），
+            直接在 pic/ 根下保持相同子结构，便于与 R2 key 一一对应。
+            """
+            safe = os.path.normpath(name)
+            # 防路径逃逸：拒绝一切含 .. 的 key，避免落盘越出 pic 根。
+            if not safe or safe == '..' or safe.startswith('../') or '/../' in safe or safe.endswith('/..'):
+                raise ValueError(f'非法的对象 key: {name}')
+            return os.path.join(self._local_fallback_root(), safe)
+
+        def _local_exists(self, name: str) -> bool:
+            """本地回退目录是否存在同名文件（读取侧兜底判定）。"""
+            root = self._local_fallback_root()
+            if not root:
+                return False
+            try:
+                return os.path.isfile(self._local_abs(name))
+            except ValueError:
+                return False
+            except Exception:
+                return False
+
+        # ── 核心读写（保持原顺序 + 最后本地回退）──────────────────────
         def _save(self, name, content):
             try:
                 return super()._save(name, content)
             except Exception as e:
-                logger.warning('S3/R2 保存失败，落数据库回退: %s | %s', name, e)
+                logger.warning('R2 保存失败，落数据库回退: %s | %s', name, e)
                 return _media_to_db(name, content)
 
         def url(self, name):
+            # 顺序 1：DB 回退（既有逻辑，优先于 R2）
             if _media_in_db(name):
                 return db_media_url(name)
-            return super().url(name)
+            # 顺序 2：R2 可用 → 直接返回 R2 URL（不探测，快路径）
+            if getattr(settings, 'R2_FALLBACK_ENABLED', True) and self._r2_available():
+                return super().url(name)
+            # 顺序 3：R2 不可达 → 本地 pic/ 有副本才回退
+            if self._local_exists(name):
+                return f'/media/pic/{name.strip("/")}'
+            # R2 不可达且本地无副本：返回本地 pic/ 形态 URL，保持「以 pic/ 为前缀」，
+            # 且绝不在 bucket None 时调用 super().url()（会因空 bucket 抛 ValueError）。
+            return f'/media/pic/{name.strip("/")}'
 
         def delete(self, name):
             try:
                 super().delete(name)
             except Exception as e:
-                logger.warning('S3/R2 删除失败: %s | %s', name, e)
+                logger.warning('R2 删除失败: %s | %s', name, e)
             try:
                 from apps.media.models import MediaBlob
                 MediaBlob.objects.filter(key=name).delete()
@@ -256,7 +353,13 @@ else:
                     return True
             except Exception:
                 pass
-            return super().exists(name)
+            # R2 可达 → 直接以 S3 为准
+            if getattr(settings, 'R2_FALLBACK_ENABLED', True) and self._r2_available():
+                return super().exists(name)
+            # R2 不可达 → 以本地 pic/ 副本兜底；本地也没有则判定不存在。
+            # 此刻绝不能回调 super().exists()：bucket 未配置（本地未注入 R2 凭据）
+            # 时会因 head_object(None) 抛 TypeError 而非返回 False，破坏读取链路。
+            return self._local_exists(name)
 
 
 # ==================== 本地存储 (兼容旧代码) ====================

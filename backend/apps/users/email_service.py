@@ -6,7 +6,7 @@
   2. verify_code(email,code) → 校验验证码，成功后 issue_verification_token()
   3. register(token, ...)   → 解码令牌获取已验证邮箱，完成注册
 
-验证码存 Redis (DB 2)，令牌为 JWT（无需 Redis）。
+验证码存 DB 缓存（MySQL），令牌为 JWT。
 """
 import logging
 import uuid
@@ -217,7 +217,7 @@ class EmailService:
     """邮箱验证码 + 验证令牌服务"""
 
     # ============================================================
-    # Redis key 工具
+    # 缓存 key 工具
     # ============================================================
 
     @staticmethod
@@ -239,7 +239,7 @@ class EmailService:
     @staticmethod
     def send_code(email):
         """
-        生成验证码 → 存入 Redis → 异步发送邮件。
+        生成验证码 → 存入 DB 缓存 → 异步发送邮件。
 
         Returns:
             dict: {success, message, code}
@@ -258,7 +258,7 @@ class EmailService:
 
         code = get_random_string(length=code_len, allowed_chars='0123456789')
 
-        # 存入 Redis
+        # 存入 DB 缓存
         _code_cache.set(EmailService._code_key(email), code, timeout=expire_sec)
         _code_cache.set(EmailService._attempt_key(email), 0, timeout=expire_sec)
         _code_cache.set(EmailService._rate_key(email), 1, timeout=rate_sec)
@@ -274,20 +274,13 @@ class EmailService:
 
     @staticmethod
     def _send_email(email, code):
-        """发送验证码邮件 —— 优先 Celery 异步，fallback 同步"""
+        """发送验证码邮件 —— 直接同步发送（Celery 已下线）"""
         subject = 'Email Verification Code'
         message = (
             f'Your verification code is: {code}\n\n'
             f'This code will expire in {_cfg.get("VERIFICATION_CODE_EXPIRE_SECONDS", 300) // 60} minutes.'
         )
-        try:
-            from apps.users.tasks import send_verification_email
-            send_verification_email.delay(subject, message, email)
-            logger.info(f'[EMAIL] Celery task dispatched for {email}')
-        except Exception:
-            # Celery 不可用时同步发送
-            logger.warning(f'[EMAIL] Celery unavailable, sending synchronously for {email}')
-            EmailService._send_email_sync(subject, message, email)
+        EmailService._send_email_sync(subject, message, email)
 
     @staticmethod
     def _send_email_sync(subject, message, email):
@@ -390,7 +383,7 @@ class EmailService:
         return payload['email']
 
     # ============================================================
-    # 管理员欢迎邮件 + 邮箱验证令牌（JWT 链接，非 Redis 验证码）
+    # 管理员欢迎邮件 + 邮箱验证令牌（JWT 链接，非验证码）
     # ============================================================
 
     @staticmethod
@@ -442,39 +435,6 @@ class EmailService:
             raise ValueError('令牌类型不正确')
 
         return payload
-
-    @staticmethod
-    def send_admin_welcome_email(user, context: dict | None = None) -> None:
-        """渲染 admin_welcome 模板并通过多账号池发送欢迎邮件。
-
-        context 可携带 role / login_url / support_url 等；缺失时以 settings 默认值补全。
-        验证令牌注入 verify_url，供模板渲染「验证邮箱」按钮。
-        发送失败抛异常（由 Celery 任务 try/except 兜底，不影响建号）。
-        """
-        from django.utils import timezone as _tz
-
-        context = dict(context or {})
-        platform_name = getattr(settings, 'PLATFORM_NAME', 'CarveNex')
-        login_url = getattr(settings, 'FRONTEND_URL', 'https://admin.carvenex.com')
-        support_url = getattr(settings, 'SUPPORT_URL', 'https://carvenex.com/support')
-
-        base = {
-            'platform_name': platform_name,
-            'real_name': (f"{user.first_name} {user.last_name}".strip() or user.username),
-            'username': user.username,
-            'email': user.email,
-            'role': context.get('role', 'customer'),
-            'login_url': login_url,
-            'support_url': support_url,
-            'year': str(_tz.now().year),
-        }
-        base.update(context)
-
-        # 验证令牌链接（供新管理员一键验证邮箱）
-        token = EmailService.issue_admin_email_verify_token(user)
-        base['verify_url'] = f"{login_url.rstrip('/')}/verify-email?token={token}"
-
-        _deliver_template_email(user.email, 'admin_welcome', base)
 
 
 # ============================================================
@@ -603,7 +563,7 @@ class EmailVerifyService:
                      False=仅校验不销毁（管理员登录等需容错场景，后续调 consume_code 显式消费）
 
         安全保障：
-            - 验证码 10 分钟自动过期（Redis TTL）
+            - 验证码 10 分钟自动过期（DB 缓存 TTL）
             - 每 verify_id 最多尝试 5 次，超限自动销毁（防暴破）
             - 发新码时旧码立即作废
             - 60s 发送频率限制 + 全局日额度限制

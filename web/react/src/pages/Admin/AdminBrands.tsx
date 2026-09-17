@@ -213,12 +213,18 @@ export default function AdminBrands() {
       title: 'Logo',
       width: '60px',
       hideable: false,
-      render: (_, record) =>
-        record.logo_url ? (
-          <LogoImg src={resolveMediaUrl(record.logo_url) ?? record.logo_url} alt={record.name} />
-        ) : (
-          <LogoPlaceholder>N/A</LogoPlaceholder>
-        ),
+      render: (_, record) => {
+        // 平台品牌 CarveNex：即使 logo_url 为空，也显示 CarveNex 官方 logo
+        // （/static 目录为前端打包自带资源，admin 站点可直接访问）。
+        const isCarveNex = /carvenex/i.test(record.name)
+        if (record.logo_url) {
+          return <LogoImg src={resolveMediaUrl(record.logo_url) ?? record.logo_url} alt={record.name} />
+        }
+        if (isCarveNex) {
+          return <LogoImg src="/static/images/logo-trimmed.png" alt={record.name} />
+        }
+        return <LogoPlaceholder>N/A</LogoPlaceholder>
+      },
     },
     { key: 'name', title: t('admin.brands.nameLabel'), sortable: true },
     {

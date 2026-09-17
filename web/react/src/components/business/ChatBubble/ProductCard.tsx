@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import styled, { keyframes } from 'styled-components'
 import { Color, Radius, Spacing, FontSize } from '../../../theme/tokens'
 import { useCurrency } from '../../../store/CurrencyContext'
+import { useTranslation } from '../../../i18n'
+import { localizedText } from '../../../utils/localizedText'
 import { resolveMediaUrl } from '../../../api/chat'
 
 // ── Types ──
@@ -18,6 +20,9 @@ export type OrderStatus =
 export interface ProductCardData {
   id: number
   name: string
+  /** 多语言商品名（英文 / 阿拉伯语） */
+  name_en?: string
+  name_ar?: string
   main_image: string
   price: string
   order_status?: string
@@ -241,6 +246,8 @@ const BrokenImageIcon = () => (
 export default function ProductCard({ product, loading = false, imageError = false }: ProductCardProps) {
   const navigate = useNavigate()
   const { format } = useCurrency()
+  const { lang } = useTranslation()
+  const localizedName = localizedText(lang, product.name, product.name_en, product.name_ar)
   const statusCfg = product.order_status ? (STATUS_CONFIG[product.order_status] ?? DEFAULT_STATUS) : null
   const [imgErr, setImgErr] = useState(false)
 
@@ -260,14 +267,14 @@ export default function ProductCard({ product, loading = false, imageError = fal
           ) : (
             <ThumbImg
               src={resolveMediaUrl(product.main_image) || product.main_image || undefined}
-              alt={product.name}
+              alt={localizedName}
               loading="lazy"
               onError={() => setImgErr(true)}
             />
           )}
         </Thumb>
         <Info>
-          <Name>{product.name}</Name>
+          <Name>{localizedName}</Name>
           <PriceRow>
             <PriceValue>{format(Number(product.price))}</PriceValue>
             {statusCfg && (

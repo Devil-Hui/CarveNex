@@ -95,13 +95,9 @@
 1. 执行 `docker stats` 查看该容器内存占用与限额（2C4G 配额）<br>
 2. 检查应用日志有无内存泄漏/大对象（日志文件、缓存膨胀）<br>
 3. 必要时重启容器释放，并评估上调 mem_limit 或拆分任务
-{{- else if eq .Labels.alertname "RedisMemoryHigh" -}}
-1. `redis-cli -h <redis> info memory` 查看 used_memory 构成<br>
-2. 用 `redis-cli --bigkeys` 定位大键，清理过期/膨胀缓存<br>
-3. 确认 maxmemory-policy（当前 allkeys-lru），必要时扩充容量
 {{- else if eq .Labels.alertname "DjangoDown" -}}
 1. 检查 django-app 容器状态：`docker ps` / `docker logs carvenex-django-app-1`<br>
-2. 确认 DB/Redis 依赖健康，必要时重启容器<br>
+2. 确认 DB 依赖健康，必要时重启容器<br>
 3. 恢复后验证 /health 与首页可访问，并关注告警是否自动 RESOLVED
 {{- else -}}
 1. 查看 Prometheus 表达式与容器日志定位根因<br>

@@ -599,12 +599,49 @@ export const SceneLine = styled.div<{ $w: string }>`
   background: ${Color.border.light};
 `
 
-/** 详情场景：底部小图切换条 */
+/** 详情场景：底部小图切换条（超过约 5 张可横向滚动查看后续图片） */
+export const ThumbStripScroller = styled.div`
+  position: relative;
+  margin-top: 10px;
+`
+
 export const ThumbStrip = styled.div`
   display: flex;
   gap: 6px;
-  margin-top: 10px;
-  flex-wrap: wrap;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+`
+
+export const ThumbStripArrow = styled.button<{ $side: 'left' | 'right' }>`
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  ${({ $side }) => ($side === 'left' ? 'left: 0;' : 'right: 0;')}
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: ${Color.text.body};
+  box-shadow: 0 1px 4px rgba(14, 16, 19, 0.18);
+  cursor: pointer;
+  z-index: 2;
+  &:hover:not(:disabled) {
+    background: #fff;
+    color: ${Color.primary};
+  }
+  &:disabled {
+    opacity: 0;
+  }
 `
 
 export const ThumbStripItem = styled.img<{ $active: boolean }>`
@@ -615,6 +652,7 @@ export const ThumbStripItem = styled.img<{ $active: boolean }>`
   cursor: pointer;
   border: 2px solid ${(p) => (p.$active ? Color.primary : 'transparent')};
   box-sizing: border-box;
+  flex-shrink: 0;
 `
 
 // ── 上传对话框 ──

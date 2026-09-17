@@ -17,9 +17,11 @@ x-app-security: &app-security
     - no-new-privileges:true
 
 # =============================================================================
-# 资源预算（2 vCPU / 4GB RAM 主机）
+# 资源预算（2 vCPU / 4GB RAM 主机）—— Celery 已下线，资源聚焦核心业务
 # 设计目标：任意负载下 CPU 硬上限之和 = 1.40 vCPU = 70% of 2.0，保证峰值 ≤70%。
-# 内存硬上限之和 ≈ 1.86GB（< 70% of 4GB = 2.8GB）。gunicorn 2×gevent 协程 worker 为内存安全取向。
+#   分配：nginx 0.10 + web(Django) 0.90 + db(MySQL) 0.40 = 1.40
+# 内存硬上限之和 ≈ 1.73GB（< 70% of 4GB = 2.8GB）。web 独占 D Django/R2 图片处理，
+#   gunicorn 2 个 worker（每 worker 尽池吞吐）；无 Celery，省出的内存/CPU 尽归 web 与 db。
 # 注意：cpus 为 Docker 硬上限（--cpus），即使满载也不会突破该比例；真实利用率取决于流量。
 # =============================================================================
 services:
@@ -82,8 +84,8 @@ services:
       DAPHNE_PORT: "8001"
       AWS_REGION: ${AWS_REGION:-auto}
       STATIC_ROOT: /app/static
-      # 无 Redis：缓存/会话走 MySQL，Celery broker&result 走 MySQL（见 settings/base.py）
-      # 2C4G：固定 2 个 gevent 协程 worker，配置：无 Redis、极简架构
+      # 缓存/会话走 MySQL，Celery broker&result 走 MySQL（见 settings/base.py）
+      # 2C4G：固定 2 个 gevent 协程 worker，极简架构
       GUNICORN_WORKERS: "2"
       GUNICORN_THREADS: "1"
       GUNICORN_WORKER_CLASS: gevent
@@ -93,6 +95,14 @@ services:
       GUNICORN_GRACEFUL_TIMEOUT: "30"
       # gevent 协程需纯 Python DB 驱动（mysqlclient 为 C 扩展，gevent 无法协作式调度其 socket）
       DJANGO_DB_DRIVER: "pymysql"
+      # 2C4G 图片内存护栏（详见 utils/upload_security.py）：
+      # 单张图解码像素上限，超限则等比缩小（软降级，不拒绝），16MP 可完整容纳 4000×4000 商品方图
+      MEDIA_IMPORT_MAX_IMAGE_PIXELS: "16000000"
+      # 面向用户的上传接口硬上限，超限直接 400（前端裁剪器最长边 2560 → 约 8.2MP，12MP 够用）
+      MEDIA_MAX_IMAGE_PIXELS: "12000000"
+      # import_media_dir 的并发封顶。os.cpu_count() 读到的是宿主核数（不受 cgroup 限制），
+      # 不封顶的话 8 核宿主会起 7 个线程同时解码原图，足以打爆 544m 的容器
+      MEDIA_IMPORT_MAX_CONCURRENCY: "2"
     env_file: [.env.prod]
     volumes:
       - media_data:/app/media
@@ -104,10 +114,10 @@ services:
       db:
         condition: service_healthy
     networks: [internal, egress]
-    mem_limit: 544m
-    mem_reservation: 384m
-    memswap_limit: 544m
-    cpus: "0.50"
+    mem_limit: 1024m
+    mem_reservation: 512m
+    memswap_limit: 1280m
+    cpus: "0.90"
     pids_limit: 96
     <<: *app-security
     ulimits:
@@ -118,73 +128,6 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health/ >/dev/null && curl -fsS http://127.0.0.1:8001/health/ >/dev/null"]
       <<: *healthcheck
       start_period: 45s
-
-  celery-worker:
-    image: carvenex-django:${APP_VERSION:-v1.0.6}
-    restart: unless-stopped
-    logging: *default-logging
-    environment:
-      SERVICE_TYPE: celery_worker
-      DJANGO_ENV: prod
-      # 无 Redis：Celery broker&result 走 MySQL（见 settings/base.py _celery_mysql_url）
-      # gevent 协程需纯 Python DB 驱动
-      DJANGO_DB_DRIVER: "pymysql"
-      CELERY_CONCURRENCY: "1"
-      # 2C4G：单一 worker（concurrency=1）承载高优队列；image_process 跑 R2 上传（受全局信号量 ≤3 并发）。
-      # batch_import/ranking 为周期性缓存预热任务，essential 保留在同一 worker，避免在 2C4G 上再起第二个 worker 抢内存。
-      CELERY_QUEUE: default,image_process,batch_import,ranking
-      CELERY_MAX_TASKS_PER_CHILD: "40"
-      CELERY_MAX_MEMORY_PER_CHILD: "160000"
-      CELERY_TASK_SOFT_TIME_LIMIT: "240"
-      CELERY_TASK_TIME_LIMIT: "300"
-    env_file: [.env.prod]
-    volumes:
-      - media_data:/app/media
-      - celery_logs:/app/logs
-      - backup_data:/backups
-    tmpfs:
-      - /tmp:size=32m,mode=1777
-    depends_on:
-      db:
-        condition: service_healthy
-    networks: [internal, egress]
-    mem_limit: 256m
-    mem_reservation: 160m
-    memswap_limit: 256m
-    cpus: "0.20"
-    pids_limit: 48
-    <<: *app-security
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f '[c]elery.*worker' >/dev/null"]
-      <<: *healthcheck
-
-  celery-beat:
-    image: carvenex-django:${APP_VERSION:-v1.0.6}
-    restart: unless-stopped
-    logging: *default-logging
-    environment:
-      SERVICE_TYPE: celery_beat
-      DJANGO_ENV: prod
-      # 无 Redis：Celery broker 走 MySQL（见 settings/base.py _celery_mysql_url），调度器为 DatabaseScheduler
-      DJANGO_DB_DRIVER: "pymysql"
-    env_file: [.env.prod]
-    volumes:
-      - beat_logs:/app/logs
-    tmpfs:
-      - /tmp:size=16m,mode=1777
-    depends_on:
-      db:
-        condition: service_healthy
-    networks: [internal]
-    mem_limit: 192m
-    mem_reservation: 128m
-    memswap_limit: 192m
-    cpus: "0.05"
-    pids_limit: 32
-    <<: *app-security
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f '[c]elery.*beat' >/dev/null"]
-      <<: *healthcheck
 
   db:
     build:
@@ -213,7 +156,7 @@ services:
       - no-new-privileges:true
     command:
       - --innodb-buffer-pool-size=384M
-      # 连接数上限：2 个 gunicorn worker(各池≤15) + celery(≤15) + daphne/beat 留余量
+      # 连接数上限：2 个 gunicorn worker(各池≤15) + daphne 预留；已无 Celery 占用
       - --max-connections=60
       - --performance-schema=OFF
       - --local-infile=OFF
@@ -233,9 +176,6 @@ volumes:
   media_data:
   static_data:
   django_logs:
-  celery_logs:
-  beat_logs:
-  backup_data:
 
 secrets:
   tls_cert:

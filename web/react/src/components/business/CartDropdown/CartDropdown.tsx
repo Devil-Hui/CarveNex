@@ -5,6 +5,7 @@ import { useCurrency } from '../../../store/CurrencyContext'
 import { useNavigate } from 'react-router-dom'
 import { zIndex } from '../../../styles/zIndex'
 import { useTranslation } from '../../../i18n'
+import { localizedText } from '../../../utils/localizedText'
 import styled, { css } from 'styled-components'
 import { Color, Radius, Shadow, Spacing } from '../../../theme/tokens'
 import {
@@ -12,6 +13,7 @@ import {
   type OpenCartDropdownDetail,
 } from '../../../utils/cartEvents'
 import { formatCartSpecValues } from '../../../utils/quickAdd'
+import SmartImage from '../../common/SmartImage/SmartImage'
 
 const CartDropdown = styled.div<{ $forceOpen?: boolean }>`
   position: absolute;
@@ -168,7 +170,7 @@ export default function CartDropdownComponent() {
   const navigate = useNavigate()
   const { items, removeItem, total } = useCart()
   const { format } = useCurrency()
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const [forceOpen, setForceOpen] = useState(false)
 
   useEffect(() => {
@@ -228,13 +230,14 @@ export default function CartDropdownComponent() {
         ) : (
           items.map((item) => {
             const specs = formatCartSpecValues(item.spec_values)
+            const localizedName = localizedText(lang, item.spu_name, item.spu_name_en, item.spu_name_ar)
             return (
               <CartItem key={item.id}>
                 <ItemThumb>
-                  {item.image ? <img src={item.image} alt={item.spu_name} /> : null}
+                  {item.image ? <SmartImage src={item.image} alt={localizedName} /> : null}
                 </ItemThumb>
                 <ItemInfo>
-                  <ItemName title={item.spu_name}>{item.spu_name}</ItemName>
+                  <ItemName title={localizedName}>{localizedName}</ItemName>
                   {specs ? <ItemSpecs title={specs}>{specs}</ItemSpecs> : null}
                   <ItemPrice>
                     {item.quantity} × {format(Number(item.price))}

@@ -6,7 +6,7 @@ class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
     can_delete = False
-    readonly_fields = ['spu_name', 'sku_code', 'spec_snapshot', 'price', 'quantity', 'subtotal', 'sku']
+    readonly_fields = ['spu_name', 'sku_name', 'spec_snapshot', 'price', 'quantity', 'subtotal', 'sku']
 
 
 @admin.register(Order)

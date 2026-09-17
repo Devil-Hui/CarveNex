@@ -6,6 +6,7 @@ import { useCurrency } from '../../store/CurrencyContext'
 import { useTranslation } from '../../i18n'
 import { Color, FontSize, Radius, Shadow } from '../../theme/tokens'
 import { zIndex } from '../../styles/zIndex'
+import SmartImage from './SmartImage/SmartImage'
 
 const slideIn = keyframes`
   from { opacity: 0; transform: translateY(12px); }
@@ -221,7 +222,7 @@ export default function MiniCartToast() {
       </Header>
       <Body>
         <Thumb>
-          {payload.image ? <img src={payload.image} alt={payload.name} /> : null}
+          {payload.image ? <SmartImage src={payload.image} alt={payload.name} /> : null}
         </Thumb>
         <Meta>
           <Name title={payload.name}>{payload.name}</Name>

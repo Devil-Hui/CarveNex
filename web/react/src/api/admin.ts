@@ -46,6 +46,8 @@ export interface SPUFormData {
     stock: number;
     discount_price?: string | number | null;
     shelf_status?: string;
+    /** SKU 名称（历史字段名 sku_code 亦兼容） */
+    sku_name?: string;
     sku_code?: string;
     barcode?: string;
     weight?: string;
@@ -60,7 +62,9 @@ export interface SKUItem {
   discount_price: number | null;
   stock: number;
   shelf_status: string;
-  sku_code: string;
+  sku_name: string;
+  /** 兼容别名：旧接口仍返回 sku_code */
+  sku_code?: string;
   barcode: string;
   weight: string;
   track_inventory: boolean;
@@ -400,6 +404,15 @@ export const adminAPI = {
     postWithProgress<ProductMediaItem>(
       `/goods/media/spu/${spuId}/upload`, formData, onProgress,
     ),
+  /** 原地重新裁剪/替换单张图片（不新增记录；四尺寸 FormData，XHR 进度） */
+  replaceMedia: (
+    mediaId: number,
+    formData: FormData,
+    onProgress?: (percent: number) => void,
+  ) =>
+    postWithProgress<ProductMediaItem>(
+      `/goods/media/${mediaId}/replace`, formData, onProgress,
+    ),
   /** 1.2 视频上传（编辑模式）：单文件 video/mp4|webm|mov，≤200MB
    *  thumbFile 可选：视频首帧图（WebP），后端存入 video_thumb_url 作为列表缩略图。 */
   uploadVideo: (
@@ -428,28 +441,9 @@ export const adminAPI = {
   markAllRead: () =>
     post('/notification/read-all/', {}),
 
-  // Operation Logs
-  getOperationLogs: (params?: { page?: number; page_size?: number }) =>
-    get<PaginatedData<OperationLogItem>>('/notification/logs/', params),
-
   // Stats
   getAdminStats: () =>
     get<Record<string, unknown>>('/goods/stats'),
-
-  // Audit
-  getAuditLogs: (params?: {
-    page?: number;
-    page_size?: number;
-    action?: string;
-    resource_type?: string;
-    user_id?: number;
-    resource_id?: number;
-    date_from?: string;
-    date_to?: string;
-    q?: string;
-  }) => get<PaginatedData<AuditLogItem>>('/goods/audit_log', params),
-  getSPUAuditLog: (spuId: number) =>
-    get<AuditLogItem[]>(`/goods/audit_log/${spuId}`),
 
   // Recycle
   getRecycleList: () =>
@@ -458,12 +452,6 @@ export const adminAPI = {
     post(`/goods/recycle/${id}/restore`, {}),
   permanentDeleteSPU: (id: number) =>
     del(`/goods/recycle/${id}/permanent`),
-
-  // Task
-  getMyTasks: () =>
-    get<TaskItem[]>('/goods/task'),
-  getTaskProgress: (taskId: string) =>
-    get<TaskItem>(`/goods/task/${taskId}`),
 
   // Coupon
   getCoupons: (params?: { page?: number; search?: string }) =>

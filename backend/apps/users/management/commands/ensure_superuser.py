@@ -5,10 +5,14 @@
 以便 rbac_bootstrap 能把该超管自动绑定为 superadmin 角色。
 
 环境变量：
-  DJANGO_SUPERUSER_USERNAME  (默认 "admin")
+  DJANGO_SUPERUSER_USERNAME  (必填；缺失则跳过并告警，不阻断启动)
   DJANGO_SUPERUSER_EMAIL     (默认 "<username>@carvenex.com")
   DJANGO_SUPERUSER_PASSWORD  (必填；缺失则跳过并告警，不阻断启动)
   DJANGO_SUPERUSER_FORCE_PASSWORD (="1" 时强制用环境变量密码覆盖)
+
+用户名与密码都必填：任一项缺失即跳过创建，绝不使用 'admin' 之类的
+内置默认值静默建号——否则 .env 漏配/拼写错误时会意外创建出非预期的
+管理员账号（与部署配置的账号不一致）。
 
     python manage.py ensure_superuser
     python manage.py ensure_superuser --dry-run
@@ -28,17 +32,28 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        username = os.getenv('DJANGO_SUPERUSER_USERNAME', 'admin')
-        email = os.getenv('DJANGO_SUPERUSER_EMAIL', f'{username}@carvenex.com')
+        username = os.getenv('DJANGO_SUPERUSER_USERNAME')
         password = os.getenv('DJANGO_SUPERUSER_PASSWORD')
 
-        if not password:
+        # 用户名与密码统一为「必填」：任一缺失即跳过，绝不用内置默认值建号，
+        # 避免 .env 漏配/拼写错误时静默创建出与部署预期不符的管理员账号。
+        missing = [
+            name
+            for name, value in (
+                ('DJANGO_SUPERUSER_USERNAME', username),
+                ('DJANGO_SUPERUSER_PASSWORD', password),
+            )
+            if not value
+        ]
+        if missing:
             self.stdout.write(
                 self.style.WARNING(
-                    '[SKIP] 未设置 DJANGO_SUPERUSER_PASSWORD，跳过超级管理员创建。'
+                    f'[SKIP] 未设置 {", ".join(missing)}，跳过超级管理员创建。'
                 )
             )
             return
+
+        email = os.getenv('DJANGO_SUPERUSER_EMAIL') or f'{username}@carvenex.com'
 
         if options['dry_run']:
             exists = User.objects.filter(username=username).exists()

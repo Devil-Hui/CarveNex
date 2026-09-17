@@ -12,6 +12,8 @@ export interface ImageCropperProps {
   file: File | null
   /** 裁剪完成回调 (多尺寸) */
   onCrop: (results: MultiSizeCropResult) => void
+  /** 生成裁剪图失败回调（画布超限/导出为空等）；不传则仅打印日志 */
+  onError?: (error: Error) => void
   /** 取消裁剪 */
   onCancel: () => void
   /** 裁剪宽高比 (默认 1:1)；作为选择器初始值 */

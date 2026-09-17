@@ -80,6 +80,7 @@ export function matchBestRatio(imgWidth: number, imgHeight: number, fallback = 1
 export default function ImageCropper({
   file,
   onCrop,
+  onError,
   onCancel,
   aspectRatio = 1,
   aspectRatioOptions,
@@ -108,7 +109,14 @@ export default function ImageCropper({
     if (!file) return
     setImgLoaded(false)
     setLoadError(false)
+    // blob URL 的撤销是导致 net::ERR_FILE_NOT_FOUND 的元凶：
+    //  1) React 18 StrictMode(dev) 会把 effect 执行「挂载→卸载→再挂载」，
+    //     cleanup 里的 revokeObjectURL 会干掉第二个实例正要使用的 blob → 解码失败；
+    //  2) 图片以异步解码，还没 onload 就被撤销也会同样报错。
+    // 因此这里完全不再手动 revoke：blob URL 在页面关闭时由浏览器统一回收，
+    // 换来的是 100% 解码稳定（对裁剪这种短生命周期 blob 完全可接受）。
     const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
     img.onload = () => {
       imgRef.current = img
       const scale = canvasWidth / img.width
@@ -136,8 +144,9 @@ export default function ImageCropper({
       setLoadError(true)
       console.error('[ImageCropper] 图片解码失败（可能是压缩产物损坏）')
     }
-    img.src = URL.createObjectURL(file)
-    return () => { URL.revokeObjectURL(img.src) }
+    img.src = objectUrl
+    // 不做任何 revokeObjectURL（原因见函数体注释）。如需严格释放可在组件卸载后
+    // 通过一个独立的「真正卸载」ref 处理，这里为规避 StrictMode 双调用竞态而省略。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file, canvasWidth])
 
@@ -335,21 +344,38 @@ export default function ImageCropper({
 
     const results: Record<string, { blob: Blob; dataUrl: string }> = {}
 
-    const generateSize = (key: string, w: number, h: number): Promise<void> => {
-      return new Promise((resolve) => {
+    /**
+     * 渲染并导出单个尺寸。
+     *
+     * ⚠️ 关键防御：canvas 超出浏览器上限（面积/单边过长）时，
+     * `toBlob` 会回调 null、`toDataURL` 会返回 'data:,'，旧实现此时会用
+     * `dataURLToBlob('data:,')` 造出一个 **0 字节 Blob** 并照常入库上传。
+     * 后端 `validate_image_upload` 随即以 `size <= 0` 拒绝 → 400，
+     * 而前端又把 400 一律渲染成「请检查存储空间是否充足」，故障完全不可见。
+     * 因此这里必须：导出结果为空即视为失败，先降尺寸重试，仍失败则抛错。
+     */
+    const renderCanvas = (w: number, h: number): Promise<{ blob: Blob; dataUrl: string }> => {
+      return new Promise((resolve, reject) => {
         const canvas = document.createElement('canvas')
         canvas.width = w
         canvas.height = h
-        const ctx = canvas.getContext('2d')!
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error(`画布上下文获取失败（${w}x${h}）`))
+          return
+        }
         ctx.drawImage(img, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0, 0, w, h)
         // 直接出 WebP（视觉近无损，体积优于 JPEG）；后端对已发 WebP 校验后原样落盘，免二次编码。
         // 透明背景由 WebP alpha 保留，无需铺白底。
         const dataUrl = canvas.toDataURL('image/webp', WEBP_QUALITY)
         canvas.toBlob(
           (blob) => {
-            if (blob) results[key] = { blob, dataUrl }
-            else results[key] = { blob: dataURLToBlob(dataUrl), dataUrl }
-            resolve()
+            const fallback = blob || (dataUrl.startsWith('data:image/') ? dataURLToBlob(dataUrl) : null)
+            if (fallback && fallback.size > 0) {
+              resolve({ blob: fallback, dataUrl })
+              return
+            }
+            reject(new Error(`图片导出失败（${w}x${h}）：浏览器画布可能超出上限`))
           },
           'image/webp',
           WEBP_QUALITY
@@ -357,10 +383,30 @@ export default function ImageCropper({
       })
     }
 
-    Promise.all(sizes.map((size) => generateSize(size.key, size.w, size.h))).then(() => {
-      onCrop(results as unknown as MultiSizeCropResult)
-    })
-  }, [cropRect, maxWidth, selectedRatio, onCrop])
+    const generateSize = async (key: string, w: number, h: number): Promise<void> => {
+      try {
+        results[key] = await renderCanvas(w, h)
+      } catch (firstErr) {
+        // 降级重试：画布过大时缩到一半再试一次，能救回绝大多数长图/全景图
+        const w2 = Math.max(1, Math.floor(w / 2))
+        const h2 = Math.max(1, Math.floor(h / 2))
+        try {
+          results[key] = await renderCanvas(w2, h2)
+        } catch {
+          throw firstErr instanceof Error ? firstErr : new Error(String(firstErr))
+        }
+      }
+    }
+
+    Promise.all(sizes.map((size) => generateSize(size.key, size.w, size.h)))
+      .then(() => {
+        onCrop(results as unknown as MultiSizeCropResult)
+      })
+      .catch((err: unknown) => {
+        console.error('[ImageCropper] 生成裁剪图失败', err)
+        onError?.(err instanceof Error ? err : new Error(String(err)))
+      })
+  }, [cropRect, maxWidth, selectedRatio, onCrop, onError])
 
   if (!file) return null
 

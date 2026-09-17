@@ -1,17 +1,17 @@
 import styled from 'styled-components'
 import { Font, Ink, Radius, Type, cardSurface, gridContainer, Rhythm, mq } from '../editorial'
-import { landingImages } from '../../../assets/landing'
 import { Reveal } from './Reveal'
-import { FigureBox, FigureImage, SectionHead } from './ui/primitives'
+import { FigureBox, SectionHead } from './ui/primitives'
+import LaserVideo, { LASER_VIDEOS } from './ui/LaserVideo'
 
 /* ── 資料 ─────────────────────────────────────────────────── */
 const STEPS = [
-  { n: 1, title: 'Pick a Product', desc: 'AI analyzes trends to find your winning product.' },
-  { n: 2, title: 'Build Your Store', desc: 'AI scaffolds your storefront in minutes.' },
-  { n: 3, title: 'List Products', desc: 'AI writes product pages and descriptions.' },
-  { n: 4, title: 'Set Smart Pricing', desc: 'AI benchmarks competitor prices for you.' },
-  { n: 5, title: 'Launch Marketing', desc: 'AI runs campaigns across every channel.' },
-  { n: 6, title: 'Grow & Scale', desc: 'AI optimizes and scales your sales.' },
+  { n: 1, title: 'Pick Your Design', desc: 'Choose, sketch or import a design in the CarveNex app.' },
+  { n: 2, title: 'Place & Autofocus', desc: 'Set the material down — the laser measures focus in seconds.' },
+  { n: 3, title: 'Preview & Adjust', desc: 'Project the engraving area and fine-tune size and position.' },
+  { n: 4, title: 'Engrave', desc: 'One tap and the laser does the rest — from 3s logos to deep embossing.' },
+  { n: 5, title: 'Clean & Finish', desc: 'Wipe, brush or rinse to reveal the finished piece.' },
+  { n: 6, title: 'Keep, Gift or Sell', desc: 'One-off presents today; a product line tomorrow.' },
 ]
 
 /* ── 區塊 ─────────────────────────────────────────────────── */
@@ -120,8 +120,8 @@ export default function Journey() {
           <Reveal>
             <SectionHead
               eyebrow="The workflow"
-              title="From zero to a thriving store in 30 days"
-              lead="Six steps, fully automated. Your only job is picking the product — the agents handle the rest."
+              title="From idea to finished piece in minutes"
+              lead="Six steps, no experience needed. Design on your phone — the machine handles focus, preview and power."
             />
           </Reveal>
         </HeadRow>
@@ -142,15 +142,11 @@ export default function Journey() {
           <Reveal delay={120}>
             <AsideFigure>
               <FigureBox
-                label="Figure 05 — The 30-day store journey"
-                meta="Day 1 → Day 30"
+                label="Figure 05 — Fully upgraded, still portable"
+                meta="Setup → engraving, uncut"
                 flush
               >
-                <FigureImage
-                  src={landingImages.journey.src}
-                  alt={landingImages.journey.alt}
-                  loading="lazy"
-                />
+                <LaserVideo src={LASER_VIDEOS.lp1} ratio="4 / 3" />
               </FigureBox>
             </AsideFigure>
           </Reveal>

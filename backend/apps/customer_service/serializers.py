@@ -91,6 +91,8 @@ def _resolve_card_data(card_data: dict) -> dict:
             spu = SPU.objects.filter(id=spu_id, deleted_at__isnull=True).first()
             if spu:
                 resolved['product_name'] = spu.name
+                resolved['product_name_en'] = spu.name_en or ''
+                resolved['product_name_ar'] = spu.name_ar or ''
                 resolved['status'] = spu.status
                 resolved['main_image'] = spu.main_image or ''
 
@@ -122,7 +124,7 @@ def _resolve_card_data(card_data: dict) -> dict:
     order_id = card_data.get('order_id')
     if order_id:
         try:
-            from apps.orders.models import Order
+            from apps.order.models import Order
             order = Order.objects.filter(id=order_id).only('order_no').first()
             if order:
                 resolved['order_no'] = order.order_no
@@ -149,6 +151,8 @@ def _resolve_spu_info(spu) -> dict | None:
         return {
             'id': spu.id,
             'name': spu.name,
+            'name_en': spu.name_en or '',
+            'name_ar': spu.name_ar or '',
             'main_image': spu.main_image or '',
             'price': price,
         }
@@ -156,6 +160,8 @@ def _resolve_spu_info(spu) -> dict | None:
         return {
             'id': spu.id,
             'name': getattr(spu, 'name', ''),
+            'name_en': getattr(spu, 'name_en', '') or '',
+            'name_ar': getattr(spu, 'name_ar', '') or '',
             'main_image': getattr(spu, 'main_image', '') or '',
             'price': '0',
         }

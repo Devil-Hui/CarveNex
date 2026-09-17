@@ -172,9 +172,10 @@ class UploadAttachmentView(BaseApiView):
                 image_max_bytes=20 * 1024 * 1024,
                 video_max_bytes=20 * 1024 * 1024,
             )
-        except UploadValidationError:
+        except UploadValidationError as exc:
+            # 回传精确原因（0 字节 / 超大小 / 内容损坏 / 扩展名不符…），不要糊成一句
             return Response(
-                {'detail': '文件扩展名、真实内容或大小不符合要求'},
+                {'detail': str(exc), 'code': exc.reason},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

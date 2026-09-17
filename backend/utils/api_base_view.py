@@ -12,9 +12,17 @@ logger = logging.getLogger('biz')
 
 
 class PublicApiView(APIView):
-    """公开接口基类：无需认证，允许匿名访问。"""
+    """公开接口基类：无需认证，允许匿名访问。
+
+    公开展示页接口（首页/落地页/前台广告位等）一律不走限流——原因：
+    1) 这些接口返回的是公开数据，无敏感写操作；
+    2) 前端 SPA 单页面打开即触发十几个并发请求，全局 anon throttle 极易误命中；
+    3) DoS 防护由网关/Vite 代理/前端缓存层负责，应用层保持轻量。
+    真正需要限流的子集（搜索、支付等）请在子视图显式声明 throttle_classes。
+    """
     authentication_classes = [CookieJWTAuthentication, UsersJWTAuthentication]
     permission_classes = [AllowAny]
+    throttle_classes = ()
     pagination_class = BasePagination
 
     def paginate_queryset(self, queryset):

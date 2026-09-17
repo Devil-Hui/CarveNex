@@ -1,19 +1,12 @@
 Django>=5.2.9,<5.3
 djangorestframework==3.15.2
 gunicorn==23.0.0
-django-redis==5.4.0
-# channels_redis 4.2.0 与 redis-py >=5.1/8.x 的 asyncio 连接池不兼容（长连接下
-# group_add 会卡死报 "Timeout reading from redis"）。固定到 5.0.1 可修复 WS 握手。
-redis==5.0.1
 mysqlclient==2.2.7
 PyMySQL==1.1.1
 python-dotenv==1.2.2
 drf-spectacular==0.28.0
 drf-spectacular[sidecar]
 djangorestframework-simplejwt==5.5.1
-celery==5.5.1
-django-celery-beat==2.8.0
-django-celery-results==2.6.0
 django-cors-headers==4.7.0
 django-prometheus==2.3.1
 Pillow==12.3.0
@@ -29,7 +22,6 @@ python-magic>=0.4.27
 # 邮件 HTML 白名单消毒（ammonia Rust 绑定），见 utils/html_sanitize.py
 nh3>=0.2.18
 channels[daphne]==4.2.0
-channels_redis==4.2.0
 SQLAlchemy>=2.0,<3
 PySocks>=1.7.1
 # ── 2C4G 资源约束：协程模型 + 连接池 ──

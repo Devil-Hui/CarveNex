@@ -10,9 +10,9 @@ import {
   Rhythm,
   mq,
 } from '../editorial'
-import { landingImages } from '../../../assets/landing'
 import { Reveal, MaskLine } from './Reveal'
-import { FigureBox, FigureImage } from './ui/primitives'
+import { FigureBox } from './ui/primitives'
+import LaserVideo, { LASER_VIDEOS } from './ui/LaserVideo'
 import { IconSparkles, IconArrowRight, IconCheck } from './ui/Icon'
 
 /**
@@ -181,38 +181,34 @@ export default function Closing() {
             <Panel>
               <PanelCopy>
                 <Badge>
-                  <IconSparkles /> No camera. No experience. No excuses.
+                  <IconSparkles /> No workshop. No experience. No limits.
                 </Badge>
                 <Title>
-                  <MaskLine delay={80}>Your Content</MaskLine>
-                  <MaskLine delay={160}>Deserves a Business</MaskLine>
+                  <MaskLine delay={80}>Your Ideas</MaskLine>
+                  <MaskLine delay={160}>Deserve to Exist</MaskLine>
                 </Title>
                 <Sub>
-                  Join 2,400+ creators turning short-form attention into predictable monthly
-                  revenue.
+                  Join 12,000+ makers personalizing gifts, products and brands with CarveNex
+                  portable laser engravers.
                 </Sub>
                 <CtaRow>
-                  <Cta href="#start">
-                    Start Building Free <IconArrowRight />
+                  <Cta href="/category">
+                    Shop the Engraver <IconArrowRight />
                   </Cta>
-                  <GhostCta href="#optimizer">Book a walkthrough</GhostCta>
+                  <GhostCta href="#materials">See what it can engrave</GhostCta>
                 </CtaRow>
                 <Promises>
                   <span>
-                    <IconCheck /> No card required
+                    <IconCheck /> Free shipping
                   </span>
                   <span>
-                    <IconCheck /> Cancel in one click
+                    <IconCheck /> 2-year warranty
                   </span>
                 </Promises>
               </PanelCopy>
 
-              <FigureBox label="Today's queue" meta="3 clips scheduled">
-                <FigureImage
-                  src={landingImages.clipAi.src}
-                  alt={landingImages.clipAi.alt}
-                  loading="lazy"
-                />
+              <FigureBox label="Now engraving" meta="Glass tumbler · rotary mode" flush>
+                <LaserVideo src={LASER_VIDEOS.rotary} ratio="4 / 3" />
               </FigureBox>
             </Panel>
           </Reveal>

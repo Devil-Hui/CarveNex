@@ -1,7 +1,6 @@
 """媒体管理 API —— 列表 / 删除 / 排序 / 信息更新 / 编辑模式上传"""
 
 import os
-import uuid as _uuid
 from utils.storage import media_key
 import logging
 from io import BytesIO
@@ -110,39 +109,6 @@ def _delete_storage_file(url: str) -> None:
             _logger.warning('删除本地文件失败 path=%s error=%s', local_path, e)
 
 
-# ── 媒体操作分布式锁（Redis SET NX + Lua 释放）──────────────────────────────
-# 防并发「删除/修改/排序」竞态（如两个请求同时删、删除与改排序交错）。
-# Redis 不可用时退化为无锁（保持可用性，不阻塞上传/查询）。
-
-def _acquire_media_lock(key: str, ttl: int = 15):
-    """尝试获取分布式锁；成功返回释放令牌，失败返回 None（其他操作正持有）。"""
-    try:
-        from django_redis import get_redis_connection
-        conn = get_redis_connection('default')
-        token = _uuid.uuid4().hex
-        if conn.set(key, token, nx=True, ex=ttl):
-            return token
-    except Exception:
-        pass
-    return None
-
-
-def _release_media_lock(key: str, token: str) -> None:
-    """仅释放自己持有的锁（Lua 原子：值匹配才 DEL，避免误删他人锁）。"""
-    if not token:
-        return
-    try:
-        from django_redis import get_redis_connection
-        conn = get_redis_connection('default')
-        conn.eval(
-            "if redis.call('get', KEYS[1]) == ARGV[1] then "
-            "return redis.call('del', KEYS[1]) else return 0 end",
-            1, key, token,
-        )
-    except Exception:
-        pass
-
-
 class MediaListBySPUView(BaseApiView):
     """获取 SPU 的媒体列表（含审核状态、alt_text）"""
     permission_classes = [HasPerm('goods.media.write')]
@@ -163,7 +129,7 @@ class MediaListBySPUView(BaseApiView):
 class MediaDeleteView(BaseApiView):
     """删除单个媒体（pending / rejected / active 均可删除，active 需前端二次确认）。
 
-    删除时同步清理本地文件 + Redis 暂存 + 失效媒体列表缓存。
+    删除时同步清理存储文件 + 失效媒体列表缓存。
     """
     permission_classes = [HasPerm('goods.media.write')]
 
@@ -172,55 +138,37 @@ class MediaDeleteView(BaseApiView):
         responses={200: OpenApiResponse(description='Media deleted')}
     )
     def delete(self, request, media_id):
-        lock_key = f'media:op:{media_id}'
-        lock_token = _acquire_media_lock(lock_key)
-        if not lock_token:
-            return Response(
-                {'detail': '该媒体正在被其他操作处理，请稍后重试'},
-                status=status.HTTP_409_CONFLICT,
-            )
         try:
+            media = ProductMedia.objects.get(id=media_id)
+        except ProductMedia.DoesNotExist:
+            return Response({'detail': '媒体不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        spu_id = media.spu_id
+        if spu_id:
             try:
-                media = ProductMedia.objects.get(id=media_id)
-            except ProductMedia.DoesNotExist:
-                return Response({'detail': '媒体不存在'}, status=status.HTTP_404_NOT_FOUND)
+                spu = SPU.objects.get(id=spu_id)
+            except SPU.DoesNotExist:
+                return Response({'detail': 'SPU 不存在'}, status=status.HTTP_404_NOT_FOUND)
+            if not can_operate_spu(request.user, spu):
+                return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
-            spu_id = media.spu_id
-            if spu_id:
-                try:
-                    spu = SPU.objects.get(id=spu_id)
-                except SPU.DoesNotExist:
-                    return Response({'detail': 'SPU 不存在'}, status=status.HTTP_404_NOT_FOUND)
-                if not can_operate_spu(request.user, spu):
-                    return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        # 清理存储文件（thumb/list/large/original 或视频；支持 local/R2）
+        if media.media_type == 'image':
+            for url in (media.thumb_url, media.list_url, media.large_url, media.original_url):
+                _delete_storage_file(url)
+        else:
+            for url in (media.video_url, media.video_thumb_url, media.video_list_url, media.video_large_url):
+                _delete_storage_file(url)
+        ProductMedia.objects.filter(id=media_id).delete()
 
-            # 清理存储文件（thumb/list/large/original 或视频；支持 local/R2）
-            if media.media_type == 'image':
-                for url in (media.thumb_url, media.list_url, media.large_url, media.original_url):
-                    _delete_storage_file(url)
-            else:
-                for url in (media.video_url, media.video_thumb_url, media.video_list_url, media.video_large_url):
-                    _delete_storage_file(url)
-
-            # 清理 Redis 暂存（创建模式遗留）
-            if media.redis_key:
-                MediaService.delete_media_from_redis(
-                    media.redis_key,
-                    is_video=(media.media_type == 'video'),
-                )
-            # 二次读取并删除：锁内保证无并发删除/修改交错
-            ProductMedia.objects.filter(id=media_id).delete()
-
-            # 失效媒体列表缓存
-            if spu_id:
-                GoodsCacheService.invalidate_media_list(spu_id)
-                GoodsCacheService.invalidate_spu(spu_id)
-                GoodsCacheService.invalidate_spu_list()
-                # 同步 main_image
-                MediaService.sync_main_image(spu_id)
-            return Response({'detail': '已删除'})
-        finally:
-            _release_media_lock(lock_key, lock_token)
+        # 失效媒体列表缓存
+        if spu_id:
+            GoodsCacheService.invalidate_media_list(spu_id)
+            GoodsCacheService.invalidate_spu(spu_id)
+            GoodsCacheService.invalidate_spu_list()
+            # 同步 main_image
+            MediaService.sync_main_image(spu_id)
+        return Response({'detail': '已删除'})
 
 
 class MediaReorderView(BaseApiView):
@@ -238,45 +186,33 @@ class MediaReorderView(BaseApiView):
 
         # 组隔离：验证所有媒体项所属 SPU 是否可操作
         media_map = {}  # media_id → ProductMedia（预取，后续排序时复用）
-        lock_spu = None
         for mid in media_ids:
             try:
                 media = ProductMedia.objects.select_related('spu').get(id=mid)
                 if not can_operate_spu(request.user, media.spu):
                     return Response({'detail': f'媒体 {mid} 所属 SPU 不在您的管理范围内'}, status=status.HTTP_403_FORBIDDEN)
                 media_map[mid] = media
-                if lock_spu is None and media.spu_id:
-                    lock_spu = media.spu_id
             except ProductMedia.DoesNotExist:
                 return Response({'detail': f'媒体 {mid} 不存在'}, status=status.HTTP_404_NOT_FOUND)
 
-        lock_key = f'media:op:spu:{lock_spu}' if lock_spu else None
-        lock_token = _acquire_media_lock(lock_key) if lock_key else None
-        if lock_key and not lock_token:
-            return Response(
-                {'detail': '该 SPU 的媒体正在被其他操作处理，请稍后重试'},
-                status=status.HTTP_409_CONFLICT,
-            )
-        try:
-            spu_ids = set()
-            for idx, media_id in enumerate(media_ids):
-                updated = ProductMedia.objects.filter(id=media_id).update(sort_order=idx)
-                if updated:
-                    # 从已查询的 media 对象中获取 spu_id，避免重复查询
-                    for mid, m in media_map.items():
-                        if mid == media_id:
-                            spu_ids.add(m.spu_id)
-                            break
-            # 失效涉及的 SPU 媒体缓存
-            for sid in spu_ids:
-                if sid:
-                    GoodsCacheService.invalidate_media_list(sid)
-                    GoodsCacheService.invalidate_spu(sid)
-                    GoodsCacheService.invalidate_spu_list()
-            return Response({'detail': '排序已更新', 'count': len(media_ids)})
-        finally:
-            if lock_key:
-                _release_media_lock(lock_key, lock_token)
+        spu_ids = set()
+        for idx, media_id in enumerate(media_ids):
+            updated = ProductMedia.objects.filter(id=media_id).update(sort_order=idx)
+            if updated:
+                # 从已查询的 media 对象中获取 spu_id，避免重复查询
+                for mid, m in media_map.items():
+                    if mid == media_id:
+                        spu_ids.add(m.spu_id)
+                        break
+        # 失效涉及的 SPU 媒体缓存
+        for sid in spu_ids:
+            if sid:
+                GoodsCacheService.invalidate_media_list(sid)
+                GoodsCacheService.invalidate_spu(sid)
+                GoodsCacheService.invalidate_spu_list()
+                # 排序变更后重新推导主图（sort_order=0 的图片大图）
+                MediaService.sync_main_image(sid)
+        return Response({'detail': '排序已更新', 'count': len(media_ids)})
 
 
 class MediaUpdateView(BaseApiView):
@@ -288,60 +224,228 @@ class MediaUpdateView(BaseApiView):
         responses={200: MediaUpdateResponseSerializer}
     )
     def patch(self, request, media_id):
-        lock_key = f'media:op:{media_id}'
-        lock_token = _acquire_media_lock(lock_key)
-        if not lock_token:
-            return Response(
-                {'detail': '该媒体正在被其他操作处理，请稍后重试'},
-                status=status.HTTP_409_CONFLICT,
-            )
         try:
+            media = ProductMedia.objects.get(id=media_id)
+        except ProductMedia.DoesNotExist:
+            return Response({'detail': '媒体不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        if media.spu_id:
             try:
-                media = ProductMedia.objects.get(id=media_id)
-            except ProductMedia.DoesNotExist:
-                return Response({'detail': '媒体不存在'}, status=status.HTTP_404_NOT_FOUND)
+                spu = SPU.objects.get(id=media.spu_id)
+            except SPU.DoesNotExist:
+                return Response({'detail': 'SPU 不存在'}, status=status.HTTP_404_NOT_FOUND)
+            if not can_operate_spu(request.user, spu):
+                return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
 
+        update_fields = []
+        if 'alt_text' in request.data:
+            val = str(request.data['alt_text'] or '')
+            if len(val) > 200:
+                return Response({'detail': 'alt_text 长度不能超过 200'}, status=status.HTTP_400_BAD_REQUEST)
+            media.alt_text = val
+            update_fields.append('alt_text')
+        if 'sort_order' in request.data:
+            try:
+                sort_order = int(request.data['sort_order'])
+            except (TypeError, ValueError):
+                return Response({'detail': 'sort_order 必须为整数'}, status=status.HTTP_400_BAD_REQUEST)
+            if sort_order < 0:
+                return Response({'detail': 'sort_order 不能为负数'}, status=status.HTTP_400_BAD_REQUEST)
+            media.sort_order = sort_order
+            update_fields.append('sort_order')
+
+        if update_fields:
+            media.save(update_fields=update_fields)
+            # 失效媒体列表缓存
             if media.spu_id:
-                try:
-                    spu = SPU.objects.get(id=media.spu_id)
-                except SPU.DoesNotExist:
-                    return Response({'detail': 'SPU 不存在'}, status=status.HTTP_404_NOT_FOUND)
-                if not can_operate_spu(request.user, spu):
-                    return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
-
-            update_fields = []
-            if 'alt_text' in request.data:
-                alt_text = str(request.data['alt_text'] or '')
-                if len(alt_text) > 200:
-                    return Response({'detail': 'alt_text 长度不能超过 200'}, status=status.HTTP_400_BAD_REQUEST)
-                media.alt_text = alt_text
-                update_fields.append('alt_text')
+                GoodsCacheService.invalidate_media_list(media.spu_id)
+                GoodsCacheService.invalidate_spu(media.spu_id)
+                GoodsCacheService.invalidate_spu_list()
+            # 排序变化需重新计算主图（sort_order=0 的图片大图）。
             if 'sort_order' in request.data:
-                try:
-                    sort_order = int(request.data['sort_order'])
-                except (TypeError, ValueError):
-                    return Response({'detail': 'sort_order 必须为整数'}, status=status.HTTP_400_BAD_REQUEST)
-                if sort_order < 0:
-                    return Response({'detail': 'sort_order 不能为负数'}, status=status.HTTP_400_BAD_REQUEST)
-                media.sort_order = sort_order
-                update_fields.append('sort_order')
+                MediaService.sync_main_image(media.spu_id) if media.spu_id else None
 
-            if update_fields:
-                media.save(update_fields=update_fields)
-                # 失效媒体列表缓存
-                if media.spu_id:
-                    GoodsCacheService.invalidate_media_list(media.spu_id)
-                    GoodsCacheService.invalidate_spu(media.spu_id)
-                    GoodsCacheService.invalidate_spu_list()
+        return Response({
+            'id': media.id,
+            'alt_text': media.alt_text,
+            'sort_order': media.sort_order,
+            'message': '更新成功',
+        })
 
-            return Response({
-                'id': media.id,
-                'alt_text': media.alt_text,
-                'sort_order': media.sort_order,
-                'message': '更新成功',
-            })
-        finally:
-            _release_media_lock(lock_key, lock_token)
+
+class MediaUploadRejected(ValueError):
+    """媒体上传被拒绝（4xx，客户端可修正）。
+
+    继承 ValueError 以兼容既有 `except ValueError` 分支；额外携带机器可读的
+    `code`（= UploadValidationError.reason 或 'content_type_unsupported'）与
+    出问题的 `file` 名，供调用方回传给前端做精确提示与定位。
+
+    历史教训：此前所有校验失败统一抛
+    `ValueError('文件扩展名、真实图片内容或大小不符合要求')`，把「0 字节 / 超过
+    10MB / 像素超限 / 内容损坏 / 扩展名与内容不符 / 类型不支持」六种故障混为一谈；
+    前端又把它一律翻译为「请检查存储空间是否充足后重试」，导致线上完全无法定位，
+    用户反复重试还留下 8 个空商品（SPU 61→68）。
+    """
+
+    def __init__(self, message: str, *, code: str = '', file: str = ''):
+        super().__init__(message)
+        self.code = code
+        self.file = file
+
+
+def _is_disk_full(exc: BaseException) -> bool:
+    """判断异常是否为「磁盘空间不足」（OSError ENOSPC / EDQUOT）。
+
+    只有这一种情况才允许对用户说「存储空间不足」——其余一律按存储服务异常处理，
+    避免把校验失败/网络抖动误报成容量问题。
+    """
+    errno = getattr(exc, 'errno', None)
+    return errno in (28, 122)  # ENOSPC / EDQUOT
+
+
+def _validate_and_save_cropped(files: dict, spu_id: int):
+    """校验并保存四尺寸裁剪图，返回 dict 或抛异常。
+
+    `files` 形如 {'thumb': Upload, 'list': Upload, 'large': Upload, 'original': Upload}。
+
+    返回:
+        {
+          'thumb': url, 'list': url, 'large': url, 'original': url,
+          'validated_extensions': {id(f): ext, ...},
+          'sizes': {id(f): size, ...},
+        }
+
+    校验失败抛 `ValueError`（message 为给前端的 detail 文案）；
+    存储异常统一抛带「存储服务异常」信息的 ValueError（由调用方降级为 502）。
+    """
+    # 读取四尺寸文件
+    thumb = files.get('thumb')
+    list_file = files.get('list')
+    large = files.get('large')
+    original = files.get('original')
+    if not all([thumb, list_file, large, original]):
+        missing = [k for k, v in (
+            ('thumb', thumb), ('list', list_file), ('large', large), ('original', original),
+        ) if not v]
+        raise MediaUploadRejected(
+            f'缺少必需的图片字段: {"/".join(missing)}（需要 thumb/list/large/original 四尺寸齐全）',
+            code='missing_parts',
+        )
+
+    # 校验真实图片内容、扩展名、类型和大小；全部通过后才允许写存储。
+    allowed = getattr(settings, 'FILE_STORAGE_ALLOWED_TYPES', [])
+    max_size = getattr(settings, 'MEDIA_MAX_FILE_SIZE_MB', 10) * 1024 * 1024
+    validated_extensions = {}
+    for f in (thumb, list_file, large, original):
+        try:
+            extension, content_type = validate_image_upload(f, max_bytes=max_size)
+        except UploadValidationError as exc:
+            # 精确回传「哪一个文件 + 因为什么」被拒，并落一条带 request_id 的告警，
+            # 让下次同类故障可以直接 grep 到，而不是靠猜。
+            _logger.warning(
+                '媒体上传校验失败 spu=%s file=%s size=%s reason=%s detail=%s',
+                spu_id, f.name, getattr(f, 'size', None), exc.reason, exc,
+            )
+            raise MediaUploadRejected(
+                f'「{f.name}」{exc}', code=exc.reason, file=f.name or '',
+            ) from exc
+        if allowed and content_type not in allowed:
+            _logger.warning(
+                '媒体上传类型不受支持 spu=%s file=%s content_type=%s',
+                spu_id, f.name, content_type,
+            )
+            raise MediaUploadRejected(
+                f'「{f.name}」不支持的文件类型: {content_type}（允许：{"/".join(allowed)}）',
+                code='content_type_unsupported', file=f.name or '',
+            )
+        f.content_type = content_type
+        validated_extensions[id(f)] = extension
+
+    def save_file(f):
+        content_type = getattr(f, 'content_type', '') or ''
+        ext = validated_extensions[id(f)]
+        # 前端已 WebP（q90）或历史 WebP → 校验完整性后原样落盘：
+        #   避免二次编码损耗，且保留透明通道（strip_exif 对 WEBP 会拍平 RGBA 致透明变黑）。
+        if content_type == 'image/webp' or ext.lower() == '.webp':
+            try:
+                f.seek(0)
+                with Image.open(f) as probe:
+                    probe.load()  # 强制全量像素解码，校验文件完整可解码
+                    # 真实格式必须是 WEBP：防止伪造 content_type/扩展名（实为 PNG/JPEG 字节）
+                    # 却以 .webp 后缀裸存导致展示损坏 —— 不符则降级到下方 Pillow 重编码。
+                    if (probe.format or '').upper() != 'WEBP':
+                        raise ValueError(f'声明 WebP 但实际格式为 {probe.format}')
+                f.seek(0)
+                raw = f.read()
+                path = default_storage.save(
+                    media_key('products', '.webp'),
+                    ContentFile(raw),
+                )
+                return default_storage.url(path)
+            except Exception as exc:  # noqa: BLE001 - WebP 直存失败 → 落入下方重编码兜底
+                _logger.warning('WebP 直存校验失败，转 Pillow 重编码: %s', exc)
+
+        # 其余格式（PNG/JPEG/...）→ Pillow 转「高质量 WebP」 q90（Google libwebp）：
+        #   视觉近无损，体积比无损 WebP 再小 50–70%；EXIF 方向校正 + 重编码剥离元数据。
+        try:
+            f.seek(0)
+            with Image.open(f) as img:
+                img = ImageOps.exif_transpose(img)  # 校正手机拍摄方向
+                img.load()
+                # 保留透明通道（WebP 支持带 alpha 的有损），否则转 RGB 减小体积
+                if img.mode in ('RGBA', 'LA', 'P', 'PA'):
+                    img = img.convert('RGBA')
+                else:
+                    img = img.convert('RGB')
+                buf = BytesIO()
+                # lossless=False + quality=WEBP_QUALITY：视觉无损；method=4 平衡压缩率与上传耗时
+                img.save(buf, 'WEBP', lossless=False, quality=WEBP_QUALITY, method=4)
+            buf.seek(0)
+            path = default_storage.save(
+                media_key('products', '.webp'),
+                ContentFile(buf.getvalue()),
+            )
+            return default_storage.url(path)
+        except UploadValidationError:
+            raise
+        except ValueError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - 转码失败回退原格式，保证可用
+            _logger.warning('WebP 转码失败，回退原格式保存: %s', exc)
+            f.seek(0)
+            path = default_storage.save(media_key('products', ext), strip_exif(f))
+            return default_storage.url(path)
+
+    # 保存四尺寸文件；任一失败整体失败（文件已落盘的由后续错误处理兜底）。
+    try:
+        thumb_url = save_file(thumb)
+        list_url = save_file(list_file)
+        large_url = save_file(large)
+        original_url = save_file(original)
+    except UploadValidationError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - 存储异常统一抛给调用方（502）
+        _logger.exception('媒体图片保存失败 spu=%s', spu_id)
+        # 仅当确为磁盘写满（ENOSPC/EDQUOT）时才对用户说「存储空间不足」；
+        # 其余情况一律表述为存储服务异常，杜绝「校验失败被误报成容量不足」。
+        if _is_disk_full(exc):
+            raise RuntimeError('图片保存失败：存储空间不足（磁盘已满），请清理后重试。') from exc
+        raise RuntimeError(f'图片保存失败（存储服务异常），请稍后重试。{type(exc).__name__}') from exc
+
+    sizes = {
+        id(thumb): thumb.size,
+        id(list_file): list_file.size,
+        id(large): large.size,
+        id(original): original.size,
+    }
+    return {
+        'thumb': thumb_url,
+        'list': list_url,
+        'large': large_url,
+        'original': original_url,
+        'validated_extensions': validated_extensions,
+        'sizes': sizes,
+    }
 
 
 class MediaCreateView(BaseApiView):
@@ -373,119 +477,32 @@ class MediaCreateView(BaseApiView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 读取四尺寸文件
-        thumb = request.FILES.get('thumb')
-        list_file = request.FILES.get('list')
-        large = request.FILES.get('large')
-        original = request.FILES.get('original')
-        if not all([thumb, list_file, large, original]):
+        # 校验并保存四尺寸裁剪图
+        try:
+            result = _validate_and_save_cropped(request.FILES, spu_id)
+        except MediaUploadRejected as exc:
+            # 回传 code / file，前端据此给出精确提示（不再一律说「存储空间不足」）
             return Response(
-                {'detail': '请上传 thumb/list/large/original 四尺寸图片'},
+                {'detail': str(exc), 'code': exc.code, 'file': exc.file},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:  # 存储服务异常 → 502
+            return Response({'detail': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        # 校验真实图片内容、扩展名、类型和大小；全部通过后才允许写存储。
-        allowed = getattr(settings, 'FILE_STORAGE_ALLOWED_TYPES', [])
-        max_size = getattr(settings, 'MEDIA_MAX_FILE_SIZE_MB', 10) * 1024 * 1024
-        validated_extensions = {}
-        for f in (thumb, list_file, large, original):
-            try:
-                extension, content_type = validate_image_upload(f, max_bytes=max_size)
-            except UploadValidationError:
-                return Response(
-                    {'detail': '文件扩展名、真实图片内容或大小不符合要求'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if allowed and content_type not in allowed:
-                return Response(
-                    {'detail': f'不支持的文件类型: {content_type}'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            f.content_type = content_type
-            validated_extensions[id(f)] = extension
-
-        # 保存文件（剥离 EXIF 元数据）。URL 统一由 default_storage.url() 产生：
-        #  - local：/media/{path}（相对 MEDIA_URL）
-        #  - r2：  完整 CDN URL（S3Boto3Storage 用 AWS_S3_CUSTOM_DOMAIN 拼接）
-        # ⚠️ 注意：prod.py 中 R2 的启用由「env 凭据齐全」触发，并不依赖 FILE_STORAGE 值，
-        # 此处若再按 FILE_STORAGE=='r2' 分支返回相对路径，R2 模式下会返回错误地址导致前端 404。
-        # 因此无条件走 default_storage.url()，两种后端行为天然正确。
-        def _save_file(f):
-            content_type = getattr(f, 'content_type', '') or ''
-            ext = validated_extensions[id(f)]
-            # 前端已直出 WebP（q90）或历史 WebP → 校验完整性后原样落盘：
-            #   避免二次编码损耗，且保留透明通道（strip_exif 对 WEBP 会拍平 RGBA 致透明变黑）。
-            if content_type == 'image/webp' or ext.lower() == '.webp':
-                try:
-                    f.seek(0)
-                    with Image.open(f) as probe:
-                        probe.load()  # 强制全量像素解码，校验文件完整可解码
-                        # 真实格式必须是 WEBP：防止伪造 content_type/扩展名（实为 PNG/JPEG 字节）
-                        # 却以 .webp 后缀裸存导致展示损坏 —— 不符则降级到下方 Pillow 重编码。
-                        if (probe.format or '').upper() != 'WEBP':
-                            raise ValueError(f'声明 WebP 但实际格式为 {probe.format}')
-                    f.seek(0)
-                    raw = f.read()
-                    path = default_storage.save(
-                        media_key('products', '.webp'),
-                        ContentFile(raw),
-                    )
-                    return default_storage.url(path)
-                except Exception as exc:  # noqa: BLE001 - WebP 直存失败 → 落入下方重编码兜底
-                    _logger.warning('WebP 直存校验失败，转 Pillow 重编码: %s', exc)
-
-            # 其余格式（PNG/JPEG/...）→ Pillow 转「高质量 WebP」 q90（Google libwebp）：
-            #   视觉近无损，体积比无损 WebP 再小 50–70%；EXIF 方向校正 + 重编码剥离元数据。
-            try:
-                f.seek(0)
-                with Image.open(f) as img:
-                    img = ImageOps.exif_transpose(img)  # 校正手机拍摄方向
-                    img.load()
-                    # 保留透明通道（WebP 支持带 alpha 的有损），否则转 RGB 减小体积
-                    if img.mode in ('RGBA', 'LA', 'P', 'PA'):
-                        img = img.convert('RGBA')
-                    else:
-                        img = img.convert('RGB')
-                    buf = BytesIO()
-                    # lossless=False + quality=WEBP_QUALITY：视觉近无损；method=4 平衡压缩率与上传耗时
-                    img.save(buf, 'WEBP', lossless=False, quality=WEBP_QUALITY, method=4)
-                buf.seek(0)
-                path = default_storage.save(
-                    media_key('products', '.webp'),
-                    ContentFile(buf.getvalue()),
-                )
-                return default_storage.url(path)
-            except Exception as exc:  # noqa: BLE001 - 转码失败回退原格式，保证可用
-                _logger.warning('WebP 转码失败，回退原格式保存: %s', exc)
-                f.seek(0)
-                path = default_storage.save(media_key('products', ext), strip_exif(f))
-                return default_storage.url(path)
-
-        # 保存四尺寸文件；任一失败整体回滚（文件已落盘的由 Redis/周期清理兜底），
-        # 返回友好错误而非裸 500（曾出现 R2 exists() 探测递归导致 500）。
-        try:
-            thumb_url = _save_file(thumb)
-            list_url = _save_file(list_file)
-            large_url = _save_file(large)
-            original_url = _save_file(original)
-        except Exception as exc:  # noqa: BLE001 - 存储异常统一降级为可读错误
-            _logger.exception('SPU %s 媒体保存失败', spu_id)
-            return Response(
-                {'detail': f'图片保存失败（存储服务异常），请稍后重试。{type(exc).__name__}'},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        total_size = thumb.size + list_file.size + large.size + original.size
+        # 四尺寸总大小
+        total_size = sum(result['sizes'].values())
         sort_order = MediaService.get_next_sort_order(spu_id, 'image')
         alt_text = str(request.data.get('alt_text', '') or '')
 
         media = ProductMedia.objects.create(
             spu=spu,
             media_type='image',
-            thumb_url=thumb_url,
-            list_url=list_url,
-            large_url=large_url,
-            original_url=original_url,
+            thumb_url=result['thumb'],
+            list_url=result['list'],
+            large_url=result['large'],
+            original_url=result['original'],
             sort_order=sort_order,
             status='active',
             file_size=total_size,
@@ -500,6 +517,83 @@ class MediaCreateView(BaseApiView):
         GoodsCacheService.invalidate_spu_list()
 
         return Response(_serialize_media(media), status=status.HTTP_201_CREATED)
+
+
+class MediaReplaceView(BaseApiView):
+    """原地重新裁剪/替换单张图片（不新增记录）。
+
+    接收前端 ImageCropper 重新裁剪后的四尺寸图片（thumb/list/large/original），
+    在**原 ProductMedia 记录上原地替换**四 URL（保留 id / sort_order / alt_text），
+    删除被替换的旧存储文件，并同步 SPU.main_image —— 解决「重新裁剪主图会追加到
+    队尾、不成主图，且触顶 15 张上限被拒」的功能缺口。
+    路由: POST /goods/media/<media_id>/replace
+
+    ⚠️ 仅在 media_type='image' 且 status='active'/'pending'/'rejected' 时允许替换；
+    media_type='video' 走其它端点。
+    """
+    permission_classes = [HasPerm('goods.media.write')]
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        responses={200: ProductMediaSerializer}
+    )
+    def post(self, request, media_id):
+        try:
+            media = ProductMedia.objects.select_related('spu').get(id=media_id)
+        except ProductMedia.DoesNotExist:
+            return Response({'detail': '媒体不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        spu = media.spu
+        if spu and not can_operate_spu(request.user, spu):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # 仅支持图片
+        if media.media_type != 'image':
+            return Response(
+                {'detail': '仅支持图片重新裁剪'}, status=status.HTTP_400_BAD_REQUEST)
+
+        spu_id = media.spu_id
+
+        # 校验并保存新四尺寸
+        try:
+            result = _validate_and_save_cropped(request.FILES, spu_id)
+        except MediaUploadRejected as exc:
+            return Response(
+                {'detail': str(exc), 'code': exc.code, 'file': exc.file},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        # 记录裁剪前的旧 URL，替换成功后删除旧文件
+        old_urls = [media.thumb_url, media.list_url, media.large_url, media.original_url]
+        new_urls = [result['thumb'], result['list'], result['large'], result['original']]
+
+        # 原地更新（保留 id / sort_order / alt_text / status）
+        media.thumb_url = result['thumb']
+        media.list_url = result['list']
+        media.large_url = result['large']
+        media.original_url = result['original']
+        media.file_size = sum(result['sizes'].values())
+        media.save(update_fields=[
+            'thumb_url', 'list_url', 'large_url', 'original_url', 'file_size',
+        ])
+
+        # 删除旧文件（替换后；不影响新图）
+        for old in old_urls:
+            if old and old not in new_urls:
+                _delete_storage_file(old)
+
+        # 主图同步 + 缓存失效（若替换的正是主图，main_image 会指向新的 large_url）
+        if spu_id:
+            MediaService.sync_main_image(spu_id)
+            GoodsCacheService.invalidate_media_list(spu_id)
+            GoodsCacheService.invalidate_spu(spu_id)
+            GoodsCacheService.invalidate_spu_list()
+
+        return Response(_serialize_media(media))
 
 
 class MediaVideoCreateView(BaseApiView):

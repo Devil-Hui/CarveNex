@@ -25,8 +25,8 @@ import { adminAPI } from '../../../../api/admin'
 import type { MultiSizeCropResult } from '../ImageCropper/ImageCropper.types'
 import type { MediaManagerProps, UploadQueueState } from './MediaManager.types'
 
-const MAX_IMAGES = 5
-const MAX_VIDEOS = 1
+const MAX_IMAGES = 15
+const MAX_VIDEOS = 3
 
 const INITIAL_QUEUE: UploadQueueState = {
   total: 0,
@@ -62,6 +62,8 @@ export default function MediaManager({
 
   // 编辑面板
   const [editingMedia, setEditingMedia] = useState<ProductMediaItem | null>(null)
+  // 原地重新裁剪目标
+  const [recropTarget, setRecropTarget] = useState<ProductMediaItem | null>(null)
 
   // 删除 active 媒体前的二次确认
   const [pendingDeleteActiveId, setPendingDeleteActiveId] = useState<number | null>(null)
@@ -187,8 +189,33 @@ export default function MediaManager({
   const handleCropConfirm = useCallback(
     async (result: MultiSizeCropResult, sourceFile: File) => {
       try {
+        // 原地重新裁剪模式：直接替换目标媒体（不新增记录）
+        if (isEditMode && recropTarget && spuId) {
+          const base = (sourceFile.name || 'image').replace(/\.[^.]+$/, '')
+          const fd = new FormData()
+          fd.append('thumb', result.thumb.blob, `thumb_${base}.webp`)
+          fd.append('list', result.list.blob, `list_${base}.webp`)
+          fd.append('large', result.large.blob, `large_${base}.webp`)
+          fd.append('original', result.original.blob, `original_${base}.webp`)
+          setUploadQueue({ total: 1, completed: 0, currentFileName: sourceFile.name, status: 'processing', percent: 0 })
+          try {
+            await adminAPI.replaceMedia(recropTarget.id, fd, (p) => {
+              setUploadQueue((q) => ({ ...q, completed: 1, percent: p }))
+            })
+            setUploadQueue((q) => ({ ...q, completed: 1, percent: 100, status: 'done' }))
+            // 局部刷新已保存媒体（保持排序/主图最新）
+            const fresh = await adminAPI.getMediaBySPU(spuId)
+            setSavedItems(sortVideoFirst(Array.isArray(fresh) ? fresh : []))
+            showToast(t('admin.mediaManager.recropSuccess'), 'success')
+          } catch (err) {
+            setUploadQueue(INITIAL_QUEUE)
+            showToast(err instanceof Error ? err.message : t('admin.mediaManager.recropFailed'), 'error')
+          }
+          setRecropTarget(null)
+          return
+        }
         // 创建模式与编辑模式统一：裁剪后先暂存 IndexedDB，点「保存/提交」才真正上传 R2。
-        // 这样用户裁剪后若删除，不会产生 R2 存储（减少无效上传）。
+        // 这样用户裁剪后若删除，不会产生无用存储（减少无效上传）。
         const staged: StagedMediaItem = {
           mediaType: 'image',
           thumbBlob: result.thumb.blob,
@@ -216,7 +243,7 @@ export default function MediaManager({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isEditMode, spuId, items, notifyChange]
+    [isEditMode, spuId, items, notifyChange, recropTarget]
   )
 
   /** 推进裁剪队列到下一张（使用 ref 避免闭包过期） */
@@ -387,13 +414,18 @@ export default function MediaManager({
       if (isEditMode && spuId) {
         const ordered = savedItems
         if (ordered.length > 1) {
-          await Promise.all(
+          // 逐个上报结果：此前用 .catch(() => {}) 静默吞掉失败，
+          // 导致后端排序接口报错（如 409 锁冲突）时用户完全无感，拖了等于没拖。
+          const results = await Promise.all(
             ordered.map((m, i) =>
               m.id != null
-                ? adminAPI.updateMedia(m.id, { sort_order: i }).catch(() => {})
-                : Promise.resolve()
+                ? adminAPI.updateMedia(m.id, { sort_order: i }).then(() => true).catch(() => false)
+                : Promise.resolve(true)
             )
           )
+          if (results.some((ok) => !ok)) {
+            showToast(t('admin.mediaManager.updateFailed'), 'error')
+          }
           const fresh = await adminAPI.getMediaBySPU(spuId)
           if (Array.isArray(fresh)) setSavedItems(sortVideoFirst(fresh))
         }
@@ -401,10 +433,10 @@ export default function MediaManager({
         await reorderStagedItems(items).catch(() => {})
       }
     } catch {
-      // 排序持久化失败不阻断页面
+      // 排序持久化失败不阻断页面（失败已通过上方 toast 提示）
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditMode, spuId, savedItems, items])
+  }, [isEditMode, spuId, savedItems, items, showToast, t])
 
   // ── 计数 ──
   const imageCount = isEditMode
@@ -555,6 +587,7 @@ export default function MediaManager({
                 index={idx}
                 onRemove={handleRemove}
                 onEdit={isEditMode ? setEditingMedia : undefined}
+                onRecrop={isEditMode ? setRecropTarget : undefined}
                 onPreview={(url, kind, name) => setPreview({ url, kind, name })}
                 dragActive={dragIndex === idx}
                 onDragHandleDown={handleDragHandleDown}
@@ -567,11 +600,12 @@ export default function MediaManager({
       {/* 预览区（创建模式） */}
       {!isEditMode && <MediaPreviewTabs items={items} />}
 
-      {/* 裁剪对话框（队列模式） */}
+      {/* 裁剪对话框（添加队列 / 原地重新裁剪共用） */}
       <ImageUploadDialog
-        open={showImageDialog}
+        open={showImageDialog || !!recropTarget}
         file={currentQueueFile}
-        onClose={() => { setShowImageDialog(false); setUploadQueue(INITIAL_QUEUE) }}
+        replaceMedia={recropTarget}
+        onClose={() => { setShowImageDialog(false); setRecropTarget(null); setUploadQueue(INITIAL_QUEUE) }}
         onConfirm={handleCropConfirm}
         onSkip={handleSkip}
       />

@@ -5,6 +5,7 @@ import PageLayout from '../../components/layout/PageLayout/PageLayout'
 import { useUser } from '../../store/UserContext'
 import { useCurrency } from '../../store/CurrencyContext'
 import { useTranslation } from '../../i18n'
+import { localizedText } from '../../utils/localizedText'
 import { Color, Radius, Shadow, Spacing, FontSize, Transition } from '../../theme/tokens'
 import { ChatBubble, SystemBubbleMessage, TypingIndicator } from '../../components/business/ChatBubble'
 import type { ProductSnapshot, ProductCardData, CartItem } from '../../components/business/ChatBubble'
@@ -695,7 +696,7 @@ function useChatWebSocket(
 export default function Chat() {
   const navigate = useNavigate()
   const { isLoggedIn } = useUser()
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const { format } = useCurrency()
 
   // Entry form state
@@ -938,14 +939,14 @@ export default function Chat() {
   }
 
   // ── Send current consulting product card to agent（拼多多式「发给客服」）──
-  const handleSendProductCard = async (spu: { id: number; name: string; main_image: string; price: string }) => {
+  const handleSendProductCard = async (spu: { id: number; name: string; name_en?: string; name_ar?: string; main_image: string; price: string }) => {
     if (!activeId) return
     try {
       setSending(true)
       const resp = await chatAPI.sendMessage(activeId, {
         content: '',
         msg_type: 'product_card',
-        product_card: { id: spu.id, name: spu.name, main_image: spu.main_image, price: spu.price },
+        product_card: { id: spu.id, name: spu.name, name_en: spu.name_en, name_ar: spu.name_ar, main_image: spu.main_image, price: spu.price },
       })
       // resp 是服务端返回的单条真实消息 → 按 id 去重 merge 进本地（不覆盖整个会话）
       setActiveConv((prev) => {
@@ -1042,19 +1043,23 @@ export default function Chat() {
     let productSnapshot: ProductSnapshot | null = null
     let productCardData: ProductCardData | null = null
     const card = msg.card_data as
-      | { spu_id?: number; product_name?: string; main_image?: string; price?: string; order_status?: string; order_id?: number; order_no?: string }
+      | { spu_id?: number; product_name?: string; product_name_en?: string; product_name_ar?: string; main_image?: string; price?: string; order_status?: string; order_id?: number; order_no?: string }
       | null
       | undefined
     if (card) {
       productSnapshot = {
         id: card.spu_id || 0,
         name: card.product_name || '',
+        name_en: card.product_name_en,
+        name_ar: card.product_name_ar,
         main_image: card.main_image || '',
         price: card.price || '0',
       }
       productCardData = {
         id: card.spu_id || 0,
         name: card.product_name || '',
+        name_en: card.product_name_en,
+        name_ar: card.product_name_ar,
         main_image: card.main_image || '',
         price: card.price || '0',
         order_status: (card.order_status as ProductCardData['order_status']) || undefined,
@@ -1270,13 +1275,13 @@ export default function Chat() {
                   <>
                     <PCtxImg
                       src={resolveMediaUrl(activeConv.spu_info.main_image) || activeConv.spu_info.main_image || undefined}
-                      alt={activeConv.spu_info.name}
+                      alt={localizedText(lang, activeConv.spu_info.name, activeConv.spu_info.name_en, activeConv.spu_info.name_ar)}
                       onClick={() => navigate(`/product/${activeConv.spu_info!.id}`)}
                       onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
                     />
                     <PCtxInfo onClick={() => navigate(`/product/${activeConv.spu_info!.id}`)}>
                       <PCtxLabel>咨询商品</PCtxLabel>
-                      <PCtxName>{activeConv.spu_info.name}</PCtxName>
+                      <PCtxName>{localizedText(lang, activeConv.spu_info.name, activeConv.spu_info.name_en, activeConv.spu_info.name_ar)}</PCtxName>
                     </PCtxInfo>
                     <PCtxPrice>{format(Number(activeConv.spu_info.price))}</PCtxPrice>
                     <PCtxSendBtn onClick={() => handleSendProductCard(activeConv.spu_info!)} disabled={sending}>

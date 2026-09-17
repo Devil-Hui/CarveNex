@@ -7,6 +7,7 @@ import PageHeader from '../../components/admin/common/PageHeader'
 import { SmartDataTable, ConfirmDialog } from '../../components/admin/design-system'
 import type { SmartColumn } from '../../components/admin/design-system'
 import { useTranslation } from '../../i18n'
+import { localizedText } from '../../utils/localizedText'
 import { formatDateTime } from '../../utils/helpers'
 
 // ── Styled Components ──
@@ -68,6 +69,8 @@ const Toast = styled.div<{ $type: 'success' | 'error' }>`
 interface RecycleItem {
   id: number
   name: string
+  name_en?: string
+  name_ar?: string
   brand_name: string
   category_path: string
   deleted_at: string
@@ -77,7 +80,7 @@ interface RecycleItem {
 // ── Component ──
 
 export default function AdminRecycleBin() {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const [items, setItems] = useState<RecycleItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -186,6 +189,7 @@ export default function AdminRecycleBin() {
       key: 'name',
       title: t('admin.recycleBin.columnName'),
       width: '200px',
+      render: (_val: unknown, record: RecycleItem) => localizedText(lang, record.name, record.name_en, record.name_ar),
     },
     {
       key: 'brand_name',
@@ -217,12 +221,12 @@ export default function AdminRecycleBin() {
       width: '180px',
       render: (_val: unknown, record: RecycleItem) => (
         <>
-          <ActionBtn $variant="restore" onClick={() => handleRestore(record.id, record.name)}>
+          <ActionBtn $variant="restore" onClick={() => handleRestore(record.id, localizedText(lang, record.name, record.name_en, record.name_ar))}>
             {t('admin.recycleBin.restoreBtn')}
           </ActionBtn>
           <ActionBtn
             $variant="danger"
-            onClick={() => handlePermanentDelete(record.id, record.name)}
+            onClick={() => handlePermanentDelete(record.id, localizedText(lang, record.name, record.name_en, record.name_ar))}
           >
             {t('admin.recycleBin.permanentDeleteBtn')}
           </ActionBtn>

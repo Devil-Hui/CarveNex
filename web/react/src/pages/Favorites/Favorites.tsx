@@ -4,6 +4,7 @@ import PageLayout from '../../components/layout/PageLayout/PageLayout'
 import EmptyState from '../../components/common/EmptyState'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from '../../i18n'
+import { localizedText } from '../../utils/localizedText'
 import { useCurrency } from '../../store/CurrencyContext'
 import { Color, Radius, Shadow, FontSize, Spacing, Breakpoint } from '../../theme/tokens'
 import { publicAPI } from '../../api/public'
@@ -189,7 +190,7 @@ const HeartIcon = () => (
 )
 
 export default function Favorites() {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const navigate = useNavigate()
   const { format } = useCurrency()
   const [favorites, setFavorites] = useState<FavoriteItem[]>([])
@@ -263,7 +264,9 @@ export default function Favorites() {
             </>
           ) : (
             <Grid>
-              {favorites.map(f => (
+              {favorites.map(f => {
+                const localizedName = localizedText(lang, f.spu_name || `Product #${f.spu_id}`, f.spu_name_en, f.spu_name_ar)
+                return (
                 <Card key={f.id} onClick={() => navigate(`/product/${f.spu_id}`)}>
                   <CardImage $src={f.spu_image} />
                   <RemoveBtn
@@ -275,7 +278,7 @@ export default function Favorites() {
                     ×
                   </RemoveBtn>
                   <CardBody>
-                    <CardName>{f.spu_name || `Product #${f.spu_id}`}</CardName>
+                    <CardName>{localizedName}</CardName>
                     <CardPrice>{f.spu_price ? format(Number(f.spu_price)) : ''}</CardPrice>
                     {f.created_at && (
                       <CardDate>
@@ -284,7 +287,8 @@ export default function Favorites() {
                     )}
                   </CardBody>
                 </Card>
-              ))}
+                )
+              })}
             </Grid>
           )}
         </Wrapper>

@@ -14,6 +14,8 @@ interface Props {
   open: boolean
   /** 预选文件（来自 dropzone 队列），存在时直接进入裁剪 */
   file?: File | null
+  /** 原地重新裁剪的目标已保存媒体（设置后对话框进入「重新裁剪」模式） */
+  replaceMedia?: import('../../../../api/admin').ProductMediaItem | null
   onClose: () => void
   /** 裁剪完成回调，返回四尺寸结果 + 源文件 */
   onConfirm: (result: MultiSizeCropResult, sourceFile: File) => void
@@ -21,7 +23,7 @@ interface Props {
   onSkip?: () => void
 }
 
-export default function ImageUploadDialog({ open, file, onClose, onConfirm, onSkip }: Props) {
+export default function ImageUploadDialog({ open, file, replaceMedia, onClose, onConfirm, onSkip }: Props) {
   const { t } = useTranslation()
   const { showToast } = useAppContext()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -112,10 +114,19 @@ export default function ImageUploadDialog({ open, file, onClose, onConfirm, onSk
       <S.DialogBox onClick={(e) => e.stopPropagation()}>
         {selectedFile ? (
           <>
-            <S.DialogTitle>{t('admin.mediaManager.cropImage', { name: selectedFile.name })}</S.DialogTitle>
+            <S.DialogTitle>
+              {replaceMedia
+                ? t('admin.mediaManager.recropTitle')
+                : t('admin.mediaManager.cropImage', { name: selectedFile.name })}
+            </S.DialogTitle>
             <ImageCropper
               file={selectedFile}
               onCrop={handleCropConfirm}
+              onError={(err) => {
+                // 画布导出失败必须让用户看见：否则会静默产出 0 字节图片，
+                // 一路到后端才被 400 拒绝，且报错与实际原因完全无关。
+                showToast(err.message || t('admin.mediaManager.uploadFailed'), 'error')
+              }}
               onCancel={() => {
                 setSelectedFile(null)
                 // 队列模式下跳过当前文件
@@ -135,7 +146,7 @@ export default function ImageUploadDialog({ open, file, onClose, onConfirm, onSk
           </>
         ) : (
           <>
-            <S.DialogTitle>{t('admin.mediaManager.addImage')}</S.DialogTitle>
+            <S.DialogTitle>{replaceMedia ? t('admin.mediaManager.recropTitle') : t('admin.mediaManager.addImage')}</S.DialogTitle>
             <S.UploadZone onClick={() => !compressing && fileInputRef.current?.click()} style={{ opacity: compressing ? 0.6 : 1 }}>
               {compressing ? (
                 <div style={{ textAlign: 'center' }}>

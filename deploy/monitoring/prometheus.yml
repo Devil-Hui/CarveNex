@@ -34,10 +34,3 @@ scrape_configs:
       - targets: ['carvenex-cadvisor:8080']
         labels:
           app: carvenex-containers
-
-  # Redis 内存 / 命中率（redis_exporter）
-  - job_name: redis
-    static_configs:
-      - targets: ['carvenex-redis-exporter:9121']
-        labels:
-          app: carvenex-redis

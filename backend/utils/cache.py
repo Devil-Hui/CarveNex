@@ -1,4 +1,4 @@
-"""缓存工具类 — 支持 Redis 读写分离（Master-Slave）
+"""缓存工具类 — 支持读写分离（Master-Slave）
 
 Usage:
     cache = Cache('my_prefix')
@@ -92,7 +92,7 @@ class Cache:
     def __init__(self, prefix: str = ''):
         self.prefix = prefix
         self._master, self._slave = _get_master_slave()
-        # L1 近缓存：进程内 LocMem（2C4G 二级缓存），命中省一次 Redis 往返
+        # L1 近缓存：进程内 LocMem（2C4G 二级缓存），命中省一次远端缓存往返
         try:
             self._local = caches['local']
         except Exception:
@@ -107,7 +107,7 @@ class Cache:
         return self._slave.get(self._get_key(key), default)
 
     def get_many(self, keys: list[str]) -> dict[str, Any]:
-        """批量读取缓存（Slave，使用 pipeline 优化 Redis 往返）"""
+        """批量读取缓存（Slave）"""
         if not keys:
             return {}
         prefixed = [self._get_key(k) for k in keys]
@@ -134,12 +134,12 @@ class Cache:
         """写入缓存，自动将 datetime 转为 ISO 字符串（Master）"""
         self._master.set(self._get_key(key), _serialize(value), timeout)
 
-    # ─── 二级缓存（L1 LocMem → L2 Redis）───
+    # ─── 二级缓存（L1 LocMem → L2 DB）───
 
-    LOCAL_TTL_CAP = 300  # L1 近缓存最长存活（秒），短于 Redis 以保证最终一致
+    LOCAL_TTL_CAP = 300  # L1 近缓存最长存活（秒），短于 L2 以保证最终一致
 
     def two_level_get(self, key: str, default: Any = None) -> Any:
-        """先查 L1（LocMem），未命中再查 L2（Redis）；命中 L2 时回填 L1。"""
+        """先查 L1（LocMem），未命中再查 L2（DB 缓存）；命中 L2 时回填 L1。"""
         if self._local is None:
             return self.get(key, default)
         lkey = self._get_key(key)
@@ -155,7 +155,7 @@ class Cache:
         return val
 
     def two_level_set(self, key: str, value: Any, timeout: Optional[int] = None) -> None:
-        """写 L2（Redis）并回填 L1（LocMem）；失效时两级一起清。"""
+        """写 L2（DB 缓存）并回填 L1（LocMem）；失效时两级一起清。"""
         self.set(key, value, timeout)
         if self._local is not None:
             try:
@@ -186,37 +186,10 @@ class Cache:
     def clear_by_prefix(self, prefix: str) -> None:
         """清除指定前缀的缓存。
 
-        Redis: SCAN + DELETE。
         DatabaseCache: 删除 django_cache_table 中 cache_key LIKE 匹配行（Django 会给 key 加版本前缀）。
         无法安全匹配时降级为 no-op 并打日志（避免误清全表）。
         """
         pattern_suffix = f"{self.prefix}:{prefix}" if self.prefix else f"{prefix}"
-        try:
-            from django_redis import get_redis_connection
-            configured = getattr(settings, 'CACHES', {})
-            alias = 'rw_default' if 'rw_default' in configured else 'default'
-            backend = (configured.get(alias) or {}).get('BACKEND', '')
-            if 'redis' in backend.lower() or 'django_redis' in backend.lower():
-                client = get_redis_connection(alias)
-                # Django 存 Redis 的完整 key = {KEY_PREFIX}:{version}:{业务 key}，
-                # 必须拼上 KEY_PREFIX + version，否则 SCAN 永远匹配不到真实 key（缓存失效无效）。
-                backend_cache = caches[alias]
-                key_prefix = getattr(backend_cache, 'key_prefix', '') or ''
-                version = getattr(backend_cache, 'version', 1) or 1
-                full_pattern = f"{key_prefix}:{version}:{pattern_suffix}" if key_prefix else pattern_suffix
-                match = f"{full_pattern}*"
-                cursor = 0
-                keys_to_delete = []
-                while True:
-                    cursor, keys = client.scan(cursor, match=match, count=100)
-                    keys_to_delete.extend(keys)
-                    if cursor == 0:
-                        break
-                if keys_to_delete:
-                    client.delete(*keys_to_delete)
-                return
-        except (ImportError, Exception):
-            pass
 
         # DatabaseCache：按 LIKE 清理（含 Django 版本前缀 :1: 等）
         try:
@@ -283,22 +256,13 @@ class Cache:
             return value
 
         # 2. 缓存 miss → 互斥锁
-        # Redis: SET NX；MySQL-only DatabaseCache: cache.add（原子 add-if-missing）
+        # DatabaseCache: cache.add（原子 add-if-missing），MySQL-only
         lock_key = f"{cache_key}:lock"
-        redis_client = None
         got_lock = False
         try:
-            from django_redis import get_redis_connection
-            redis_client = get_redis_connection(
-                'rw_default' if 'rw_default' in getattr(settings, 'CACHES', {}) else 'default'
-            )
-            got_lock = bool(redis_client.set(lock_key, '1', nx=True, ex=lock_ttl))
-        except (ImportError, Exception):
-            redis_client = None
-            try:
-                got_lock = bool(self._master.add(lock_key, '1', lock_ttl))
-            except Exception:
-                return fetch_func()
+            got_lock = bool(self._master.add(lock_key, '1', lock_ttl))
+        except Exception:
+            return fetch_func()
 
         if got_lock:
             # 3. 获取锁成功 → 负责重建缓存
@@ -321,10 +285,7 @@ class Cache:
                 return value
             finally:
                 try:
-                    if redis_client is not None:
-                        redis_client.delete(lock_key)
-                    else:
-                        self._master.delete(lock_key)
+                    self._master.delete(lock_key)
                 except Exception:
                     pass
         else:

@@ -6,8 +6,10 @@ import { useCart } from '../../store/CartContext'
 import { useCurrency } from '../../store/CurrencyContext'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from '../../i18n'
+import { localizedText } from '../../utils/localizedText'
 import { Color, Radius, Shadow, Layout } from '../../theme/tokens'
 import { resolveMediaUrl } from '../../api/chat'
+import SmartImage from '../../components/common/SmartImage/SmartImage'
 
 // 图片加载失败时的内联 SVG 占位图（data URI，不依赖静态资源）
 const PLACEHOLDER_IMG =
@@ -221,7 +223,7 @@ const SummaryTotal = styled.div`
 export default function Cart() {
   const { items, updateQuantity, removeItem, clearCart, total, count } = useCart()
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const { format } = useCurrency()
 
   const handleCheckout = () => {
@@ -246,25 +248,19 @@ export default function Cart() {
           ) : (
             <CartContent>
               <CartItems>
-                {items.map(item => (
+                {items.map(item => {
+                  const localizedName = localizedText(lang, item.spu_name, item.spu_name_en, item.spu_name_ar)
+                  return (
                   <CartItem key={item.id}>
                     <ItemImage>
-                      <img
+                      <SmartImage
                         src={resolveMediaUrl(item.image) || item.image}
-                        alt={item.spu_name}
+                        alt={localizedName}
                         loading="lazy"
-                        onError={(e) => {
-                          // 加载失败回退内联占位图（避免空白裂图；仅替换一次防止死循环）
-                          const el = e.currentTarget
-                          if (!el.dataset.fallback) {
-                            el.dataset.fallback = '1'
-                            el.src = PLACEHOLDER_IMG
-                          }
-                        }}
                       />
                     </ItemImage>
                     <ItemInfo>
-                      <ItemName>{item.spu_name}</ItemName>
+                      <ItemName>{localizedName}</ItemName>
                       <ItemDesc>{t('store.cart.productDescription')}</ItemDesc>
                       <ItemPrice>{format(Number(item.price))}</ItemPrice>
                     </ItemInfo>
@@ -277,7 +273,8 @@ export default function Cart() {
                       <RemoveButton onClick={() => removeItem(item.id)}>{t('store.cart.remove')}</RemoveButton>
                     </ItemActions>
                   </CartItem>
-                ))}
+                )
+                })}
               </CartItems>
 
               <CartSummary>

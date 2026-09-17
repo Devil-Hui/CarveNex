@@ -5,7 +5,8 @@ import { get, post } from './request'
 export interface OrderItem {
   id: number
   spu_name: string
-  sku_code: string
+  sku_name: string
+  sku_code?: string
   image_url?: string
   spec_snapshot: { spec_name: string; spec_value: string }[]
   price: string

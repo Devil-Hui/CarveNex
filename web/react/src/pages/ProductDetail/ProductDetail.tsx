@@ -16,6 +16,7 @@ import { Icon } from '../../components/admin/common/Icon'
 import { addProductToCart } from './productCartAction'
 import { resolveMediaUrl } from '../../api/chat'
 import { localizedText } from '../../utils/localizedText'
+import SmartImage from '../../components/common/SmartImage/SmartImage'
 
 /**
  * 商品详情页 — SHEIN 三栏规范
@@ -820,7 +821,7 @@ export default function ProductDetail() {
       await addProductToCart(addItem, selectedSku.id, qty, () => {
         setAddedMsg(t('store.product.addedToCart'))
         showMiniCartToast({
-          name: product.name,
+          name: localizedName,
           image: img,
           price: Number(price),
           quantity: qty,
@@ -930,7 +931,7 @@ export default function ProductDetail() {
                     type="button"
                     aria-label={`${localizedName} ${i + 1}`}
                   >
-                    <img src={item.thumb || item.src} alt="" loading="lazy" />
+                    <SmartImage src={item.thumb || item.src} alt="" loading="lazy" />
                   </Thumb>
                 ))}
               </ThumbCol>
@@ -949,7 +950,7 @@ export default function ProductDetail() {
                       playsInline
                     />
                   ) : (
-                    <img src={activeItem.src} alt={localizedName} />
+                    <SmartImage src={activeItem.src} alt={localizedName} />
                   )}
                 </Stage>
               ) : (
@@ -1035,7 +1036,7 @@ export default function ProductDetail() {
                   onClick={handleToggleFavorite}
                   disabled={favLoading}
                 >
-                  {favLoading ? '...' : isFavorited ? '♥ Favorited' : '♡ Add to Favorites'}
+                  {favLoading ? '...' : isFavorited ? `♥ ${t('store.productDetailModal.favorited')}` : `♡ ${t('store.product.wishlist')}`}
                 </SecondaryBtn>
                 <SecondaryBtn
                   type="button"
@@ -1094,7 +1095,7 @@ export default function ProductDetail() {
           {/* 评价 */}
           <DetailBlock>
             <SectionTitle>
-              {t('store.product.reviews').replace('{count}', String(reviewTotal))}
+              {t('store.product.reviews', { count: reviewTotal })}
               {avgRating > 0 && ` — ${avgRating.toFixed(1)} ★`}
             </SectionTitle>
 

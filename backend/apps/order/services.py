@@ -114,17 +114,17 @@ class OrderService:
                     raise ValueError(f'SKU_NOT_FOUND:{cart_item.sku_id}')
                 if not sku.is_active or not spu.is_active:
                     _logger.warning(
-                        'Order checkout fail: user_id=%s sku_id=%s sku_code=%s error=SKU_NOT_AVAILABLE',
-                        user.id, sku.id, sku.sku_code
+                        'Order checkout fail: user_id=%s sku_id=%s sku_name=%s error=SKU_NOT_AVAILABLE',
+                        user.id, sku.id, sku.sku_name
                     )
-                    raise ValueError(f'SKU_NOT_AVAILABLE:{sku.sku_code}')
+                    raise ValueError(f'SKU_NOT_AVAILABLE:{sku.sku_name}')
                 if cart_item.quantity > sku.stock:
                     _logger.warning(
-                        'Order checkout fail: user_id=%s sku_id=%s sku_code=%s '
+                        'Order checkout fail: user_id=%s sku_id=%s sku_name=%s '
                         'need=%d stock=%d error=INSUFFICIENT_STOCK',
-                        user.id, sku.id, sku.sku_code, cart_item.quantity, sku.stock
+                        user.id, sku.id, sku.sku_name, cart_item.quantity, sku.stock
                     )
-                    raise ValueError(f'INSUFFICIENT_STOCK:{sku.sku_code}')
+                    raise ValueError(f'INSUFFICIENT_STOCK:{sku.sku_name}')
 
                 # 构建规格快照
                 spec_snapshot = [
@@ -139,7 +139,7 @@ class OrderService:
                 order_items_data.append({
                     'sku': sku,
                     'spu_name': spu.name,
-                    'sku_code': sku.sku_code,
+                    'sku_name': sku.sku_name,
                     'spec_snapshot': spec_snapshot,
                     'price': unit_price,
                     'quantity': cart_item.quantity,

@@ -4,8 +4,13 @@ from .models import CartItem
 
 class CartItemSerializer(serializers.ModelSerializer):
     sku_id = serializers.IntegerField(source='sku.id', read_only=True)
-    sku_code = serializers.CharField(source='sku.sku_code', read_only=True)
+    # 新契约主字段为 sku_name；sku_code 保留为向后兼容别名
+    sku_name = serializers.CharField(source='sku.sku_name', read_only=True)
+    sku_code = serializers.CharField(source='sku.sku_name', read_only=True)
     spu_name = serializers.CharField(source='sku.spu.name', read_only=True)
+    # 多语言商品名：供前端按当前界面语言（en-US / ar）渲染购物车商品名称
+    spu_name_en = serializers.CharField(source='sku.spu.name_en', read_only=True)
+    spu_name_ar = serializers.CharField(source='sku.spu.name_ar', read_only=True)
     price = serializers.DecimalField(source='sku.price', max_digits=10, decimal_places=2, read_only=True)
     stock = serializers.IntegerField(source='sku.stock', read_only=True)
     # SKU 字段是 image_url；SKU 未单独配图时回退 SPU 主图（prefetch items__sku__spu，零额外查询）
@@ -15,8 +20,8 @@ class CartItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartItem
         fields = [
-            'id', 'sku_id', 'sku_code', 'spu_name', 'price',
-            'stock', 'image', 'spec_values', 'quantity', 'selected',
+            'id', 'sku_id', 'sku_name', 'sku_code', 'spu_name', 'spu_name_en', 'spu_name_ar',
+            'price', 'stock', 'image', 'spec_values', 'quantity', 'selected',
             'created_at',
         ]
 

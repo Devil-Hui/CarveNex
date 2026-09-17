@@ -9,6 +9,7 @@ import CartDropdown from '../../../components/business/CartDropdown/CartDropdown
 import UtilityBar from './UtilityBar'
 import { zIndex } from '../../../styles/zIndex'
 import { useTranslation } from '../../../i18n'
+import { localizeCategory } from '../../../utils/localizedText'
 import { patch, post as apiPost } from '../../../api/request'
 import styled, { css, keyframes } from 'styled-components'
 import { Icon } from '../../../components/admin/common/Icon'
@@ -69,8 +70,9 @@ const Logo = styled.div`
 `
 
 const LogoImg = styled.img`
-  height: 40px;
-  width: auto;
+  width: 45px;
+  height: 45px;
+  object-fit: contain;
   display: block;
 `
 
@@ -191,8 +193,8 @@ const DropdownItem = styled.div`
   }
 `
 
-/* ── 主站导航（与落地页 EditorialNav 一致，hover 展开子项） ── */
-const MainNav = styled.nav`
+/* ── 主站导航（hover 展开子项） ── */
+const MainNav = styled.nav<{ $force?: boolean }>`
   display: flex;
   align-items: center;
   gap: 1.4vw;
@@ -200,7 +202,7 @@ const MainNav = styled.nav`
   flex-shrink: 0;
 
   @media (max-width: 1100px) {
-    display: none;
+    display: ${({ $force }) => ($force ? 'flex' : 'none')};
   }
 `
 
@@ -492,7 +494,7 @@ const UserMenu = styled.div`
   }
 `
 
-export default function Navigation() {
+export default function Navigation({ forceFullNav = false }: { forceFullNav?: boolean }) {
   const navigate = useNavigate()
   const { count } = useCart()
   const { user, isLoggedIn, logout, refreshUser } = useUser()
@@ -595,10 +597,10 @@ export default function Navigation() {
       <UtilityBar />
       <TopBar>
         <Logo onClick={handleLogoClick}>
-          <LogoImg src="/static/images/logo.png" alt="CarveNex" />
+          <LogoImg src="/static/images/logo-trimmed.png" alt="CarveNex" />
         </Logo>
 
-        <MainNav>
+        <MainNav $force={forceFullNav}>
           {/* 商城分类：一级标题 = 商城大类，子项 = 二级分类，前瞻性设计 */}
           {shopCategories.map(cat => (
             <NavItem key={cat.id}>
@@ -609,7 +611,7 @@ export default function Navigation() {
                   navigate(`/category?cat_id=${cat.id}`)
                 }}
               >
-                {cat.name}
+                {localizeCategory(lang, cat)}
                 {cat.children && cat.children.length > 0 && <NavCaret>▾</NavCaret>}
               </NavLink>
               {cat.children && cat.children.length > 0 && (
@@ -623,13 +625,25 @@ export default function Navigation() {
                         navigate(`/category?cat_id=${child.id}`)
                       }}
                     >
-                      {child.name}
+                      {localizeCategory(lang, child)}
                     </SubItem>
                   ))}
                 </SubMenu>
               )}
             </NavItem>
           ))}
+          {/* 固定入口：推广精投（展示页） */}
+          <NavItem>
+            <NavLink
+              href="/promo-precision"
+              onClick={e => {
+                e.preventDefault()
+                navigate('/promo-precision')
+              }}
+            >
+              {t('store.nav.promoPrecision')}
+            </NavLink>
+          </NavItem>
         </MainNav>
 
         <NavActions>
@@ -643,6 +657,7 @@ export default function Navigation() {
             <LangMenu $show={showLangMenu}>
               <DropdownItem onClick={() => { setLang('en-US'); setShowLangMenu(false) }}>{t('store.nav.langEN')}</DropdownItem>
               <DropdownItem onClick={() => { setLang('zh-CN'); setShowLangMenu(false) }}>{t('store.nav.langCN')}</DropdownItem>
+              <DropdownItem onClick={() => { setLang('ar'); setShowLangMenu(false) }}>{t('store.nav.langAR')}</DropdownItem>
             </LangMenu>
           </Dropdown>
 

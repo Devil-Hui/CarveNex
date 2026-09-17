@@ -37,6 +37,7 @@ export function ProtectedRoute({ children }: { children?: ReactNode }) {
 // 需求调整：已删除组长/组员角色，后台统一由超管访问。
 const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/admin/products': ['superadmin'],
+  '/admin/ads': ['superadmin'],
   '/admin/categories': ['superadmin'],
   '/admin/brands': ['superadmin'],
   '/admin/tags': ['superadmin'],

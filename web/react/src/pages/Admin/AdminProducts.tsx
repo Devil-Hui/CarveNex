@@ -9,6 +9,7 @@ import { Icon } from '../../components/admin/common/Icon'
 import { adminAPI } from '../../api/admin'
 import { useAdminAuth } from '../../store/AdminAuthContext'
 import { useTranslation } from '../../i18n'
+import { localizedText } from '../../utils/localizedText'
 import ChatLink from '../../components/admin/ChatLink'
 import ChatFloatWidget from '../../components/admin/common/ChatFloatWidget'
 import {
@@ -275,6 +276,8 @@ const RowActions = styled.div`
 interface SPUItem {
   id: number
   name: string
+  name_en?: string
+  name_ar?: string
   brand_name: string
   status: string
   status_display: string
@@ -291,7 +294,7 @@ const PAGE_SIZE = 20
 const fmtPrice = (v: string) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2 })
 
 export default function AdminProducts() {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const navigate = useNavigate()
   const { hasPermission } = useAdminAuth()
   const canEdit = hasPermission('product.edit')
@@ -441,9 +444,9 @@ export default function AdminProducts() {
       render: (_: unknown, r: SPUItem) => (
         <ProductCell>
           <CellThumb>
-            {r.main_image_thumb || r.main_image ? <img src={r.main_image_thumb || r.main_image} alt={r.name} loading="lazy" /> : <span><Icon name="box" size={16} /></span>}
+            {r.main_image_thumb || r.main_image ? <img src={r.main_image_thumb || r.main_image} alt={localizedText(lang, r.name, r.name_en, r.name_ar)} loading="lazy" /> : <span><Icon name="box" size={16} /></span>}
           </CellThumb>
-          <CellName>{r.name}</CellName>
+          <CellName>{localizedText(lang, r.name, r.name_en, r.name_ar)}</CellName>
         </ProductCell>
       ),
     },
@@ -457,7 +460,7 @@ export default function AdminProducts() {
       render: (val: unknown) => {
         const pr = val as SPUItem['price_range'] | null
         if (!pr) return '-'
-        return `${fmtPrice(pr.min)} – ${fmtPrice(pr.max)}`
+        return `$${fmtPrice(pr.min)} – $${fmtPrice(pr.max)}`
       },
     },
     {
@@ -662,15 +665,15 @@ const ProductCard = memo(function ProductCard({
   onDelete,
   onChat,
 }: ProductCardProps) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   return (
     <Card $selected={isSelected}>
       <Checkbox checked={isSelected} onChange={() => onToggleSelect(item.id)} />
       <Thumb>
-        {item.main_image_thumb || item.main_image ? <img src={item.main_image_thumb || item.main_image} alt={item.name} loading="lazy" /> : <span className="ph"><Icon name="box" size={16} /></span>}
+        {item.main_image_thumb || item.main_image ? <img src={item.main_image_thumb || item.main_image} alt={localizedText(lang, item.name, item.name_en, item.name_ar)} loading="lazy" /> : <span className="ph"><Icon name="box" size={16} /></span>}
       </Thumb>
       <CardMain>
-        <CardName>{item.name}</CardName>
+        <CardName>{localizedText(lang, item.name, item.name_en, item.name_ar)}</CardName>
         <CardMeta>{item.brand_name} · {item.sku_count} SKUs · {item.category_path}</CardMeta>
         <CardBadges>
           <StatusBadge tone={productTone(item.status as ProductStatus)} dot>{item.status_display}</StatusBadge>

@@ -1,3 +1,1 @@
-from .celery import app as celery_app
-
-__all__ = ('celery_app',)
+# Celery 已下线（异步任务移除），此文件保留为空以维持包结构。

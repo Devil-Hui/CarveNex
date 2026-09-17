@@ -26,20 +26,10 @@ User = get_user_model()
 # unique_key 用于幂等查找 (get_or_create)
 
 SEED_CONFIG = {
+    # 分类不再由 seed_data 生成（已移除默认的 Optimize / Automate / Launch 营销分类）。
+    # 真正的商品分类（英文）由 seed_products 命令按商品目录统一创建。
     'dev': {
-        'categories': [
-            # (name, level, parent_name, defaults)
-            # 默认分类树: Optimize / Automate / Launch —— 与前端静态导航一致
-            ('Optimize', 1, None, {'is_active': True}),
-            ('Shop Products', 2, 'Optimize', {'is_active': True}),
-            ('Automate', 1, None, {'is_active': True}),
-            ('Competitor Analysis', 2, 'Automate', {'is_active': True}),
-            ('Site Builder', 2, 'Automate', {'is_active': True}),
-            ('AI Marketing', 2, 'Automate', {'is_active': True}),
-            ('Launch', 1, None, {'is_active': True}),
-            ('30-day Workflow', 2, 'Launch', {'is_active': True}),
-            ('AI Agents', 2, 'Launch', {'is_active': True}),
-        ],
+        'categories': [],
         'brands': [
             ('Apple', '苹果公司'),
             ('Huawei', '华为技术有限公司'),
@@ -50,23 +40,11 @@ SEED_CONFIG = {
         'coupons': [
             ('满100减10', 'fixed', 10, 100),
             ('满200减30', 'fixed', 30, 200),
-            ('9折券', 'percentage', 10, 0),
+            ('9折券', 'percent', 10, 0),
         ],
     },
     'prod': {
-        'categories': [
-            # 生产环境初始分类 —— 默认分类树: Optimize / Automate / Launch
-            # 运营可后续在 Admin 页面增删改
-            ('Optimize', 1, None, {'is_active': True}),
-            ('Shop Products', 2, 'Optimize', {'is_active': True}),
-            ('Automate', 1, None, {'is_active': True}),
-            ('Competitor Analysis', 2, 'Automate', {'is_active': True}),
-            ('Site Builder', 2, 'Automate', {'is_active': True}),
-            ('AI Marketing', 2, 'Automate', {'is_active': True}),
-            ('Launch', 1, None, {'is_active': True}),
-            ('30-day Workflow', 2, 'Launch', {'is_active': True}),
-            ('AI Agents', 2, 'Launch', {'is_active': True}),
-        ],
+        'categories': [],
         'brands': [],
         'tags': [],
         'coupons': [],

@@ -70,39 +70,6 @@
       }
     },
     {
-      "id": 3,
-      "type": "timeseries",
-      "title": "Redis 内存 used_memory（告警阈值 512MB）",
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 7 },
-      "targets": [
-        {
-          "expr": "redis_memory_used_bytes",
-          "legendFormat": "used",
-          "refId": "A"
-        },
-        {
-          "expr": "536870912",
-          "legendFormat": "阈值 512MB",
-          "refId": "B"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15 },
-          "unit": "bytes",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 536870912 },
-              { "color": "red", "value": 644245094 }
-            ]
-          }
-        }
-      }
-    },
-    {
       "id": 4,
       "type": "timeseries",
       "title": "Django 请求 QPS 与 P95 延迟",

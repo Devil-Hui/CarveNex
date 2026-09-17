@@ -25,14 +25,28 @@ def validate_shipping_address(value):
 class OrderItemSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     spu_id = serializers.IntegerField(source='sku.spu_id', read_only=True)
+    # 向后兼容别名：spu_name 是下单时快照（sku.spu 改名/删除不变），
+    # spu_name_en/spu_name_ar 按当前 SPU 实时读取，供前端语言切换展示。
+    sku_code = serializers.CharField(source='sku_name', read_only=True)
+    spu_name_en = serializers.SerializerMethodField()
+    spu_name_ar = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'spu_id', 'spu_name', 'sku_code', 'spec_snapshot',
+        fields = ['id', 'spu_id', 'spu_name', 'spu_name_en', 'spu_name_ar',
+                  'sku_name', 'sku_code', 'spec_snapshot',
                   'price', 'quantity', 'subtotal', 'image_url']
 
     def get_image_url(self, obj) -> str:
         return obj.sku.image_url or obj.sku.spu.main_image or ''
+
+    def get_spu_name_en(self, obj) -> str:
+        spu = getattr(getattr(obj, 'sku', None), 'spu', None)
+        return getattr(spu, 'name_en', '') or ''
+
+    def get_spu_name_ar(self, obj) -> str:
+        spu = getattr(getattr(obj, 'sku', None), 'spu', None)
+        return getattr(spu, 'name_ar', '') or ''
 
 
 class AfterSaleSerializer(serializers.ModelSerializer):

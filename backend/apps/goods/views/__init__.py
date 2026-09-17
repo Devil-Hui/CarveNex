@@ -13,7 +13,7 @@ from .admin_spu import (
     SPUAdminShelfView, SPUAdminScheduleView,
     SPUAdminDuplicateView, SPUTranslateView,
 )
-from .admin_spu_batch import SPUAdminBatchView, SPUAdminBatchTaskView
+from .admin_spu_batch import SPUAdminBatchView
 from .admin_sku import (
     SKUAdminListView, SKUAdminBatchCreateView, SKUAdminUpdateView,
     SKUAdminDeleteView, SKUSearchView,
@@ -29,12 +29,10 @@ from .admin_tag import (
     SPUTagSetView, SPUTagRemoveView,
 )
 from .admin_recycle import RecycleListView, RecycleRestoreView, RecyclePermanentDeleteView
-from .admin_audit import AuditLogListView, SPUAuditLogView, AuditLogStatsView, OperationLogListView
 from .admin_notification import (
     NotificationListView, NotificationUnreadCountView,
     NotificationReadView, NotificationReadAllView,
 )
 from .admin_stats import AdminStatsView
-from .admin_task import TaskProgressView, TaskListView
 from .admin_import_export import ImportProductsView, ExportProductsView, ImportProductMediaZipView
-from .admin_media import MediaListBySPUView, MediaDeleteView, MediaReorderView, MediaUpdateView, MediaCreateView, MediaVideoCreateView
+from .admin_media import MediaListBySPUView, MediaDeleteView, MediaReorderView, MediaUpdateView, MediaCreateView, MediaReplaceView, MediaVideoCreateView

@@ -20,6 +20,7 @@ const Chat = lazy(() => import('../pages/Chat/Chat'))
 const OrderDetail = lazy(() => import('../pages/OrderDetail/OrderDetail'))
 const Notifications = lazy(() => import('../pages/Notifications/Notifications'))
 const Favorites = lazy(() => import('../pages/Favorites/Favorites'))
+const PromoShowcase = lazy(() => import('../pages/PromoShowcase/PromoShowcase'))
 import { RoleProtectedRoute } from '../components/admin/ProtectedRoute'
 
 // Admin pages — lazy loaded
@@ -34,17 +35,15 @@ const AdminBrands = lazy(() => import('../pages/Admin/AdminBrands'))
 const AdminTags = lazy(() => import('../pages/Admin/AdminTags'))
 const AdminNotifications = lazy(() => import('../pages/Admin/AdminNotifications'))
 const AdminCoupons = lazy(() => import('../pages/Admin/AdminCoupons'))
-const AdminAuditLogs = lazy(() => import('../pages/Admin/AdminAuditLogs'))
 const AdminRecycleBin = lazy(() => import('../pages/Admin/AdminRecycleBin'))
-const AdminTasks = lazy(() => import('../pages/Admin/AdminTasks'))
 const AdminOrders = lazy(() => import('../pages/Admin/AdminOrders'))
 const AdminChatList = lazy(() => import('../pages/Admin/AdminChatList'))
 const AdminChatDetail = lazy(() => import('../pages/Admin/AdminChatDetail'))
 const AdminEmailTemplates = lazy(() => import('../pages/Admin/AdminEmailTemplates'))
-const AdminRbac = lazy(() => import('../pages/Admin/AdminRbac'))
 const AdminImport = lazy(() => import('../pages/Admin/AdminImport'))
 const AdminMediaImport = lazy(() => import('../pages/Admin/AdminMediaImport'))
 const AdminPromoCodes = lazy(() => import('../pages/Admin/AdminPromoCodes'))
+const AdminAds = lazy(() => import('../pages/Admin/AdminAds'))
 
 const PageLoading = () => (
   <div style={{
@@ -86,6 +85,7 @@ export const routes: RouteObject[] = [
   { path: '/order/:order_no', element: <Suspense fallback={<PageLoading />}><OrderDetail /></Suspense> },
   { path: '/notifications', element: <Suspense fallback={<PageLoading />}><Notifications /></Suspense> },
   { path: '/favorites', element: <Suspense fallback={<PageLoading />}><Favorites /></Suspense> },
+  { path: '/promo-precision', element: <Suspense fallback={<PageLoading />}><PromoShowcase /></Suspense> },
   { path: '/track', element: <Suspense fallback={<PageLoading />}><TrackOrder /></Suspense> },
 
   // ── Admin login (standalone, no layout) ──
@@ -112,6 +112,7 @@ export const routes: RouteObject[] = [
       { index: true, element: <Navigate to="/admin/dashboard" replace /> },
       { path: 'dashboard', element: <Suspense fallback={<PageLoading />}><AdminDashboard /></Suspense> },
       { path: 'products', element: <Suspense fallback={<PageLoading />}><AdminProducts /></Suspense> },
+      { path: 'ads', element: <Suspense fallback={<PageLoading />}><AdminAds /></Suspense> },
       { path: 'products/create', element: <Suspense fallback={<PageLoading />}><AdminProductForm /></Suspense> },
       { path: 'products/:id', element: <Suspense fallback={<PageLoading />}><AdminProductForm /></Suspense> },
       { path: 'import', element: <Suspense fallback={<PageLoading />}><AdminImport /></Suspense> },
@@ -123,10 +124,7 @@ export const routes: RouteObject[] = [
       { path: 'coupons', element: <Suspense fallback={<PageLoading />}><AdminCoupons /></Suspense> },
       { path: 'coupons/promo/:couponId', element: <Suspense fallback={<PageLoading />}><AdminPromoCodes /></Suspense> },
       { path: 'orders', element: <Suspense fallback={<PageLoading />}><AdminOrders /></Suspense> },
-      { path: 'audit-logs', element: <Suspense fallback={<PageLoading />}><AdminAuditLogs /></Suspense> },
       { path: 'recycle-bin', element: <Suspense fallback={<PageLoading />}><AdminRecycleBin /></Suspense> },
-      { path: 'tasks', element: <Suspense fallback={<PageLoading />}><AdminTasks /></Suspense> },
-      { path: 'rbac', element: <Suspense fallback={<PageLoading />}><AdminRbac /></Suspense> },
       { path: 'chat', element: <Suspense fallback={<PageLoading />}><AdminChatList /></Suspense> },
       { path: 'chat/:id', element: <Suspense fallback={<PageLoading />}><AdminChatDetail /></Suspense> },
       { path: 'email-templates', element: <Suspense fallback={<PageLoading />}><AdminEmailTemplates /></Suspense> },

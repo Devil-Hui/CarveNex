@@ -1024,7 +1024,7 @@ export default function AdminCoupons() {
                         <td style={{ ...tdStyle, textAlign: 'right' }}>{pc.claim_count}</td>
                         <td style={{ ...tdStyle, textAlign: 'right' }}>{pc.unique_users ?? '-'}</td>
                         <td style={{ ...tdStyle, textAlign: 'right' }}>{pc.paid_order_count}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right' }}>{Number(pc.gmv || 0).toFixed(2)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>${Number(pc.gmv || 0).toFixed(2)}</td>
                         <td style={tdStyle}>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                             <button
@@ -1078,7 +1078,7 @@ export default function AdminCoupons() {
                       <td style={{ ...tdStyle, textAlign: 'right' }}>{promoList.reduce((s, p) => s + p.claim_count, 0)}</td>
                       <td style={{ ...tdStyle, textAlign: 'right' }}>{promoList.reduce((s, p) => s + (p.unique_users ?? 0), 0)}</td>
                       <td style={{ ...tdStyle, textAlign: 'right' }}>{promoList.reduce((s, p) => s + p.paid_order_count, 0)}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>{promoList.reduce((s, p) => s + Number(p.gmv || 0), 0).toFixed(2)}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>${promoList.reduce((s, p) => s + Number(p.gmv || 0), 0).toFixed(2)}</td>
                       <td style={tdStyle}></td>
                     </tr>
                   </tbody>

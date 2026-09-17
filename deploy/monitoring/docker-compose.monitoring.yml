@@ -6,10 +6,11 @@
 #   docker compose -f docker-compose.monitoring.yml up -d
 #
 # 说明：
-#   - 网络：加入生产 carvenex_internal（可解析 django-app/redis/db/nginx）
+#   - 网络：加入生产 carvenex_internal（可解析 django-app/db/nginx）
 #   - django 指标经 nginx /metrics 白名单转发抓取（allow 内网，见 nginx default.conf）
-#   - 告警 → 邮件 deaven-hui@carvenex.com（SMTP 凭据来自 .env.monitoring，不入库）
+#   - 告警 → 邮件 /QQ SMTP（凭据来自 .env.monitoring，不入库）
 #   - 告警 → 钉钉机器人（可选：配好 DINGTALK_WEBHOOK 后生效）
+# 注意：主栈 MySQL-only（缓存/会话/broker 均走 MySQL），无需额外消息中间件监控。
 # =============================================================================
 name: carvenex-monitoring
 
@@ -122,16 +123,6 @@ services:
     ports: ["8080:8080"]
     networks: [carvenex_internal]
     mem_limit: 128m
-
-  redis-exporter:
-    image: oliver006/redis_exporter:v1.62.0
-    container_name: carvenex-redis-exporter
-    restart: unless-stopped
-    environment:
-      REDIS_ADDR: redis://carvenex-redis-1:6379
-    ports: ["9121:9121"]
-    networks: [carvenex_internal]
-    mem_limit: 96m
 
   # 内网 metrics 代理：解决 Prometheus 无法覆盖 Host 头（Go 客户端限制）的问题
   metrics-proxy:

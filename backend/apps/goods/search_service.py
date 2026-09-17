@@ -119,6 +119,13 @@ class GoodsSearchService:
             agg = sku_agg.get(sid, {})
             items.append({
                 'id': spu.id, 'name': spu.name,
+                # 多语言字段：与 get_spu_list / SPUDetailSerializer 保持一致，
+                # 供前端按当前界面语言（en-US / ar）动态渲染商品名称与描述
+                'name_en': spu.name_en or '',
+                'name_ar': spu.name_ar or '',
+                'description': spu.description or '',
+                'description_en': spu.description_en or '',
+                'description_ar': spu.description_ar or '',
                 'brand_id': spu.brand_id, 'brand_name': spu.brand.name if spu.brand else '',
                 'category_id': spu.category_id,
                 'main_image': spu.main_image or '',

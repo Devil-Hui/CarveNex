@@ -1,6 +1,6 @@
 """商品信号 —— 同步缓存、布隆过滤器、main_image"""
 import logging
-from django.db.models.signals import post_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from django.db import transaction
 
@@ -59,4 +59,47 @@ def sync_main_image_on_media_active(sender, instance, **kwargs):
 
     spu = SPU.objects.filter(id=instance.spu_id).first()
     if spu and spu.main_image != instance.large_url:
+        SPU.objects.filter(id=instance.spu_id).update(main_image=instance.large_url)
         logger.info(f'信号: 已同步 SPU#{instance.spu_id} main_image: {instance.large_url}')
+
+
+# ── ProductMedia 删除信号：回收存储文件，堵住孤儿文件泄漏 ──
+
+@receiver(post_delete, sender=ProductMedia)
+def cleanup_files_on_media_deleted(sender, instance, **kwargs):
+    """媒体记录被删除时同步清理存储中的文件（local / R2 通用）。
+
+    为什么需要它：`MediaDeleteView` 只有在**通过接口单条删除**时才会清文件；
+    而「删除 SPU → ProductMedia 被外键级联删除」这条路径不会走接口，
+    文件会永远留在存储里。实测一次「保存失败→重试 8 次→手动删掉空商品」
+    就在 media/products/2026/09/12/ 下留下 **97 个孤儿 webp**。
+
+    这里做幂等兜底：`_delete_storage_file` 对已删除/不存在的文件是 no-op，
+    因此与 MediaDeleteView 的显式清理重复执行也是安全的。
+    """
+    from apps.goods.views.admin_media import _delete_storage_file
+
+    urls = (
+        [instance.thumb_url, instance.list_url, instance.large_url, instance.original_url]
+        if instance.media_type == 'image'
+        else [
+            instance.video_url,
+            instance.video_thumb_url,
+            instance.video_list_url,
+            instance.video_large_url,
+        ]
+    )
+    spu_id = instance.spu_id
+
+    def _cleanup():
+        for url in urls:
+            try:
+                _delete_storage_file(url)
+            except Exception as exc:  # noqa: BLE001 - 清理失败不影响主流程
+                logger.warning('信号清理媒体文件失败 url=%s error=%s', url, exc)
+        if spu_id:
+            GoodsCacheService.invalidate_media_list(spu_id)
+            GoodsCacheService.invalidate_spu(spu_id)
+            GoodsCacheService.invalidate_spu_list()
+
+    transaction.on_commit(_cleanup)

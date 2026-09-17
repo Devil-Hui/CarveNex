@@ -83,7 +83,9 @@ def resolve_scope_sku_items(scope_type: str, scope: dict, preview_limit: int = 1
     count = min(qs.count(), 2000)
     items = [{
         'sku_id': s.id,
-        'sku_code': s.sku_code,
+        'sku_name': s.sku_name,
+        # 兼容别名，旧调用方仍可取 sku_code
+        'sku_code': s.sku_name,
         'spu_id': s.spu_id,
         'spu_name': s.spu.name,
         'price': str(s.price),

@@ -11,7 +11,9 @@ __pycache__/
 *.pot
 *.pyc
 *.pyo
-media/
+# 仅忽略项目根的 MEDIA_ROOT（上传文件），加 / 锚定根目录
+# 否则会连带忽略 backend/apps/media/ 这个 Django app，导致构建时模块缺失
+/media/
 staticfiles/
 
 # 配置文件（避免泄露敏感信息）

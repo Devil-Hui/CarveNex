@@ -3,9 +3,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { PromoTags } from '../../components/business/PromoTags'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import PageLayout from '../../components/layout/PageLayout/PageLayout'
-import { useProducts, useFlatCategories, useCategories } from '../../hooks/useProducts'
+import { useProductsInfinite, useFlatCategories, useCategories } from '../../hooks/useProducts'
+import useInfiniteScroll from '../../hooks/useInfiniteScroll'
 import { useTranslation } from '../../i18n'
-import { localizedText } from '../../utils/localizedText'
+import { localizedText, localizeCategory } from '../../utils/localizedText'
 import { useCurrency } from '../../store/CurrencyContext'
 import styled from 'styled-components'
 import { Color, Radius, Shadow, FontSize } from '../../theme/tokens'
@@ -14,6 +15,7 @@ import ProductDetailModal from '../../components/business/ProductDetailModal/Pro
 import { publicAPI } from '../../api/public'
 import { useQuickAddModal } from '../../hooks/useQuickAddModal'
 import { optionalMediaUrl } from '../../utils/mediaUrl'
+import SmartImage from '../../components/common/SmartImage/SmartImage'
 
 const HEART_ICON = '/static/images/icons/heart.svg'
 const LOVEIN_ICON = '/static/images/icons/Lovein.svg'
@@ -173,6 +175,17 @@ const SizeList = styled.div`
   display: flex;
   gap: 0.8vw;
   flex-wrap: wrap;
+`
+
+/** 无限下滑哨兵：滚动到此处自动加载下一页，同时承载「加载中 / 没有更多」状态文案 */
+const ScrollSentinel = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 1.5rem 0;
+  color: ${Color.text.muted};
+  font-size: 0.9rem;
 `
 
 const SizeButton = styled.button`
@@ -485,7 +498,7 @@ const ListItemActions = styled.div`
   gap: 0.8vw;
 `
 
-type TreeItem = { id: number; name: string; level?: number; children?: TreeItem[] }
+type TreeItem = { id: number; name: string; name_en?: string; name_zh?: string; name_ar?: string; level?: number; children?: TreeItem[] }
 
 function CategoryTree({
   nodes,
@@ -498,6 +511,7 @@ function CategoryTree({
   level?: number
   onPick: (id: number) => void
 }) {
+  const { lang } = useTranslation()
   return (
     <>
       {nodes.map((node) => (
@@ -507,7 +521,7 @@ function CategoryTree({
             $active={catId ? String(node.id) === catId : false}
             onClick={() => onPick(node.id)}
           >
-            {node.name}
+            {localizeCategory(lang, node)}
           </CatNodeBtn>
           {node.children && node.children.length > 0 && (
             <CategoryTree nodes={node.children} catId={catId} level={level + 1} onPick={onPick} />
@@ -538,7 +552,20 @@ export default function Category() {
   const priceMaxStr = searchParams.get('price_max')?.trim()
   const priceMin = priceMinStr && Number.isFinite(Number(priceMinStr)) ? Number(priceMinStr) : undefined
   const priceMax = priceMaxStr && Number.isFinite(Number(priceMaxStr)) ? Number(priceMaxStr) : undefined
-  const { products, total } = useProducts(1, 20, numericCatId, searchQuery, priceMin, priceMax)
+  // 无限下滑：滚动到底部自动追加下一页，避免只显示首屏 20 条
+  const {
+    products,
+    total,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMore,
+  } = useProductsInfinite(20, numericCatId, searchQuery, priceMin, priceMax)
+  const { sentinelRef } = useInfiniteScroll({
+    hasMore,
+    loading: loading || loadingMore,
+    loadMore,
+  })
   const { categories } = useFlatCategories()
   const { categories: categoryTree } = useCategories()
   const { t, lang } = useTranslation()
@@ -625,7 +652,9 @@ export default function Category() {
           <BreadcrumbSeparator>&gt;</BreadcrumbSeparator>
           {activeCategory ? (
             <BreadcrumbLink onClick={() => navigate(`/category?cat_id=${catId}`)}>
-              {activeCategory.name}
+              {lang === 'ar' && activeCategory.name_ar ? activeCategory.name_ar
+                : lang === 'zh-CN' && activeCategory.name_zh ? activeCategory.name_zh
+                : activeCategory.name_en || activeCategory.name}
             </BreadcrumbLink>
           ) : (
             <BreadcrumbLink onClick={() => navigate('/category')}>{t('store.category.allCategories')}</BreadcrumbLink>
@@ -706,7 +735,7 @@ export default function Category() {
                 <PromoTags tags={product.promo_tags} onClick={() => navigate('/profile?tab=coupons')} />
                 <ProductImage>
                   {optionalMediaUrl(product.image) && (
-                    <img src={optionalMediaUrl(product.image)} alt={localizedName} loading="lazy" decoding="async" />
+                    <SmartImage src={optionalMediaUrl(product.image)} alt={localizedName} loading="lazy" decoding="async" />
                   )}
                 </ProductImage>
                 <ProductInfo>
@@ -739,6 +768,12 @@ export default function Category() {
           <ListView $show={view === 'list'}>
             {products.map(product => {
               const localizedName = localizedText(lang, product.name, product.name_en, product.name_ar)
+              const localizedDescription = localizedText(
+                lang,
+                product.description,
+                product.description_en,
+                product.description_ar,
+              )
               return (
               <ListItem key={product.id} onClick={() => handleProductClick(product.id)}>
                 {product.badge && (
@@ -749,7 +784,7 @@ export default function Category() {
                 <PromoTags tags={product.promo_tags} onClick={() => navigate('/profile?tab=coupons')} />
                 <ProductImage style={{ width: 200, height: 200, flexShrink: 0 }}>
                   {optionalMediaUrl(product.image) && (
-                    <img src={optionalMediaUrl(product.image)} alt={localizedName} loading="lazy" decoding="async" />
+                    <SmartImage src={optionalMediaUrl(product.image)} alt={localizedName} loading="lazy" decoding="async" />
                   )}
                 </ProductImage>
                 <ListItemInfo>
@@ -760,7 +795,7 @@ export default function Category() {
                       <CardOldPrice>{format(Number(product.originalPrice))}</CardOldPrice>
                     )}
                   </ListItemPrice>
-                  <ListItemDesc>{product.description}</ListItemDesc>
+                  <ListItemDesc>{localizedDescription}</ListItemDesc>
                   <ListItemActions>
                     <CardBuyBtn>{t('store.category.buyNow')}</CardBuyBtn>
                     <CardAction onClick={(e) => toggleFavorite(e, product.id)}>
@@ -777,6 +812,17 @@ export default function Category() {
               )
             })}
           </ListView>
+
+          {/* 无限下滑哨兵：进入视口即加载下一页 */}
+          <ScrollSentinel ref={sentinelRef}>
+            {loadingMore || loading
+              ? t('store.category.loadingMore')
+              : hasMore
+                ? ''
+                : products.length > 0
+                  ? t('store.category.noMore')
+                  : ''}
+          </ScrollSentinel>
         </ProductList>
       </MainContent>
       

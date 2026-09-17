@@ -320,7 +320,7 @@ export default function AdminMediaImport() {
       setResult(res)
       setPageState('result')
     } catch (err: unknown) {
-      setResultError(err instanceof Error ? err.message : t('import.mediaImport.importFailed'))
+      setResultError(err instanceof Error ? err.message : t('admin.mediaImport.importFailed'))
       setPageState('result')
     }
   }
@@ -330,8 +330,8 @@ export default function AdminMediaImport() {
   return (
     <PageContainer>
       <PageHeader
-        title={t('import.mediaImport.title')}
-        breadcrumb={[{ label: t('import.mediaImport.subtitle') }, { label: t('import.mediaImport.title') }]}
+        title={t('admin.mediaImport.title')}
+        breadcrumb={[{ label: t('admin.mediaImport.subtitle') }, { label: t('admin.mediaImport.title') }]}
       />
 
       <Card>
@@ -347,9 +347,9 @@ export default function AdminMediaImport() {
             >
               <UploadIcon><Icon name="upload" size={32} /></UploadIcon>
               <UploadTitle>
-                {fileName || t('import.mediaImport.dropZone')}
+                {fileName || t('admin.mediaImport.dropZone')}
               </UploadTitle>
-              <UploadHint>{t('import.mediaImport.supportedFormats')}</UploadHint>
+              <UploadHint>{t('admin.mediaImport.supportedFormats')}</UploadHint>
               <HiddenInput
                 ref={fileInputRef}
                 type="file"
@@ -361,24 +361,24 @@ export default function AdminMediaImport() {
             {/* 裁切比例 */}
             <OptionsRow>
               <Field>
-                <Label>{t('import.mediaImport.crop')}</Label>
+                <Label>{t('admin.mediaImport.crop')}</Label>
                 <Select value={crop} onChange={(e) => setCrop(e.target.value)}>
-                  <option value="1:1">{t('import.mediaImport.cropSquare')}</option>
+                  <option value="1:1">{t('admin.mediaImport.cropSquare')}</option>
                   <option value="4:3">4:3</option>
                   <option value="3:4">3:4</option>
-                  <option value="none">{t('import.mediaImport.cropNone')}</option>
+                  <option value="none">{t('admin.mediaImport.cropNone')}</option>
                 </Select>
               </Field>
             </OptionsRow>
 
             <ButtonRow>
               <PrimaryBtn onClick={handleImport} disabled={!file}>
-                {t('import.mediaImport.confirmImport')}
+                {t('admin.mediaImport.confirmImport')}
               </PrimaryBtn>
             </ButtonRow>
             {error && (
               <div style={{ marginTop: 16 }}>
-                <ErrorRetry message={t('import.mediaImport.parseError')} detail={error} onRetry={reset} />
+                <ErrorRetry message={t('admin.mediaImport.parseError')} detail={error} onRetry={reset} />
               </div>
             )}
           </>
@@ -388,7 +388,7 @@ export default function AdminMediaImport() {
         {pageState === 'importing' && (
           <ParsingOverlay>
             <Spinner />
-            <ParsingText>{t('import.mediaImport.importing')}</ParsingText>
+            <ParsingText>{t('admin.mediaImport.importing')}</ParsingText>
           </ParsingOverlay>
         )}
 
@@ -397,16 +397,16 @@ export default function AdminMediaImport() {
           <>
             {resultError ? (
               <ResultCard $success={false}>
-                <ResultTitleText $success={false}>{t('import.mediaImport.importFailedStatus')}</ResultTitleText>
+                <ResultTitleText $success={false}>{t('admin.mediaImport.importFailedStatus')}</ResultTitleText>
                 <ResultMessage>{resultError}</ResultMessage>
-                <PrimaryBtn onClick={reset}>{t('import.mediaImport.reselectFile')}</PrimaryBtn>
+                <PrimaryBtn onClick={reset}>{t('admin.mediaImport.reselectFile')}</PrimaryBtn>
               </ResultCard>
             ) : result && (
               <ResultSection>
                 <ResultHeader>
-                  <ResultTitle>{t('import.mediaImport.resultTitle')}</ResultTitle>
+                  <ResultTitle>{t('admin.mediaImport.resultTitle')}</ResultTitle>
                   <ResultCount>
-                    {t('import.mediaImport.resultCount')
+                    {t('admin.mediaImport.resultCount')
                       .replace('{images}', String(result.total_images))
                       .replace('{videos}', String(result.total_videos))}
                   </ResultCount>
@@ -416,10 +416,10 @@ export default function AdminMediaImport() {
                   <ResultTable>
                     <thead>
                       <tr>
-                        <ResultTh>{t('import.mediaImport.colFolder')}</ResultTh>
-                        <ResultTh>{t('import.mediaImport.colImages')}</ResultTh>
-                        <ResultTh>{t('import.mediaImport.colVideos')}</ResultTh>
-                        <ResultTh>{t('import.mediaImport.colErrors')}</ResultTh>
+                        <ResultTh>{t('admin.mediaImport.colFolder')}</ResultTh>
+                        <ResultTh>{t('admin.mediaImport.colImages')}</ResultTh>
+                        <ResultTh>{t('admin.mediaImport.colVideos')}</ResultTh>
+                        <ResultTh>{t('admin.mediaImport.colErrors')}</ResultTh>
                       </tr>
                     </thead>
                     <tbody>
@@ -439,13 +439,13 @@ export default function AdminMediaImport() {
 
                 {(result.skipped || []).length > 0 && (
                   <SkippedBox>
-                    <strong>{t('import.mediaImport.skipped')}</strong>{' '}
+                    <strong>{t('admin.mediaImport.skipped')}</strong>{' '}
                     {result.skipped.join(', ')}
                   </SkippedBox>
                 )}
 
                 <ButtonRow>
-                  <PrimaryBtn onClick={reset}>{t('import.mediaImport.continueImport')}</PrimaryBtn>
+                  <PrimaryBtn onClick={reset}>{t('admin.mediaImport.continueImport')}</PrimaryBtn>
                 </ButtonRow>
               </ResultSection>
             )}

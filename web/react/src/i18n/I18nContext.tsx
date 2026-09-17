@@ -13,13 +13,27 @@ const packs: Record<Language, Translations> = {
   'ar': ar as unknown as Translations,
 }
 
+function detectFromBrowser(): Language {
+  // Only the primary language counts. navigator.languages often lists multiple
+  // regions (e.g. ['en-US', 'en-IE', 'zh-Hans-CN']) where the OS locale is the
+  // first entry and any user-added languages follow — so we deliberately avoid
+  // scanning the whole list. English-first is the safe default everywhere else.
+  try {
+    const primary = navigator.language || (navigator.languages?.[0] ?? '')
+    const tag = primary.toLowerCase()
+    if (tag.startsWith('zh')) return 'zh-CN'
+    if (tag.startsWith('ar')) return 'ar'
+  } catch { /* noop */ }
+  return 'en-US'
+}
+
 function getInitialLang(): Language {
   try {
     const stored = localStorage.getItem(LANGUAGE_KEY)
     if (stored === 'en-US' || stored === 'zh-CN' || stored === 'ar') return stored
   } catch { /* noop */ }
-  // Default to en-US
-  return 'en-US'
+  // No explicit choice yet — match the browser language; everything else falls back to English.
+  return detectFromBrowser()
 }
 
 interface I18nContextValue {

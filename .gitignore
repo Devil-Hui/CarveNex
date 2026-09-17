@@ -106,7 +106,14 @@ web/react/dist_verify/
 # Vite 构建前的临时重命名产物
 web/react/dist-*/
 backend/media/
+# 项目运行期 MEDIA_ROOT 的另一处落点（Django dev/prod 用 os.path.join(BASE_DIR,'media')
+# 解析出的 project/media）：同样属用户上传/生成的文件，严禁入库（约 5750 张 webp / 315MB）。
+backend/project/media/
 backend/static/
+# 初始商品种子数据源（xlsx+原图，144MB 级）：从「产品资料」目录复制，
+# 被 Dockerfile.prod 的 COPY . . 打进镜像，供 setup.sh 的 seed_products 导入。
+# 不入库以保持仓库精简；重放方法见 seed_products.py 顶部注释。
+backend/seed_products/
 
 # ── Python caches (in case backend/.gitignore misses) ─────
 *.pyc
@@ -115,4 +122,7 @@ __pycache__/
 check_admin.py
 inspect_xlsx.py
 *.xlsx
+# 内部说明/交接文档（含部署细节，不上传 Git）
 交接文档.md
+项目交接文档.md
+指南.md

@@ -1,8 +1,7 @@
 import styled, { keyframes } from 'styled-components'
 import { Ink, Font, Display, Type, Radius, Elevation, gridContainer, Ease, mq } from '../editorial'
-import { landingImages } from '../../../assets/landing'
 import { MaskLine, Reveal } from './Reveal'
-import TikTokPhone from './ui/TikTokPhone'
+import LaserVideo, { LASER_VIDEOS } from './ui/LaserVideo'
 import { IconSparkles, IconStar, IconPlay, IconArrowRight, IconUsers } from './ui/Icon'
 
 const fadeUp = keyframes`
@@ -11,9 +10,8 @@ const fadeUp = keyframes`
 `
 
 /**
- * Hero — 左標題 + 右實拍圖／數據卡雙卡構圖
- * 產品價值前置：以真實創作者畫面與成長數據建立信任。
- * 背景柔光改為品牌紅極淡暈染（原紫調柔光已移除）。
+ * Hero — 左標題 + 右實拍雕刻影片構圖
+ * 產品價值前置：以真實激光雕刻畫面建立「所見即所得」的信任。
  */
 const Section = styled.section`
   position: relative;
@@ -219,7 +217,7 @@ const Stars = styled.span`
   }
 `
 
-/* ── 右欄：實拍圖 + 數據卡 ──────────────────────────────── */
+/* ── 右欄：實拍雕刻影片 + 場景標籤 ─────────────────────── */
 const Right = styled.div`
   grid-column: 1 / -1;
   position: relative;
@@ -230,12 +228,64 @@ const Right = styled.div`
 
 const Stage = styled.div`
   position: relative;
-  max-width: 320px;
+  max-width: 340px;
   margin-inline: auto;
 `
 
-const FigureHolder = styled.div`
+/** 展示框：大圓角影片卡 + 底部狀態列，替代原 TikTok 手機殼 */
+const Showcase = styled.figure`
+  margin: 0;
+  border-radius: ${Radius.xxl}px;
+  overflow: hidden;
+  border: 1px solid ${Ink.rule};
+  background: ${Ink.near};
+  box-shadow: ${Elevation.float};
   animation: ${fadeUp} 1s ${Ease.cinema} 0.2s both;
+`
+
+const Statusbar = styled.figcaption`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem 1.1rem;
+  background: ${Ink.paper2};
+  border-top: 1px solid ${Ink.rule};
+`
+
+const StatusLabel = styled.span`
+  ${Type.wideCaps}
+  font-size: 10.5px;
+  font-weight: 700;
+  color: ${Ink.faint};
+`
+
+const StatusLive = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: ${Ink.brand};
+
+  &::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: ${Ink.brand};
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
 `
 
 export default function Hero() {
@@ -246,26 +296,27 @@ export default function Hero() {
       <Grid12>
         <Left>
           <Badge>
-            <IconSparkles /> AI Creator Incubator
+            <IconSparkles /> Portable Laser Engraver
           </Badge>
           <Title>
-            <MaskLine delay={80}>Build a</MaskLine>
+            <MaskLine delay={80}>From Idea to</MaskLine>
             <MaskLine delay={160}>
-              <em>TikTok</em> Creator
+              <em>Engraved</em> Object,
             </MaskLine>
-            <MaskLine delay={240}>Career Without</MaskLine>
-            <MaskLine delay={320}>Showing Your Face</MaskLine>
+            <MaskLine delay={240}>On Almost Any</MaskLine>
+            <MaskLine delay={320}>Material You Love</MaskLine>
           </Title>
           <Sub>
-            Turn short-form content into a real income stream. AI writes your hooks, generates
-            captions and adds B-roll — so you grow from zero to monetised on autopilot.
+            CarveNex turns sketches, photos and logos into real, touchable pieces — wood, metal,
+            glass, leather and more. Design on your phone, autofocus in seconds, engrave in
+            minutes. No workshop required.
           </Sub>
           <CtaRow>
             <PrimaryCta href="#start">
-              Start Building Free <IconArrowRight />
+              Shop the Engraver <IconArrowRight />
             </PrimaryCta>
-            <GhostCta href="#optimizer">
-              <IconPlay /> See How It Works
+            <GhostCta href="#materials">
+              <IconPlay /> See What It Can Engrave
             </GhostCta>
           </CtaRow>
           <Proof>
@@ -281,9 +332,9 @@ export default function Hero() {
                   <IconStar />
                   <IconStar />
                 </Stars>{' '}
-                4.9 · 2,400+ creators
+                4.9 · 12,000+ makers
               </strong>
-              Global community across 40+ countries
+              Community across 60+ countries
             </ProofText>
           </Proof>
         </Left>
@@ -291,20 +342,13 @@ export default function Hero() {
         <Right>
           <Reveal delay={100}>
             <Stage>
-              <FigureHolder>
-                <TikTokPhone
-                  src={landingImages.clipAi.src}
-                  alt={landingImages.clipAi.alt}
-                  handle="@maya.skincare"
-                  caption="AI-optimized skincare routine — 30s faceless tutorial ✨"
-                  music="original sound · Maya Chen"
-                  likes="12.4K"
-                  comments="1,208"
-                  bookmarks="3,402"
-                  shares="Share"
-                  width={240}
-                />
-              </FigureHolder>
+              <Showcase>
+                <LaserVideo src={LASER_VIDEOS.hero} ratio="4 / 5" />
+                <Statusbar>
+                  <StatusLabel>Now engraving · Multi-material reel</StatusLabel>
+                  <StatusLive>LIVE</StatusLive>
+                </Statusbar>
+              </Showcase>
             </Stage>
           </Reveal>
         </Right>

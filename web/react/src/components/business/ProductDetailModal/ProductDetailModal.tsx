@@ -9,6 +9,7 @@ import { Color, Radius, Shadow, FontSize, Transition, Type } from '../../../them
 import { zIndex } from '../../../styles/zIndex'
 import { resolveMediaUrl } from '../../../api/chat'
 import { localizedText } from '../../../utils/localizedText'
+import SmartImage from '../../common/SmartImage/SmartImage'
 
 export interface ProductDetailModalProps {
   productId: number | null
@@ -196,6 +197,7 @@ const ThumbRow = styled.div`
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 2px;
+  scroll-behavior: smooth;
 
   &::-webkit-scrollbar {
     height: 4px;
@@ -204,6 +206,41 @@ const ThumbRow = styled.div`
     background: ${Color.border.medium};
     border-radius: 2px;
   }
+`
+
+/** 缩略图条 + 两侧箭头：图片超过约 5 张时可横向滚动查看后续图片 */
+const ThumbScroller = styled.div`
+  position: relative;
+`
+
+const ThumbArrow = styled.button`
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid ${Color.border.light};
+  background: rgba(255, 255, 255, 0.92);
+  color: ${Color.text.primary};
+  box-shadow: 0 1px 4px rgba(14, 16, 19, 0.16);
+  cursor: pointer;
+  z-index: 2;
+  transition: background ${Transition.fast};
+
+  &:hover:not(:disabled) {
+    background: ${Color.bg.card};
+  }
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  &.left { left: 0; }
+  &.right { right: 0; }
 `
 
 const ThumbItem = styled.button<{ $active: boolean }>`
@@ -590,6 +627,9 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [selectedSpecs, setSelectedSpecs] = useState<Record<string, string>>({})
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
+  const thumbRowRef = useRef<HTMLDivElement>(null)
+  const [canScrollPrev, setCanScrollPrev] = useState(false)
+  const [canScrollNext, setCanScrollNext] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
   const [adding, setAdding] = useState(false)
   const [isFavorited, setIsFavorited] = useState(false)
@@ -712,6 +752,38 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   useEffect(() => {
     setSelectedImageIndex(0)
   }, [selectedSku?.id, detail?.id])
+
+  // 缩略图条箭头可用态：仅当内容真正横向溢出时显示左右箭头
+  const syncThumbScroll = useCallback(() => {
+    const el = thumbRowRef.current
+    if (!el) return
+    setCanScrollPrev(el.scrollLeft > 2)
+    setCanScrollNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
+  }, [])
+  useEffect(() => {
+    // 图片集合变化 / 弹窗出现后重算一次（等 DOM 渲染出缩略图）
+    const id = window.setTimeout(syncThumbScroll, 60)
+    return () => window.clearTimeout(id)
+  }, [images, syncThumbScroll])
+  useEffect(() => {
+    const el = thumbRowRef.current
+    if (!el) return
+    el.addEventListener('scroll', syncThumbScroll, { passive: true })
+    const ro = new ResizeObserver(syncThumbScroll)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', syncThumbScroll)
+      ro.disconnect()
+    }
+  }, [syncThumbScroll])
+  const scrollThumb = useCallback(
+    (dir: 1 | -1) => {
+      const el = thumbRowRef.current
+      if (!el) return
+      el.scrollBy({ left: dir * Math.round(el.clientWidth * 0.9), behavior: 'smooth' })
+    },
+    [],
+  )
 
   // 已选规格若因互斥变得无效，自动清理
   useEffect(() => {
@@ -874,19 +946,31 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 ) : null}
               </MainImageBox>
               {images.length > 1 && (
-                <ThumbRow>
-                  {images.slice(0, 6).map((img, index) => (
-                    <ThumbItem
-                      key={`${img.src}-${index}`}
-                      $active={index === selectedImageIndex}
-                      onClick={() => setSelectedImageIndex(index)}
-                      type="button"
-                      aria-label={`${localizedName} ${index + 1}`}
-                    >
-                      <img src={img.thumb || img.src} alt="" />
-                    </ThumbItem>
-                  ))}
-                </ThumbRow>
+                <ThumbScroller>
+                  {canScrollPrev && (
+                    <ThumbArrow className="left" type="button" onClick={() => scrollThumb(-1)} aria-label={t('store.productDetailModal.prevThumb')}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                    </ThumbArrow>
+                  )}
+                  <ThumbRow ref={thumbRowRef}>
+                    {images.map((img, index) => (
+                      <ThumbItem
+                        key={`${img.src}-${index}`}
+                        $active={index === selectedImageIndex}
+                        onClick={() => setSelectedImageIndex(index)}
+                        type="button"
+                        aria-label={`${localizedName} ${index + 1}`}
+                      >
+                        <SmartImage src={img.thumb || img.src} alt="" />
+                      </ThumbItem>
+                    ))}
+                  </ThumbRow>
+                  {canScrollNext && (
+                    <ThumbArrow className="right" type="button" onClick={() => scrollThumb(1)} aria-label={t('store.productDetailModal.nextThumb')}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                    </ThumbArrow>
+                  )}
+                </ThumbScroller>
               )}
             </MediaCol>
 
@@ -907,7 +991,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               {selectedSku && (
                 <SkuCode>
                   {t('store.category.skuPrefix')}
-                  {selectedSku.sku_code || selectedSku.id}
+                  {selectedSku.sku_name || selectedSku.sku_code || selectedSku.id}
                 </SkuCode>
               )}
 

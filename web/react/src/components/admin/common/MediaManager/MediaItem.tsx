@@ -14,6 +14,8 @@ interface Props {
   index: number
   onRemove: (id: number) => void
   onEdit?: (item: ProductMediaItem) => void
+  /** 原地重新裁剪（仅已保存图片） */
+  onRecrop?: (item: ProductMediaItem) => void
   /** 点击媒体项打开预览（视频直接播放） */
   onPreview?: (url: string, kind: 'image' | 'video', name: string) => void
   /** 拖拽激活态（长按 2s 后置真，视觉反馈 + 允许拖动） */
@@ -27,7 +29,7 @@ function isSavedMedia(item: StagedMediaItem | ProductMediaItem): item is Product
   return 'media_type' in item
 }
 
-export default function MediaItem({ item, index, onRemove, onEdit, onPreview, dragActive, onDragHandleDown }: Props) {
+export default function MediaItem({ item, index, onRemove, onEdit, onRecrop, onPreview, dragActive, onDragHandleDown }: Props) {
   const { t } = useTranslation()
   const saved = isSavedMedia(item)
   const mediaType = saved ? item.media_type : (item as StagedMediaItem).mediaType
@@ -113,8 +115,20 @@ export default function MediaItem({ item, index, onRemove, onEdit, onPreview, dr
         </S.VideoPlayBadge>
       )}
 
-      {/* hover 操作浮层：编辑（仅已保存项）/ 删除 */}
+      {/* hover 操作浮层：重新裁剪 / 编辑（仅已保存项）/ 删除 */}
       <S.HoverOverlay className="hover-overlay">
+        {saved && mediaType === 'image' && onRecrop && (
+          <S.OverlayBtn
+            type="button"
+            title={t('admin.mediaManager.recrop')}
+            onClick={(e) => {
+              e.stopPropagation()
+              onRecrop(item as ProductMediaItem)
+            }}
+          >
+            ✂
+          </S.OverlayBtn>
+        )}
         {saved && onEdit && (
           <S.OverlayBtn
             type="button"

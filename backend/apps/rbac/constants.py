@@ -67,6 +67,9 @@ PERMISSIONS: tuple[Perm, ...] = (
     Perm('order.aftersale.review', 'order', '审核售后'),
     # ── 营销域 ──
     Perm('promotion.coupon.write', 'promotion', '管理优惠券'),
+    # ── 推广投放域 ──
+    Perm('ads.campaign.read', 'ads', '查看推广投放'),
+    Perm('ads.campaign.write', 'ads', '执行推广投放'),
     # ── 客服域 ──
     Perm('cs.conversation.read', 'cs', '查看会话'),
     Perm('cs.conversation.takeover', 'cs', '接管会话'),

@@ -4,17 +4,15 @@
 CarveNex 性能基线压测（Locust）
 
 用法（2C4G 测试拓扑，推荐）：
-  1) 起测试拓扑：docker compose -f docker-compose.test.yml up -d db redis
+  1) 起测试 Docker 环境：docker compose -f docker-compose.test.yml up -d db
   2) 起同配置被测 Django（gunicorn gevent 2 worker，与生产一致）：
-     docker run -d --name carvenex-load-web --network carvenex-test-net \
+     docker run -n carvenex-loadtest-web --network carvenex-test-net \
        -v $PWD/backend:/backend -w /backend \
        -e DJANGO_SETTINGS_MODULE=project.config.settings.dev \
        -e DB_ENGINE=django.db.backends.mysql -e DB_HOST=carvenex-test-mysql \
        -e DB_NAME=carvenex_test -e DB_USER=carvenex_test -e DB_PASSWORD=carvenex_test \
-       -e REDIS_URL=redis://carvenex-test-redis:6379/1 \
        -e DJANGO_SECRET_KEY=test-only-secret-key-not-for-production \
-       -e 'THROTTLE_RATES={"anon":"100000/hour","user":"100000/hour","admin_login":"10000/minute","admin_write":"100000/minute","admin_batch":"10000/minute"}' \
-       -e 'RATE_LIMITS={}' \
+       -e 'THROTTLE_RATES={"http":"100000/hour","user":"100000/hour","admin_login":"10000/minute","admin_write":"100000/minute","admin_batch":"10000/minute"}' \
        -p 127.0.0.1:8011:8000 \
        --entrypoint gunicorn carvenex-django:v1.0.5 \
        project.wsgi:application --workers 2 --worker-class gevent \
@@ -60,17 +58,17 @@ class CarveNexPerfUser(HttpUser):
 
     @task(2)
     def goods_hot(self):
-        """热销商品（Redis 缓存读）。"""
+        """热销商品（缓存读）。"""
         self.client.get('/api/v1/goods/hot', name='goods/hot')
 
     @task(1)
     def tags_list(self):
-        """标签列表（Redis 缓存读）。"""
+        """标签列表（缓存读）。"""
         self.client.get('/api/v1/goods/tag', name='goods/tag')
 
     @task(1)
     def health(self):
-        """健康检查（DB SELECT 1 + Redis ping）——用于观察并发下连接瓶颈。"""
+        """健康检查（DB SELECT 1 + cache 探针）——用于观察并发下连接瓶颈。"""
         self.client.get('/health/', name='health')
 
     @task(1)

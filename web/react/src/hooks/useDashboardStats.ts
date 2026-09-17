@@ -44,11 +44,10 @@ export function useDashboardStats(): DashboardStats {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    const [spuAll, afterSales, unread, tasks, orders] = await Promise.allSettled([
+    const [spuAll, afterSales, unread, orders] = await Promise.allSettled([
       adminAPI.getSPUs({ page: 1, size: 1 }).then((d: PaginatedData<unknown>) => readTotal(d)),
       orderAPI.adminAfterSaleList({ status: 'pending', page: 1, size: 1 }).then((d) => readTotal(d)),
       adminAPI.getUnreadCount().then((d) => readTotal((d as { unread_count?: number }).unread_count)),
-      adminAPI.getMyTasks().then((d) => (Array.isArray(d) ? d.filter((t) => t.state === 'PROCESSING' || t.state === 'PENDING').length : 0)),
       orderAPI.adminList({ page: 1, size: 1 }).then((d) => readTotal(d)),
     ])
 
@@ -56,7 +55,7 @@ export function useDashboardStats(): DashboardStats {
     setStats({
       pendingAfterSales: val(afterSales),
       unreadNotifications: val(unread),
-      runningTasks: val(tasks),
+      runningTasks: 0, // 异步任务已下线，不再统计
       productCount: val(spuAll),
       orderCount: val(orders),
     })

@@ -2,7 +2,7 @@
  * CommandPalette — 命令面板（⌘K / Ctrl+K）（P2）
  * ───────────────────────────────────────────────────
  * 数据驱动分组（导航/商品/订单/操作…），输入即过滤，↑↓ 选择，Enter 执行，Esc 关闭。
- * 由父组件用 useKeyboardShortcuts 绑定 'meta+k' 打开；组件内部自监听 Esc 关闭。
+ * 由父组件（AdminLayout）监听 keydown 绑定 ⌘K / Ctrl+K 打开；组件内部自监听 Esc 关闭。
  * 无后端依赖，sections 由调用方注入。
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'

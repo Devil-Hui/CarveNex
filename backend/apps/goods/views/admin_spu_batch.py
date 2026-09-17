@@ -2,8 +2,7 @@
 Admin SPU 批量操作 — 批量上下架/调价/改库存/改分类/改品牌/批量审核
 
 设计要点：
-- 小批量（≤50）→ 同步执行 + transaction.atomic() 事务包裹
-- 大批量（>50）→ Celery 异步任务 + 返回 task_id 供前端轮询
+- 同步执行 + transaction.atomic() 事务包裹（Celery 已下线，不再区分大/小批量）
 - 所有操作在事务内完成，保证原子性
 """
 
@@ -19,9 +18,6 @@ from apps.rbac.permissions import HasPerm
 from apps.rbac.services import has_role, has_perm
 from apps.rbac.constants import Role
 from ..admin_permissions import can_operate_spu, can_audit_spu
-
-BATCH_SYNC_LIMIT = 50  # 超过此数量的批量操作转为异步
-
 
 def execute_batch(spus, action, params, user) -> dict:
     """批量执行核心逻辑，被同步和异步调用共用"""
@@ -145,22 +141,7 @@ class SPUAdminBatchView(BaseApiView):
             ip_address=request.META.get('REMOTE_ADDR'),
         )
 
-        # 🔥 大批量 → 异步（Celery 任务）
-        if len(spu_ids) > BATCH_SYNC_LIMIT:
-            from ..tasks import execute_batch_task
-            result = execute_batch_task.delay(
-                spu_ids=list(spus.values_list('id', flat=True)),
-                action=action,
-                params=params,
-                user_id=request.user.id,
-            )
-            return Response({
-                'task_id': result.id,
-                'state': 'PENDING',
-                'message': f'Batch {action} queued for {len(spu_ids)} SPUs.',
-            })
-
-        # 🔥 小批量 → 同步 + 事务
+        # 统一同步 + 事务执行（Celery 已下线，不再区分大批量异步/小批量同步）
         with transaction.atomic():
             result = execute_batch(spus, action, params, request.user)
 
@@ -169,33 +150,3 @@ class SPUAdminBatchView(BaseApiView):
             'errors': result['errors'],
             'action': action,
         })
-
-
-class SPUAdminBatchTaskView(BaseApiView):
-    """查询批量操作进度"""
-    permission_classes = [HasPerm('goods.spu.read')]
-
-    @extend_schema(responses={200: OpenApiResponse(description='List or retrieve')})
-    def get(self, request, task_id):
-        from celery.result import AsyncResult
-        from project.celery import app
-
-        result = AsyncResult(task_id, app=app)
-        response = {
-            'task_id': task_id,
-            'state': result.state,
-        }
-
-        if result.state == 'SUCCESS':
-            response['result'] = result.result
-            response['message'] = 'Batch operation completed.'
-        elif result.state == 'FAILURE':
-            response['message'] = str(result.info) if result.info else 'Batch operation failed.'
-        elif result.state == 'PENDING':
-            response['message'] = 'Batch operation queued.'
-        elif result.state == 'STARTED':
-            response['message'] = 'Batch operation in progress.'
-        else:
-            response['message'] = f'Unknown state: {result.state}'
-
-        return Response(response)

@@ -35,12 +35,22 @@ _ZIP_MAX_ENTRIES = 1000
 
 # Excel 列名 → 内部字段映射（兼容中英文表头，key 用小写以便与归一化后的表头匹配）
 COLUMN_MAP = {
-    'sku': 'sku_code', 'sku_code': 'sku_code', 'sku code': 'sku_code', 'sku编码': 'sku_code',
+    'sku': 'sku_name', 'sku_code': 'sku_name', 'sku_name': 'sku_name',
+    'sku code': 'sku_name', 'sku编码': 'sku_name', 'sku名称': 'sku_name', 'sku name': 'sku_name',
     'model': 'model', '型号': 'model', '产品型号': 'model', '产品编码': 'model',
     'price': 'price', '原价': 'price', '销售价': 'price',
     'discount_price': 'discount_price', '现价': 'discount_price', '折扣价': 'discount_price', '优惠价': 'discount_price',
     'name': 'name', '标题': 'name', '商品名': 'name', '产品名称': 'name',
     'description': 'description', '详情描述': 'description', '描述': 'description', '详情': 'description',
+    # 多语言列：与商品表单一致，名称/描述允许只提供英文或阿拉伯语
+    'name_en': 'name_en', 'english name': 'name_en', 'title_en': 'name_en',
+    '英文名': 'name_en', '英文名称': 'name_en', '英文标题': 'name_en', '商品英文名': 'name_en',
+    'name_ar': 'name_ar', 'arabic name': 'name_ar',
+    '阿拉伯语名称': 'name_ar', '阿拉伯文名称': 'name_ar', '阿拉伯语名': 'name_ar', '阿语名称': 'name_ar',
+    'description_en': 'description_en', 'english description': 'description_en',
+    '英文描述': 'description_en', '英文详情': 'description_en', '英文说明': 'description_en',
+    'description_ar': 'description_ar', 'arabic description': 'description_ar',
+    '阿拉伯语描述': 'description_ar', '阿语描述': 'description_ar',
     'services': 'services', 'service': 'services',
     '服务': 'services', '服务标签': 'services', '服务项': 'services', 'service_tag': 'services',
 }
@@ -110,6 +120,12 @@ def _normalize_row(row):
         key = COLUMN_MAP.get((raw_key or '').strip().lower(), (raw_key or '').strip())
         if key not in out or not out[key]:
             out[key] = (value or '').strip()
+    # 名称支持「任意语言填写」：主名称为空时用英文 / 阿拉伯语兜底。
+    # 否则只有英文标题的行会被后面的 `if r.get('name')` 静默丢弃（用户看不到任何报错）。
+    if not out.get('name'):
+        out['name'] = out.get('name_en') or out.get('name_ar') or ''
+    if not out.get('description'):
+        out['description'] = out.get('description_en') or out.get('description_ar') or ''
     # 需求：产品型号默认取产品名称 '-' 前的一段；仅在显式型号缺失时自动推导
     if not out.get('model') and out.get('name'):
         out['model'] = _extract_model_from_name(out['name'])
@@ -150,8 +166,9 @@ def _save_image_to_spu(spu, upload_file, sort_order):
     from io import BytesIO
     from django.core.files.base import ContentFile
     from django.core.files.storage import default_storage
-    from PIL import Image, ImageOps
+    from PIL import Image
     from utils.storage import media_key
+    from utils.upload_security import open_bounded_image
     from ..models import ProductMedia
     from ..media_service import MediaService
     from ..services import GoodsCacheService
@@ -159,9 +176,9 @@ def _save_image_to_spu(spu, upload_file, sort_order):
     WEBP_QUALITY = 90
     try:
         upload_file.seek(0)
-        with Image.open(upload_file) as img:
-            img = ImageOps.exif_transpose(img)
-            img.load()
+        # open_bounded_image: 软降级解码，超大图等比缩小而不是全分辨率展开
+        # （批量导入常跑在 2C4G 的小内存容器里，全分辨率解码会 OOM）
+        with open_bounded_image(upload_file) as img:
             if img.mode in ('RGBA', 'LA', 'P', 'PA'):
                 img = img.convert('RGBA')
             else:
@@ -276,9 +293,14 @@ def _save_video_to_spu(spu, upload_file, sort_order):
 class ImportProductsView(BaseApiView):
     """Excel/CSV 导入商品 — 上传 → 预览 → 确认导入。
 
-    支持列：sku编码、产品型号、原价、现价、标题、详情描述、服务。
+    支持列：sku名称、产品型号、原价、现价、标题、详情描述、服务，
+    以及多语言列：英文名 / 英文名称 / name_en、阿拉伯语名称 / name_ar、
+    英文描述 / description_en、阿拉伯语描述 / description_ar。
     一行 = 一个 SPU + 一个 SKU；服务列按换行拆成标签；导入后创建草稿。
     图片/视频可选：按商品名匹配图片文件（文件名前缀包含商品名）。
+
+    名称 / 描述与商品表单一致，允许「任意语言填写」：主列（标题/商品名）为空时，
+    自动用英文 → 阿拉伯语列兜底，只有英文标题的行不会被静默丢弃。
     """
     permission_classes = [HasPerm('goods.import.execute')]
 
@@ -315,10 +337,13 @@ class ImportProductsView(BaseApiView):
                 preview.append({
                     'row': i + 1,
                     'name': row.get('name', ''),
+                    'name_en': row.get('name_en', ''),
+                    'name_ar': row.get('name_ar', ''),
                     'model': row.get('model', ''),
                     'price': row.get('price', ''),
                     'discount_price': row.get('discount_price', ''),
-                    'sku_code': row.get('sku_code', ''),
+                    'sku_name': row.get('sku_name', ''),
+                    'sku_code': row.get('sku_name', ''),  # 兼容别名
                     'description': row.get('description', ''),
                     'tags': _split_services(row.get('services', '')),
                     'valid': len(row_errors) == 0,
@@ -371,6 +396,10 @@ class ImportProductsView(BaseApiView):
                     brand=brand,
                     category=category,
                     description=row.get('description', ''),
+                    name_en=row.get('name_en', ''),
+                    description_en=row.get('description_en', ''),
+                    name_ar=row.get('name_ar', ''),
+                    description_ar=row.get('description_ar', ''),
                     tags=_split_services(row.get('services', '')),
                     status=SPUStatus.ON_SALE,
                 )
@@ -385,7 +414,7 @@ class ImportProductsView(BaseApiView):
                     price=float(row['price']) if row.get('price') else 0,
                     discount_price=float(row['discount_price']) if row.get('discount_price') else None,
                     stock=0,
-                    sku_code=row.get('sku_code', ''),
+                    sku_name=row.get('sku_name', '') or row.get('sku_code', ''),
                     shelf_status='on',
                 )
 
@@ -395,9 +424,9 @@ class ImportProductsView(BaseApiView):
                     for sort_idx, img_file in enumerate(matched):
                         _save_image_to_spu(spu, img_file, sort_idx)
 
-                # 按商品名匹配视频并上传（每 SPU 最多 MEDIA_MAX_VIDEOS_PER_SPU，默认 1）
+                # 按商品名匹配视频并上传（每 SPU 最多 MEDIA_MAX_VIDEOS_PER_SPU，默认 3）
                 if videos:
-                    max_vid = getattr(settings, 'MEDIA_MAX_VIDEOS_PER_SPU', 1)
+                    max_vid = getattr(settings, 'MEDIA_MAX_VIDEOS_PER_SPU', 3)
                     matched_videos = _match_media_files(videos, name)[:max_vid]
                     for vid_idx, vid_file in enumerate(matched_videos):
                         _save_video_to_spu(spu, vid_file, vid_idx)
@@ -533,34 +562,34 @@ def _save_file_to_webp(src_path, *, crop_ratio):
     from io import BytesIO
     from django.core.files.base import ContentFile
     from django.core.files.storage import default_storage
-    from PIL import Image, ImageOps
+    from PIL import Image
     from utils.storage import media_key
+    from utils.upload_security import open_bounded_image
 
     WEBP_QUALITY = 90
-    with Image.open(src_path) as img:
-        img = ImageOps.exif_transpose(img)
-        img.load()
-        # 居中裁切到目标比例（先放大到短板满足再切）：
-        # 只裁一次 → 四尺寸复用同一张处理好的图，避免重复解码，批效能高。
+    with open_bounded_image(src_path) as img:
+        # 居中裁切到目标「比例」（如 1:1 / 4:3），只裁一次 →
+        # 四尺寸复用同一张处理好的图，避免重复解码，批效能高。
+        #
+        # 注意：crop_ratio 是比例而不是像素尺寸。原实现按
+        #   scale = max(src_w / target_w, src_h / target_h) 再整体缩到
+        #   (src/scale)，等于把 '1:1' 当成「目标 1×1 像素」——
+        #   默认参数 --ratio=1:1 会把每张图缩成 1×1 再入库。
+        #   正确做法是保持原分辨率、只裁掉多余的一条边。
         if crop_ratio:
             target_w, target_h = crop_ratio
             src_w, src_h = img.size
-            if target_w and target_h:
-                scale = max(src_w / target_w, src_h / target_h)
-                new_w = max(1, round(src_w / scale))
-                new_h = max(1, round(src_h / scale))
-                img = img.resize((new_w, new_h), Image.LANCZOS)
-                # 居中裁剪到目标比例
-                if new_w / new_h != target_w / target_h:
-                    if new_w / new_h > target_w / target_h:  # 太宽 → 裁左右
-                        cut_w = round(new_h * target_w / target_h)
-                        left = (new_w - cut_w) // 2
-                        box = (left, 0, left + cut_w, new_h)
-                    else:  # 太高 → 裁上下
-                        cut_h = round(new_w * target_h / target_w)
-                        top = (new_h - cut_h) // 2
-                        box = (0, top, new_w, top + cut_h)
-                    img = img.crop(box)
+            if target_w and target_h and src_h:
+                target = target_w / target_h
+                current = src_w / src_h
+                if current > target:  # 相对目标太宽 → 居中裁左右
+                    cut_w = min(src_w, round(src_h * target))
+                    left = (src_w - cut_w) // 2
+                    img = img.crop((left, 0, left + cut_w, src_h))
+                elif current < target:  # 相对目标太高 → 居中裁上下
+                    cut_h = min(src_h, round(src_w / target))
+                    top = (src_h - cut_h) // 2
+                    img = img.crop((0, top, src_w, top + cut_h))
         if img.mode in ('RGBA', 'LA', 'P', 'PA'):
             img = img.convert('RGBA')
         else:
@@ -626,9 +655,9 @@ def _process_one_folder(folder_name, folder_path, spu_map, ratio):
         elif ext in _VIDEO_EXTS:
             videos.append(fpath)
 
-    # 数量上限（settings.MEDIA_MAX_IMAGES_PER_SPU 默认 5，视频默认 1）
-    max_img = getattr(settings, 'MEDIA_MAX_IMAGES_PER_SPU', 5)
-    max_vid = getattr(settings, 'MEDIA_MAX_VIDEOS_PER_SPU', 1)
+    # 数量上限（settings.MEDIA_MAX_IMAGES_PER_SPU 默认 15，视频默认 3）
+    max_img = getattr(settings, 'MEDIA_MAX_IMAGES_PER_SPU', 15)
+    max_vid = getattr(settings, 'MEDIA_MAX_VIDEOS_PER_SPU', 3)
 
     # 图片
     for fpath in images[:max_img]:

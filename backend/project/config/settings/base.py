@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     'apps.lovegoods.apps.LovegoodsConfig',
     'apps.tracking.apps.TrackingConfig',
     'apps.logistics.apps.LogisticsConfig',
+    'apps.ads.apps.AdsConfig',
     'apps.health',
     'channels',
     'drf_spectacular',
@@ -105,8 +106,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django_celery_beat',  # Celery Beat 数据库调度器
-    'django_celery_results',  # Celery 结果存储
 ]
 
 MIDDLEWARE = [
@@ -114,7 +113,6 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'utils.ip_whitelist_middleware.AdminIpWhitelistMiddleware',  # 管理后台 IP 白名单（ADMIN_IP_WHITELIST 配置，未配置则放行）
     'utils.cookie_domain_middleware.DynamicCookieDomainMiddleware',  # 按请求 Host 动态设定 Cookie Domain（localhost 去 Domain，否则 -.carvenex.com）
-    'middleware.rate_limit.RateLimitMiddleware',
     'middleware.memory_watchdog.MemoryWatchdogMiddleware',  # 2C4G：RSS>85% 自保护（清 L1 缓存 + 回收空闲连接）
     'utils.exception_middleware.CustomExceptionMiddleware',
     'middleware.api_version.APIVersionMiddleware',
@@ -157,8 +155,8 @@ ASGI_APPLICATION = 'project.asgi.application'
 # ── Django Channels 配置 ──
 # 关键：REST 由 gunicorn 处理、WebSocket 由 daphne 处理，二者是不同进程。
 # 进程内 InMemoryChannelLayer 无法跨进程广播，导致「客服发消息 → 买家 WS 收不到实时推送」。
-# 实时通道：无 Redis，改用进程内内存通道层。
-# InMemoryChannelLayer 支持单进程上的 Channels（含测试），无需额外 Redis。
+# 实时通道：使用进程内内存通道层（无需外部消息中间件）。
+# InMemoryChannelLayer 支持单进程上的 Channels（含测试），单机部署无需外部中间件。
 # 多 worker 水平扩展时实时推送仅对直连该进程的连接生效；
 # 前端已实现「断线自动重连 + 轮询兜底」，WebSocket 不可用时功能仍可用。
 CHANNEL_LAYERS = {
@@ -298,15 +296,21 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    'DEFAULT_THROTTLE_CLASSES': (
+    'DEFAULT_THROTTLE_CLASSES': () if os.getenv('THROTTLE_DISABLED', '').lower() in ('1', 'true', 'yes') else (
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
     ),
     # 限流速率可被环境变量 THROTTLE_RATES 覆写（JSON，测试/压测放开限流时设大值）。
     # 注意：不要设为 {} 空对象——AnonRateThrottle/UserRateThrottle 取不到 scope 速率
     # 会抛 ImproperlyConfigured("No default throttle rate set ...")，导致所有请求 500。
+    # 开发/调试期可设 THROTTLE_DISABLED=1 完全跳过默认节流（仅作用于 DEFAULT_THROTTLE_CLASSES，
+    # 视图层 throttle_classes=[] 会被 DRF 替换为空，搜索/支付等专项 scope 仍生效），
+    # 生产环境严禁开启。
     'DEFAULT_THROTTLE_RATES': json.loads(os.getenv('THROTTLE_RATES', json.dumps({
-        'anon': '100/hour',
+        # anon：匿名 IP 维度。1000/小时 ≈ 16 次/分钟，是常见 SPA 页面接口量的合理上限。
+        # 公开展示页基类 PublicApiView 已显式 throttle_classes=() 跳过本限流，
+        # 此处主要约束"非公开但需登录之前"的探测/握手接口。
+        'anon': '1000/hour',
         'user': '5000/hour',
         'admin_login': '5/minute',
         'admin_write': '60/minute',
@@ -333,6 +337,11 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
     'OAS_VERSION': '3.1.0',
     'DEFAULT_GENERATOR_CLASS': 'project.openapi.CarveNexSchemaGenerator',
+    # 必须显式声明：留空时 drf-spectacular 会「自动推导」URL 公共前缀，
+    # 而推导结果随运行环境加载到的 URL 集合而变（pytest 剥到 /api/v1 → tag=address；
+    # 独立脚本只剥到 /api → tag=v1），会导致同一份代码生成出两份不同的 Schema，
+    # 契约测试与 update_contract_baseline.py 互相打架。固定后 tag 稳定为模块名。
+    'SCHEMA_PATH_PREFIX': '/api/v[0-9]',
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
     'DISABLE_ERRORS_AND_WARNINGS': False,
@@ -352,7 +361,7 @@ SPECTACULAR_SETTINGS = {
     },
 }
 
-# ── 仅 MySQL：缓存/会话走 DB，去掉 Redis 进程 ──
+# ── 仅 MySQL：缓存/会话走数据库表 ──
 # 验证码/限流/黑名单/会话等共用 django_cache 表（启动时 create_dbc_table）。
 # 缓存表会随数据库迁移/启动自动创建，无需额外进程，纯离线自托管可用。
 _CACHE_TABLE = 'django_cache_table'
@@ -374,7 +383,7 @@ def _db_cache(*, timeout=300):
 
 
 CACHES = {
-    # 统一使用 Django 官方 DB 缓存（MySQL），无需 Redis 进程
+    # 统一使用 Django 官方 DB 缓存（MySQL）
     'default': _db_cache(),
     'rw_default': _db_cache(),
     'rw_default_slave': _db_cache(),
@@ -411,7 +420,7 @@ USERS_SETTINGS = {
     'VERIFICATION_CODE_EXPIRE_SECONDS': 300,   # 5 分钟过期
     'VERIFICATION_RATE_LIMIT_SECONDS': 60,     # 60 秒发送间隔
     'VERIFICATION_MAX_ATTEMPTS': 5,     # 每条验证码最多尝试验证次数
-    # 全局发送额度（防恶意刷爆发件账号日额度；163 免费邮箱日额度约 500 封，保守留余量）
+    # 全局发送额度（防恶意刷爆发件账号日额度；QQ 邮箱日额度约 50 封，保守留余量）
     'VERIFICATION_GLOBAL_MINUTE_LIMIT': 10,   # 全系统每 60 秒最多发送验证码数
     'VERIFICATION_GLOBAL_DAILY_LIMIT': 200,   # 全系统每 24 小时最多发送验证码数
     # 邮箱验证令牌
@@ -521,14 +530,6 @@ LOGGING = {
             "backupCount": 5,
             "formatter": "verbose",
         },
-        "celery_log": {
-            "level": LOG_LEVEL,
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": "logs/celery.log",
-            "maxBytes": 10_485_760,
-            "backupCount": 3,
-            "formatter": "verbose",
-        },
         "task_log": {
             "level": LOG_LEVEL,
             "class": "logging.handlers.RotatingFileHandler",
@@ -580,27 +581,6 @@ LOGGING = {
             "level": "INFO",
             "propagate": False,
         },
-        # Celery 相关日志
-        "celery": {
-            "handlers": ["console", "celery_log"],
-            "level": LOG_LEVEL,
-            "propagate": False,
-        },
-        "celery.task": {
-            "handlers": ["console", "celery_log"],
-            "level": LOG_LEVEL,
-            "propagate": False,
-        },
-        "celery.worker": {
-            "handlers": ["console", "celery_log"],
-            "level": LOG_LEVEL,
-            "propagate": False,
-        },
-        "celery.beat": {
-            "handlers": ["console", "celery_log"],
-            "level": LOG_LEVEL,
-            "propagate": False,
-        },
     },
 }
 
@@ -611,7 +591,7 @@ LOGGING = {
 CS_RATE_LIMIT_WINDOW = 60
 # 客服消息限流：每个用户在滑动窗口内最多发送消息数
 CS_RATE_LIMIT_MAX = 30
-# 客服限流 Redis key 前缀，用于在 Redis 中区分不同限流场景
+# 客服限流缓存 key 前缀，用于区分不同限流场景
 CS_RATE_LIMIT_KEY_PREFIX = 'cs:rate_limit:user'
 # 客服图片上传：允许的 MIME 类型集合
 CS_ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/gif'}
@@ -658,34 +638,6 @@ SPU_MEDIA_MAX_COUNT = 6
 # 头像上传：允许的文件扩展名白名单
 AVATAR_ALLOWED_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
 
-# ==================== 限流（Rate Limit）====================
-# 说明：按客户端 IP 进行请求频率限制，超过限制后封禁一段时间
-
-# 限流统计窗口大小（秒）
-RATE_LIMIT_WINDOW = 60
-# 触发限流后的封禁时长（秒），封禁期间该 IP 所有请求返回 429
-RATE_LIMIT_BLOCK_TTL = 300
-# 各接口的限流阈值配置（单位：请求/秒/IP）
-# 键为 API 路径（支持 fnmatch 通配），值为令牌桶容量= refill 速率（req/s）
-# 通过 Redis+Lua 原子令牌桶实现（见 utils/token_bucket.py），触发即返回 429。
-# 可通过环境变量 RATE_LIMITS 覆写（JSON 格式）。
-# 统一 v1：无前缀旧版 /api/* 已废弃下线，仅保留 /api/v1/ 配置。
-RATE_LIMITS = json.loads(os.getenv('RATE_LIMITS', json.dumps({
-    '/api/v1/users/login/': 2.0,                # 登录：2 req/s/IP
-    '/api/v1/users/session/login/': 2.0,
-    '/api/v1/users/token/': 2.0,
-    '/api/v1/users/register/': 1.0,             # 注册：1 req/s/IP
-    '/api/v1/users/send-verify-code/': 0.2,     # 验证码：0.2 req/s/IP（约 5s/次）
-    '/api/v1/order/checkout/': 5.0,             # 购买：5 req/s/IP
-    '/api/v1/payment/create/': 5.0,             # 支付下单：5 req/s/IP
-    '/api/v1/promotion/*/claim/': 2.0,
-    '/api/v1/payment/webhook/*/': 60.0,         # 支付回调：高吞吐（白名单类）
-})))
-
-# 管理后台 API 限流：10 req/s per user（按登录用户计数，非 IP）
-ADMIN_API_RATE_LIMIT = float(os.getenv('ADMIN_API_RATE_LIMIT', '10'))
-ADMIN_API_RATE_LIMIT_PREFIX = '/api/v1/admin/'
-
 # 单容器内存硬上限（MB），供内存看门狗计算 85% 阈值；与 docker-compose.prod.yml mem_limit 对齐
 MEM_LIMIT_MB = int(os.getenv('MEM_LIMIT_MB', '544'))
 
@@ -714,137 +666,14 @@ AUDIT_ACTION_PATTERNS = {'POST:/api/payment/', 'POST:/api/order/', 'DELETE:'}
 # ==================== 通知系统 ====================
 # 通知列表：默认每页显示条数
 NOTIFICATION_DEFAULT_PAGE_SIZE = 20
-# 通知列表：Redis 缓存过期时间（秒），缓存用户通知列表以减少数据库查询
+# 通知列表：缓存过期时间（秒），缓存用户通知列表以减少数据库查询
 NOTIFICATION_LIST_CACHE_TTL = 120
-# 未读计数：Redis 缓存过期时间（秒），缓存用户未读通知数
+# 未读计数：缓存过期时间（秒），缓存用户未读通知数
 NOTIFICATION_UNREAD_CACHE_TTL = 60
-
-# Celery 配置 —— 仅 MySQL（SQLAlchemy broker + django-db results），无 Redis/RabbitMQ
-RABBITMQ_URL = os.getenv('RABBITMQ_URL', '')  # 废弃，保留兼容
-
-def _celery_mysql_url():
-    user = os.getenv('DB_USER', '')
-    password = os.getenv('DB_PASSWORD', '')
-    host = os.getenv('DB_HOST', '127.0.0.1')
-    port = os.getenv('DB_PORT', '3306')
-    name = os.getenv('DB_NAME', '')
-    # SQLAlchemy MySQL URL（Celery broker）
-    from urllib.parse import quote_plus
-    return (
-        f"sqla+mysql+pymysql://{quote_plus(user)}:{quote_plus(password)}"
-        f"@{host}:{port}/{name}?charset=utf8mb4"
-    )
-
-# 默认全部落到 MySQL（SQLAlchemy broker + database result backend），不依赖 Redis。
-# 如需显式指定其他 broker/result，可用环境变量覆盖。
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', _celery_mysql_url())
-CELERY_RESULT_BACKEND = os.getenv(
-    'CELERY_RESULT_BACKEND',
-    'django-db',  # Celery 内置 database result backend（存 MySQL）
-)
-CELERY_RESULT_EXTENDED = False
-CELERY_RESULT_EXPIRES = int(os.getenv('CELERY_RESULT_EXPIRES', '3600'))  # 1h
-CELERY_ACCEPT_CONTENT = ['json']  # 接受的内容类型
-CELERY_TASK_SERIALIZER = 'json'  # 任务序列化方式
-CELERY_RESULT_SERIALIZER = 'json'  # 结果序列化方式
-CELERY_TIMEZONE = TIME_ZONE  # 时区
-CELERY_TASK_TRACK_STARTED = True  # 跟踪任务开始
-CELERY_TASK_TIME_LIMIT = int(os.getenv('CELERY_TASK_TIME_LIMIT', '300'))
-CELERY_TASK_SOFT_TIME_LIMIT = int(os.getenv('CELERY_TASK_SOFT_TIME_LIMIT', '240'))
-CELERY_LOG_LEVEL = LOG_LEVEL
-
-# Broker 连接（SQLAlchemy / MySQL）
-# SQLAlchemy transport 不接受 RabbitMQ/Redis 的 visibility_timeout、
-# socket_connect_timeout、socket_timeout 等参数——传入会被 create_engine()
-# 拒绝（"Invalid argument(s) sent to create_engine()"），故必须留空。
-CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-CELERY_BROKER_TRANSPORT_OPTIONS = {}
-
-# 定义队列（按任务类型分离）
-CELERY_TASK_QUEUES = {
-    'default': {'exchange': 'default', 'routing_key': 'default'},
-    'image_process': {'exchange': 'image_process', 'routing_key': 'image_process'},
-    'batch_import': {'exchange': 'batch_import', 'routing_key': 'batch_import'},
-    'ranking': {'exchange': 'ranking', 'routing_key': 'ranking'},
-}
-
-# Celery 任务路由
-CELERY_TASK_ROUTES = {
-    'apps.goods.tasks.process_product_image': {'queue': 'image_process'},
-    'apps.goods.tasks.upload_media_to_cloud': {'queue': 'image_process'},
-    'apps.goods.tasks.clean_expired_media': {'queue': 'default'},
-    'apps.goods.tasks.batch_import_products': {'queue': 'batch_import'},
-    'apps.goods.tasks.recalc_sales_ranking': {'queue': 'ranking'},
-    'apps.goods.tasks.warm_hot_product_cache': {'queue': 'ranking'},
-    'apps.goods.tasks.warm_category_cache': {'queue': 'default'},
-    'apps.order.tasks.auto_cancel_unpaid_orders': {'queue': 'default'},
-    'apps.order.tasks.auto_complete_orders': {'queue': 'default'},
-}
-
-# Celery 重试策略
-CELERY_TASK_DEFAULT_QUEUE = os.getenv('CELERY_TASK_DEFAULT_QUEUE', 'default')
-CELERY_TASK_CREATE_MISSING_QUEUES = True  # SQLAlchemy broker 自动建队列表
-CELERY_TASK_ACKS_LATE = True  # 任务执行完成后才确认
-CELERY_TASK_REJECT_ON_WORKER_LOST = True  # 工作进程丢失时拒绝任务
-CELERY_TASK_DEFAULT_RETRY_DELAY = 60  # 默认重试延迟（1分钟）
-CELERY_TASK_MAX_RETRIES = 3  # 最大重试次数
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'  # 使用数据库调度器
-CELERY_BEAT_SCHEDULE = {
-    'warm-hot-product-cache-every-30min': {
-        'task': 'apps.goods.tasks.warm_hot_product_cache',
-        'schedule': 1800.0,  # 30 分钟
-        'options': {'queue': 'ranking'},
-    },
-    'warm-category-cache-every-12hours': {
-        'task': 'apps.goods.tasks.warm_category_cache',
-        'schedule': 43200.0,  # 12 小时
-        'options': {'queue': 'default'},
-    },
-    'warm-bloom-filter-every-1hour': {
-        'task': 'apps.goods.tasks.warm_bloom_filter_task',
-        'schedule': 3600.0,  # 1 小时 — 重建布隆过滤器
-        'options': {'queue': 'default'},
-    },
-    'auto-cancel-unpaid-orders-every-5min': {
-        'task': 'apps.order.tasks.auto_cancel_unpaid_orders',
-        'schedule': 300.0,  # 5 分钟
-        'options': {'queue': 'default'},
-    },
-    'auto-complete-delivered-orders-every-6hours': {
-        'task': 'apps.order.tasks.auto_complete_orders',
-        'schedule': 21600.0,  # 6 小时
-        'options': {'queue': 'default'},
-    },
-    'execute-scheduled-publish-every-1min': {
-        'task': 'goods.execute_scheduled_publish',
-        'schedule': 60.0,  # 1 分钟
-        'options': {'queue': 'default'},
-    },
-    'clean-expired-media-every-1hour': {
-        'task': 'goods.clean_expired_media',
-        'schedule': 3600.0,  # 1 小时
-        'options': {'queue': 'default'},
-    },
-    'sync-expired-payments-every-15min': {
-        'task': 'payment.sync_expired_payments',
-        'schedule': 900.0,  # 15 分钟 — 补偿丢失的支付回调
-        'options': {'queue': 'default'},
-    },
-    'reconcile-unknown-refunds-every-5min': {
-        'task': 'payment.reconcile_unknown_refunds',
-        'schedule': 300.0,
-        'options': {'queue': 'default'},
-    },
-}
 
 REFUND_RECONCILIATION_BATCH_SIZE = int(os.getenv('REFUND_RECONCILIATION_BATCH_SIZE', '20'))
 # UNKNOWN 退款对账最大重试次数：超过后标记为 FAILED，防止网关持续异常时无限重试（死循环）
 REFUND_RECONCILIATION_MAX_ATTEMPTS = int(os.getenv('REFUND_RECONCILIATION_MAX_ATTEMPTS', '5'))
-
-# ==================== Celery Worker 内存限制（2C4G：偏紧，防泄漏） ====================
-# 单位 KiB（Celery --max-memory-per-child）。120MB 子进程 + concurrency=1 适配 256m 容器。
-CELERY_WORKER_MAX_MEMORY_PER_CHILD = int(os.getenv('CELERY_WORKER_MAX_MEMORY_PER_CHILD', str(120 * 1024)))
-CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv('CELERY_WORKER_MAX_TASKS_PER_CHILD', '40'))
 
 # ==================== 文件存储配置 ====================
 # 切换后端: 'local' | 'cos' | 'oss' | 'r2'
@@ -881,12 +710,68 @@ R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY', '')
 R2_BUCKET = os.getenv('R2_BUCKET', '')
 R2_PUBLIC_URL = os.getenv('R2_PUBLIC_URL', '')
 
-# 媒体数量限制
-MEDIA_MAX_IMAGES_PER_SPU = int(os.getenv('MEDIA_MAX_IMAGES_PER_SPU', '5'))
-MEDIA_MAX_VIDEOS_PER_SPU = int(os.getenv('MEDIA_MAX_VIDEOS_PER_SPU', '1'))
+# ── R2 本地应急磁盘回退 ──────────────────────────────────────────────
+# 需求：R2 在本机不可达（断网/未连外网/无凭据）时，读取应回退到本地「pic/」
+# 目录下已同步的对象副本，保证开发/离线环境媒体仍可用，且最终 URL 恒以
+# pic/ 为前缀。仅当回退启用且本地文件真实存在时才降级，绝不静默伪造实体。
+# R2_FALLBACK_ENABLED：总开关，默认开启（本地不可访问时自动套用）；
+# LOCAL_FALLBACK_ROOT：备用磁盘目录（写返回路径的物理根），默认指
+# MEDIA_ROOT 下的 pic/ 子目录，可通过环境变量/`.env` 覆盖成独立数据卷路径。
+R2_FALLBACK_ENABLED = os.getenv('R2_FALLBACK_ENABLED', 'true').lower() == 'true'
+LOCAL_FALLBACK_ROOT = os.getenv('LOCAL_FALLBACK_ROOT', '') or ''
+# R2 连通性探测后的结果缓存时长（秒）：避免每个请求都反复访问 R2，提升本地回退判定效率。
+R2_AVAIL_PROBE_TTL = int(os.getenv('R2_AVAIL_PROBE_TTL', '30'))
+
+# 媒体数量限制（单 SPU：最多 15 张图片 + 3 条视频，超 5 张后图集以滚动方式查看）
+MEDIA_MAX_IMAGES_PER_SPU = int(os.getenv('MEDIA_MAX_IMAGES_PER_SPU', '15'))
+MEDIA_MAX_VIDEOS_PER_SPU = int(os.getenv('MEDIA_MAX_VIDEOS_PER_SPU', '3'))
 # 视频单条大小上限（MB）
 MEDIA_MAX_VIDEO_SIZE_MB = int(os.getenv('MEDIA_MAX_VIDEO_SIZE_MB', '200'))
 MEDIA_MAX_FILE_SIZE_MB = int(os.getenv('MEDIA_MAX_FILE_SIZE_MB', '10'))
+
+# 图片像素上限（2C4G 内存护栏，务必不要盲目调大）
+# ------------------------------------------------------------------
+# Pillow 解码一张 W×H 的 RGB 图需要 W*H*3 字节；再经 exif_transpose / convert /
+# WebP 编码缓冲，峰值约为原始字节的 3~4 倍：
+#   25MP(旧值) → 75MB × 4 ≈ 300MB  ← 生产 web 容器 mem_limit 只有 544m，
+#                                    且跑 2 个 gunicorn worker，必被 OOM kill
+#   12MP      → 36MB × 4 ≈ 144MB  ← 留出安全余量
+# 商品主图实际需求：前端裁剪器最长边封顶 2560，最"高"的预设比例 4:5 → 2560×3200
+# ≈ 8.2MP，12MP 完全够用且留有余量。
+MEDIA_MAX_IMAGE_PIXELS = int(os.getenv('MEDIA_MAX_IMAGE_PIXELS', '12000000'))
+
+# 批量导入（Excel/zip 导入、import_media_dir 命令）的「软」像素上限。
+# 与上面的硬上限不同：超限不拒绝，而是等比缩小后继续导入，
+# 保证 DSLR/高像素原图也能进库，同时把单张解码峰值钉死在 ~64MB。
+# 默认 16MP 可完整容纳 4000×4000 的商品方图。
+MEDIA_IMPORT_MAX_IMAGE_PIXELS = int(os.getenv('MEDIA_IMPORT_MAX_IMAGE_PIXELS', '16000000'))
+
+# 上传临时目录的显式覆盖值（留空则由 dev.py / prod.py 按 MEDIA_ROOT 推导）。
+# 注意：base.py 里 MEDIA_ROOT 尚未定义（它在 dev.py / prod.py 中才赋值），
+# 所以这里绝不能直接引用 MEDIA_ROOT，否则 settings 导入即 NameError。
+MEDIA_UPLOAD_TEMP_DIR = os.getenv('MEDIA_UPLOAD_TEMP_DIR', '')
+FILE_UPLOAD_TEMP_DIR = MEDIA_UPLOAD_TEMP_DIR or None
+
+
+def resolve_upload_temp_dir(media_root: str) -> str:
+    """把上传临时目录解析到 media 数据卷内，并返回实际路径（失败返回 ''）。
+
+    >DATA_UPLOAD_MAX_MEMORY_SIZE(默认 2.5MB) 的上传文件会先写到临时目录。
+    生产 docker-compose.prod.yml 给 web 挂的是 **tmpfs /tmp:size=32m**，
+    而一次商品上传要传 thumb/list/large/original 四个文件（单个最大 10MB），
+    2 个 gunicorn worker 并发就能把 32MB 撑爆 → OSError(ENOSPC) → 上传失败。
+    这是「存储空间不足」唯一可能字面成立的场景，必须避开 32MB 的 tmpfs。
+
+    放在 media 卷里：容量跟数据盘走，且该卷是容器里少数可写的挂载点
+    （web/celery 均为 read_only: true）。
+    """
+    target = os.getenv('MEDIA_UPLOAD_TEMP_DIR', '') or os.path.join(media_root, '_upload_tmp')
+    try:
+        os.makedirs(target, exist_ok=True)
+        return target
+    except OSError:
+        # 只读/无权限环境：返回空，由调用方回退到系统临时目录
+        return ''
 
 # ==================== 商品缓存 TTL 配置 ====================
 GOODS_CACHE_TTL = {

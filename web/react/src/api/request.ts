@@ -53,9 +53,9 @@ function buildRequestKey(config: InternalAxiosRequestConfig): string {
 
 /**
  * 提取资源的"列表路径"前缀：
- *   /promotion/activity/3/delete → /promotion/activity
- *   /promotion/activity/create    → /promotion/activity
- *   /promotion/activity?page=1    → /promotion/activity
+ *   /goods/sku/3/update  → /goods/sku
+ *   /goods/sku/create    → /goods/sku
+ *   /goods/sku?page=1    → /goods/sku
  * 用于 mutation 成功后失效对应列表的 GET 去重缓存。
  */
 function resourceBase(url: string): string {
@@ -188,7 +188,11 @@ function readCSRFCookie(): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-export function postWithProgress<T>(
+// 上传类请求单独放宽超时：axios 实例的 15s 对大图/视频远远不够，
+// 而 XHR 默认 timeout=0（永不超时）—— 一旦连接挂死，保存流程会永久卡在上传态。
+const UPLOAD_TIMEOUT_MS = 120_000
+
+function xhrUpload<T>(
   url: string,
   formData: FormData,
   onProgress?: (percent: number) => void,
@@ -198,6 +202,15 @@ export function postWithProgress<T>(
     xhr.open('POST', `${BASE_URL}${url}`)
     xhr.responseType = 'json'
     xhr.withCredentials = true
+    xhr.timeout = UPLOAD_TIMEOUT_MS
+    // 显式声明接受 JSON：否则后端 CustomExceptionMiddleware 判定为非 JSON 请求，
+    // 4xx 错误体会是裸 {'detail': ...} 而非统一信封，前端各分支解析行为不一致。
+    xhr.setRequestHeader('Accept', 'application/json')
+    // 与 axios 拦截器保持一致，便于后端日志串联同一次保存的多次上传
+    xhr.setRequestHeader(
+      'X-Request-ID',
+      `req_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`,
+    )
     const csrfToken = readCSRFCookie()
     if (csrfToken) xhr.setRequestHeader('X-CSRFToken', csrfToken)
 
@@ -217,12 +230,38 @@ export function postWithProgress<T>(
         resolve(body as T)
         return
       }
-      const message = body?.detail || body?.message || body?.data?.detail || `HTTP ${xhr.status}`
-      reject(new Error(message))
+      // 统一信封（{message}）优先，其次裸 DRF 响应（{detail}）。
+      // 这段文案是用户能看到的唯一真实原因，绝不能退化成固定话术。
+      const message =
+        body?.message || body?.detail || body?.data?.detail || `HTTP ${xhr.status}`
+      const err = new Error(String(message))
+      ;(err as { status?: number }).status = xhr.status
+      reject(err)
     }
     xhr.onerror = () => reject(new Error('Network error'))
     xhr.ontimeout = () => reject(new Error('Request timeout'))
     xhr.send(formData)
+  })
+}
+
+export function postWithProgress<T>(
+  url: string,
+  formData: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<T> {
+  // 401 会话过期时静默刷新后重试一次。
+  // 旧实现用裸 XHR 绕过了 axios 的 401 拦截器，会话一过期整批上传全 401，
+  // 商品直接保存失败（生产日志里出现过连续 3 次 Unauthorized）。
+  return xhrUpload<T>(url, formData, onProgress).catch(async (error: Error & { status?: number }) => {
+    if (error?.status !== 401) throw error
+    const ok = await refreshBrowserSession()
+    if (!ok) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:relogin-required'))
+      }
+      throw error
+    }
+    return xhrUpload<T>(url, formData, onProgress)
   })
 }
 

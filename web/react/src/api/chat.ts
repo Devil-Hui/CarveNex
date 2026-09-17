@@ -4,7 +4,7 @@
 import { get, post, patch, BASE_URL } from './request'
 
 // 媒体资源基础域名：优先用 API 域名（后端同源托管 /media/），开发态回退到前端域名
-function apiOrigin(): string {
+export function apiOrigin(): string {
   if (BASE_URL.startsWith('http')) {
     try { return new URL(BASE_URL).origin } catch { /* fallthrough */ }
   }
@@ -84,7 +84,7 @@ export interface ConversationSummary {
   user_msg_count: number
   unread_count: number
   spu_id: number | null
-  spu_info: { id: number; name: string; main_image: string; price: string } | null
+  spu_info: { id: number; name: string; name_en?: string; name_ar?: string; main_image: string; price: string } | null
   /** 当前处理该会话的管理员 ID（null = 无人处理） */
   handled_by?: number | null
   /** 当前处理该会话的管理员名称 */
@@ -153,6 +153,8 @@ export interface SendMessageParams {
   product_card?: {
     id: number
     name: string
+    name_en?: string
+    name_ar?: string
     main_image: string
     price: string
     order_status?: string

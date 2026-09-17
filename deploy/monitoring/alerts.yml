@@ -1,4 +1,4 @@
-# CarveNex 生产告警规则（CPU >80% / 内存 >75% / Redis >512MB）
+# CarveNex 生产告警规则（CPU >80% / 内存 >75%）
 groups:
   - name: carvenex-infra
     rules:
@@ -39,17 +39,6 @@ groups:
         annotations:
           summary: '容器内存 >75% ({{ $labels.name }})'
           description: '{{ $labels.name }} 内存使用率 {{ $value | humanizePercentage }}，接近 2C4G 配额上限。'
-
-      # Redis 内存超过 512MB
-      - alert: RedisMemoryHigh
-        expr: redis_memory_used_bytes > 536870912
-        for: 5m
-        labels:
-          severity: warning
-          team: infra
-        annotations:
-          summary: 'Redis 内存 >512MB'
-          description: 'Redis used_memory = {{ $value | humanize1024 }}B，超过 512MB 阈值，缓存键可能膨胀。'
 
       # 服务探活：Django /health 连续 3 次抓取失败
       - alert: DjangoDown
