@@ -152,7 +152,10 @@ class Command(BaseCommand):
         seed_dir = (options['seed_dir']
                     or os.getenv('SEED_PRODUCTS_DIR', '')
                     or os.path.join(_backend_root(), 'seed_products'))
-        xlsx_path = os.path.join(seed_dir, 'products.xlsx')
+        # Excel 文件名可用 SEED_XLSX_NAME 覆盖（默认 products.xlsx），
+        # 它位于数据源目录下（即 product_pic/ 内，与产品名文件夹同级）。
+        xlsx_name = os.getenv('SEED_XLSX_NAME', '').strip() or 'products.xlsx'
+        xlsx_path = os.path.join(seed_dir, xlsx_name)
         images_root = self._resolve_images_root(seed_dir)
 
         if not os.path.isfile(xlsx_path):
@@ -369,7 +372,9 @@ class Command(BaseCommand):
             path = os.path.join(seed_dir, name)
             if os.path.isdir(path):
                 return path
-        return os.path.join(seed_dir, candidates[0])
+        # 没有子目录时，数据源目录本身即图片根目录：
+        # product_pic/ 下直接放「产品名/」文件夹，Excel 也在这一层。
+        return seed_dir
 
     @staticmethod
     def _media_files_missing(spu) -> bool:

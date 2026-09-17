@@ -61,8 +61,10 @@ def resolve_images_root(seed_dir):
         path = os.path.join(seed_dir, name)
         if os.path.isdir(path):
             return path, name, True, candidates
-    # 都不存在：返回首选名（用于给出明确的“缺失”提示）
-    return os.path.join(seed_dir, candidates[0]), candidates[0], False, candidates
+    # 都不存在：数据源目录本身即图片根目录
+    #（product_pic/ 下直接放「产品名/」文件夹，Excel 也在这一层）
+    base = os.path.basename(os.path.normpath(seed_dir)) or seed_dir
+    return seed_dir, f'{base}（数据源本身）', True, candidates
 
 
 def count_images(images_root):
@@ -114,7 +116,8 @@ def check_seed_dir(results, seed_dir, required_xlsx=True):
     print(f'{PASS} 数据源目录存在且可读。')
 
     # products.xlsx —— 建商品必需
-    xlsx = os.path.join(seed_dir, 'products.xlsx')
+    xlsx_name = os.getenv('SEED_XLSX_NAME', '').strip() or 'products.xlsx'
+    xlsx = os.path.join(seed_dir, xlsx_name)
     if os.path.isfile(xlsx):
         if not os.access(xlsx, os.R_OK):
             results.append(not required_xlsx)

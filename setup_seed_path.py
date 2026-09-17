@@ -1,25 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""步骤 1：把商品数据源路径写入 .env / .env.prod。
+"""步骤 1（引导式）：声明产品图片与信息的位置，并写入 .env / .env.prod。
 
-只修改（或新增）指定的键，其余内容、注释、顺序原样保留，不会破坏已有配置
-（如数据库密码、R2 密钥等）。
+目录约定：
+    <第1问输入的路径，末尾为 product_pic>/
+        products.xlsx        # 产品信息 Excel（第2问，放在 product_pic 下面）
+        产品名1/             # 带有产品名称的文件夹（其上级目录即 product_pic）
+        产品名2/
+
+只修改（或新增）SEED_PRODUCTS_DIR / SEED_XLSX_NAME 两个键，
+其余内容、注释、顺序原样保留，不会破坏已有配置（数据库密码、R2 密钥等）。
 
 用法：
-    python setup_seed_path.py /data/my_seed                  # 写入 .env
-    python setup_seed_path.py /data/my_seed --env-file .env.prod
-    python setup_seed_path.py                                # 交互式询问路径
-    python setup_seed_path.py /data/my_seed --create         # 路径不存在时自动创建
-    python setup_seed_path.py --show                         # 只看当前配置，不修改
-
-也可以完全不用本脚本，直接用编辑器手动在 .env 里加一行：
-    SEED_PRODUCTS_DIR=/你的/路径
+    python setup_seed_path.py                          # 引导式输入（推荐）
+    python setup_seed_path.py /data/product_pic        # 非交互：直接指定目录
+    python setup_seed_path.py --env-file .env.prod     # 写入生产环境文件
+    python setup_seed_path.py --show                   # 只看当前配置
 """
 import argparse
 import os
 import sys
 
-KEY = 'SEED_PRODUCTS_DIR'
+KEY_DIR = 'SEED_PRODUCTS_DIR'
+KEY_XLSX = 'SEED_XLSX_NAME'
+DEFAULT_XLSX = 'products.xlsx'
 PASS, FAIL, WARN, INFO = '[PASS]', '[FAIL]', '[WARN]', '[INFO]'
 
 
@@ -31,7 +35,6 @@ def read_env_lines(path):
 
 
 def get_env_value(lines, key):
-    """返回 key 当前的值（忽略被注释掉的同名行），未设置返回 None。"""
     for line in lines:
         stripped = line.strip()
         if stripped.startswith('#'):
@@ -42,7 +45,7 @@ def get_env_value(lines, key):
 
 
 def upsert_env(lines, key, value):
-    """更新已有的 key（含被注释的同名行），否则追加到末尾。返回 (新内容, 动作)。"""
+    """更新已有键（含被注释的同名行），否则追加。返回 (新内容, 动作)。"""
     for idx, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith(f'{key}=') or stripped.startswith(f'#{key}='):
@@ -50,22 +53,37 @@ def upsert_env(lines, key, value):
             return lines, 'updated'
     if lines and not lines[-1].endswith('\n'):
         lines.append('\n')
-    lines.append(f'\n# 商品数据源目录（products.xlsx + images/），由 setup_seed_path.py 写入\n')
     lines.append(f'{key}={value}\n')
     return lines, 'added'
 
 
+def ask(prompt, default):
+    """读取一行输入；直接回车用默认值。中断时返回 None。"""
+    print(prompt)
+    if default:
+        print(f'   （直接回车使用: {default}）')
+    try:
+        typed = input('   > ')
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+    # 清理粘贴时常混入的 BOM、不可见字符与包裹引号，
+    # 否则路径会变成 "C:\xxx\<BOM>D:\..." 这种拼接错误。
+    typed = typed.replace('\ufeff', '').replace('\u200b', '').strip()
+    typed = typed.strip('"').strip("'").strip()
+    return typed or default
+
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    parser = argparse.ArgumentParser(description='配置商品数据源路径到 env 文件')
+    parser = argparse.ArgumentParser(description='声明产品图片与信息的位置')
     parser.add_argument('path', nargs='?', default='',
-                        help='商品数据源目录（products.xlsx + images/ 所在目录）')
+                        help='product_pic 目录路径（末尾为 product_pic）')
     parser.add_argument('--env-file', default='.env',
-                        help='要修改的 env 文件（默认 .env，生产可用 .env.prod）')
-    parser.add_argument('--create', action='store_true',
-                        help='路径不存在时自动创建该目录')
-    parser.add_argument('--show', action='store_true',
-                        help='仅显示当前配置，不做任何修改')
+                        help='要修改的 env 文件（默认 .env，生产用 .env.prod）')
+    parser.add_argument('--xlsx', default='', help=f'Excel 文件名（默认 {DEFAULT_XLSX}）')
+    parser.add_argument('--create', action='store_true', help='目录不存在时自动创建')
+    parser.add_argument('--show', action='store_true', help='仅查看当前配置，不修改')
     args = parser.parse_args()
 
     env_path = args.env_file
@@ -73,77 +91,88 @@ def main():
         env_path = os.path.join(here, env_path)
 
     lines = read_env_lines(env_path)
-    current = get_env_value(lines, KEY)
+    cur_dir = get_env_value(lines, KEY_DIR)
+    cur_xlsx = get_env_value(lines, KEY_XLSX)
 
-    # 仅查看
     if args.show:
         print(f'环境文件: {env_path}')
-        print(f'{KEY} = {current if current else "(未设置)"}')
-        if current:
-            exists = os.path.isdir(current)
-            print(f'目录存在: {exists}')
-            if exists:
-                xlsx = os.path.isfile(os.path.join(current, 'products.xlsx'))
-                print(f'products.xlsx: {"存在" if xlsx else "缺失"}')
+        print(f'{KEY_DIR} = {cur_dir or "(未设置)"}')
+        print(f'{KEY_XLSX} = {cur_xlsx or f"(默认 {DEFAULT_XLSX})"}')
+        if cur_dir:
+            print(f'目录存在: {os.path.isdir(cur_dir)}')
         return 0
 
-    # 取得目标路径
-    target = args.path
-    if not target:
-        default_hint = current or os.path.join(here, 'backend', 'seed_products')
-        print('请输入商品数据源目录（products.xlsx + images/ 所在目录）。')
-        print(f'直接回车使用默认: {default_hint}')
-        try:
-            typed = input('> ').strip()
-        except (EOFError, KeyboardInterrupt):
-            print(f'\n{WARN} 已取消。')
-            return 1
-        target = typed or default_hint
+    print()
+    print('现在是产品图片及信息声明，请按照顺序进行依次完成：')
+    print('注意-此处需要将带有产品名称的文件夹的上级目录为/product_pic/')
+    print()
 
-    target = os.path.abspath(os.path.expanduser(target))
+    # ── 第 1 问：product_pic 路径 ─────────────────────────────
+    default_dir = cur_dir or args.path or os.path.join(here, 'product_pic')
+    print('1.当前/product_pic/的路径为(包含/product_pic/),请输入：')
+    typed = ask('', default_dir)
+    if typed is None:
+        print(f'{WARN} 已取消，未做任何修改。')
+        return 1
+    target = os.path.abspath(os.path.expanduser(typed))
 
-    # 路径处理
+    # 友好校验该路径
     if not os.path.exists(target):
         if args.create:
             try:
                 os.makedirs(target, exist_ok=True)
                 print(f'{PASS} 已创建目录: {target}')
             except OSError as exc:
-                print(f'{FAIL} 无法创建目录 {target}: {exc}')
-                print('       修复：换一个你有权限的路径，或用管理员权限运行。')
+                print(f'{FAIL} 无法创建: {exc}（换一个有权限的路径，或加 sudo）')
                 return 1
         else:
-            print(f'{WARN} 目录尚不存在: {target}')
-            print('       仍会写入配置；请先放入 products.xlsx 与 images/，')
-            print('       之后用 verify_media_sources.py 检查（缺少文件会明确报出）。')
-            print('       若想现在就创建，可加 --create 参数。')
+            print(f'{WARN} 该目录尚不存在，仍会写入配置；请稍后创建并放入内容。')
     elif not os.path.isdir(target):
-        print(f'{FAIL} 路径存在但不是目录: {target}')
-        print('       修复：请指向一个目录，而不是文件。')
+        print(f'{FAIL} 该路径是文件不是目录，请输入目录路径。')
         return 1
+    print()
 
-    # 写入 env（保留其他配置）
-    new_lines, action = upsert_env(lines, KEY, target)
+    # ── 第 2 问：Excel ────────────────────────────────────────
+    print('2.将产品信息excel放到/product_pic/下面，请输入：')
+    default_xlsx = cur_xlsx or args.xlsx or DEFAULT_XLSX
+    typed_x = ask('', default_xlsx)
+    if typed_x is None:
+        print(f'{WARN} 已取消，未做任何修改。')
+        return 1
+    xlsx_name = os.path.basename(typed_x) or DEFAULT_XLSX
+
+    xlsx_path = os.path.join(target, xlsx_name)
+    if os.path.isfile(xlsx_path):
+        size_kb = os.path.getsize(xlsx_path) / 1024.0
+        print(f'{PASS} 已找到 Excel: {xlsx_path}（{size_kb:.1f} KB）')
+    else:
+        print(f'{WARN} 该 Excel 目前不在 product_pic 下: {xlsx_path}')
+        print('       请先把它放进去，之后用 verify_media_sources.py 会明确检查。')
+    print()
+
+    # ── 写入配置 ─────────────────────────────────────────────
     try:
+        new_lines, a1 = upsert_env(lines, KEY_DIR, target)
+        new_lines, a2 = upsert_env(new_lines, KEY_XLSX, xlsx_name)
         with open(env_path, 'w', encoding='utf-8') as fh:
             fh.writelines(new_lines)
     except OSError as exc:
         print(f'{FAIL} 写入失败 {env_path}: {exc}')
-        print('       修复：确认文件可写；也可以直接用编辑器手动添加这一行：')
-        print(f'       {KEY}={target}')
+        print(f'       你也可以手动在 {env_path} 里加这两行：')
+        print(f'       {KEY_DIR}={target}')
+        print(f'       {KEY_XLSX}={xlsx_name}')
         return 1
 
-    verb = '已更新' if action == 'updated' else '已新增'
-    print(f'{PASS} {verb} {env_path}')
-    print(f'       {KEY}={target}')
+    print('已完成配置更新')
+    print(f'       {KEY_DIR}={target}（{"更新" if a1 == "updated" else "新增"}）')
+    print(f'       {KEY_XLSX}={xlsx_name}（{"更新" if a2 == "updated" else "新增"}）')
     print(f'{INFO} 文件其余内容（数据库密码、R2 密钥等）未改动。')
-
     print()
     print('=' * 58)
-    print('下一步：用第二个脚本测试')
+    print('下一步（步骤 2）：检验')
     print('=' * 58)
-    print(f'    python verify_media_sources.py --dir "{target}"')
-    print('确认全部 [PASS] 后，再执行 docker 构建。')
+    print('    python verify_media_sources.py')
+    print('全部 [PASS] 后再执行 docker 构建。')
     return 0
 
 
