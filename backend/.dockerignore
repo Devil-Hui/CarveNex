@@ -49,6 +49,11 @@ logs/*.log
 # 注意：生产卷必须挂到 /app/project/media（与 MEDIA_ROOT 一致），见 docker-compose.prod.yml。
 project/media/
 
+# 商品数据源（products.xlsx + images/）：已外置到服务器目录（如 /opt/apps/seed_products），
+# 运行时由 SEED_PRODUCTS_DIR 声明并只读挂载，不随镜像分发（约 144MB）。
+# 构建前请先放好数据源并跑 verify_media_sources 自检通过。
+seed_products/
+
 # ── Test ──
 # 生产镜像不需要测试与覆盖率产物（contracts/ 为契约基线，仅 CI 使用）
 .tox/
