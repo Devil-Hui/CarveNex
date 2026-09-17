@@ -153,7 +153,7 @@ class Command(BaseCommand):
                     or os.getenv('SEED_PRODUCTS_DIR', '')
                     or os.path.join(_backend_root(), 'seed_products'))
         xlsx_path = os.path.join(seed_dir, 'products.xlsx')
-        images_root = os.path.join(seed_dir, 'images')
+        images_root = self._resolve_images_root(seed_dir)
 
         if not os.path.isfile(xlsx_path):
             self.stdout.write(self.style.ERROR(f'未找到种子 xlsx: {xlsx_path}'))
@@ -352,6 +352,24 @@ class Command(BaseCommand):
         GoodsCacheService.invalidate_spu_list()
         self.stdout.write(f'  + {name[:40]} ({count} 图)')
         return 'created'
+
+    @staticmethod
+    def _resolve_images_root(seed_dir):
+        """确定图片根目录：优先环境变量 SEED_IMAGES_SUBDIR，其次探测常见名称。
+
+        支持把图片目录命名为 images / product_pic / pics 等，结构统一为
+        <图片目录>/<产品名>/<图片文件>（例如 product_pic/产品名1/）。
+        """
+        preferred = os.getenv('SEED_IMAGES_SUBDIR', '').strip()
+        candidates = []
+        if preferred:
+            candidates.append(preferred)
+        candidates += ['images', 'product_pic', 'pics', '图片']
+        for name in candidates:
+            path = os.path.join(seed_dir, name)
+            if os.path.isdir(path):
+                return path
+        return os.path.join(seed_dir, candidates[0])
 
     @staticmethod
     def _media_files_missing(spu) -> bool:

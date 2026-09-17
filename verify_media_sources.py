@@ -45,6 +45,26 @@ def load_env(env_path):
     return data
 
 
+def resolve_images_root(seed_dir):
+    """确定图片根目录：优先环境变量 SEED_IMAGES_SUBDIR，其次依次探测常见名称。
+
+    返回 (路径, 目录名, 是否真实存在)。这样无论你把图片目录命名为
+    images / product_pic / pics，都能自动识别；找不到时列出尝试过的名字，
+    方便你对症调整。
+    """
+    preferred = os.getenv('SEED_IMAGES_SUBDIR', '').strip()
+    candidates = []
+    if preferred:
+        candidates.append(preferred)
+    candidates += ['images', 'product_pic', 'pics', '图片']
+    for name in candidates:
+        path = os.path.join(seed_dir, name)
+        if os.path.isdir(path):
+            return path, name, True, candidates
+    # 都不存在：返回首选名（用于给出明确的“缺失”提示）
+    return os.path.join(seed_dir, candidates[0]), candidates[0], False, candidates
+
+
 def count_images(images_root):
     """统计 images/ 下的商品目录数与图片数；返回 (目录数, 图片数, 不可读目录列表)。"""
     folders, total, unreadable = 0, 0, []
@@ -68,7 +88,7 @@ def count_images(images_root):
 
 def check_seed_dir(results, seed_dir, required_xlsx=True):
     print('=' * 62)
-    print('1. 商品数据源目录（products.xlsx + images/）')
+    print('1. 商品数据源目录（products.xlsx + 图片目录/产品名/）')
     print('=' * 62)
     print(f'路径: {seed_dir}')
 
@@ -116,31 +136,33 @@ def check_seed_dir(results, seed_dir, required_xlsx=True):
             print('       修复：把商品信息表放到该目录，或用 SEED_PRODUCTS_DIR 指向正确位置。')
 
     # images/
-    images_root = os.path.join(seed_dir, 'images')
-    if not os.path.exists(images_root):
+    images_root, dir_name, found, tried = resolve_images_root(seed_dir)
+    if not found:
         results.append(False)
-        print(f'{FAIL} images/ 目录不存在: {images_root}')
-        print('       修复：数据源目录下需有 images/，其每个子目录 = 一个商品的原图。')
+        print(f'{FAIL} 未找到图片根目录（已尝试: {", ".join(tried)}）')
+        print('       期望结构: <数据源>/<图片目录名>/<产品名>/<图片文件>')
+        print('       例如: product_pic/产品名1/ 、product_pic/产品名2/ 这样即可。')
+        print('       修复：在数据源目录下建一个图片根目录（默认认 images、product_pic、pics），')
+        print('             或设环境变量 SEED_IMAGES_SUBDIR=你的目录名 来明确指定。')
         return
-    if not os.path.isdir(images_root):
-        results.append(False)
-        print(f'{FAIL} images 存在但不是目录: {images_root}')
-        return
+    print(f'{PASS} 图片根目录: {dir_name}/（自动识别）')
     if not os.access(images_root, os.R_OK):
         results.append(False)
-        print(f'{FAIL} images/ 无读取权限: {images_root}')
-        print('       修复：chmod +r 该目录。')
+        print(f'{FAIL} {dir_name}/ 无读取权限: {images_root}')
+        print('       修复：chmod +r 该目录，或改用有权限的账户运行。')
         return
     folders, total, unreadable = count_images(images_root)
     if unreadable:
         results.append(False)
-        print(f'{FAIL} images/ 有 {len(unreadable)} 个子目录不可读: {unreadable[:3]}')
+        print(f'{FAIL} {dir_name}/ 有 {len(unreadable)} 个子目录不可读: {unreadable[:3]}')
     elif folders == 0:
         results.append(False)
-        print(f'{FAIL} images/ 下没有商品子目录: {images_root}')
+        print(f'{FAIL} {dir_name}/ 下没有商品子目录: {images_root}')
+        print('       期望：图片目录下每个子目录 = 一个商品（子目录名即商品名），')
+        print('             例如 product_pic/产品名1/、product_pic/产品名2/。')
     else:
         results.append(True)
-        print(f'{PASS} images/ 正常：{folders} 个商品目录，{total} 张图片。')
+        print(f'{PASS} {dir_name}/ 正常：{folders} 个商品目录，{total} 张图片。')
 
 
 def check_media_root(results, media_root):
