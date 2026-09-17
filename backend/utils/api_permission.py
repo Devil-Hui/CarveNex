@@ -1,5 +1,4 @@
 from rest_framework.permissions import BasePermission
-from django.contrib.auth.models import User
 from logging import getLogger
 
 logger = getLogger(__name__)

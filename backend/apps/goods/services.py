@@ -141,7 +141,7 @@ class GoodsCacheService:
     @staticmethod
     def warm_bloom_filters():
         """预热布隆过滤器 — 加载所有活跃 SPU/SKU ID"""
-        from apps.goods.models import SPU, SKU, SPUStatus
+        from apps.goods.models import SPU, SKU
         try:
             spu_ids = list(SPU.objects.filter(
                 deleted_at__isnull=True,

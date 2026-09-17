@@ -1,7 +1,7 @@
 import os
 from rest_framework.response import Response
 from rest_framework import status
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiTypes
 
 from utils.api_base_view import BaseApiView
 from utils.upload_security import (

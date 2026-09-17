@@ -7,7 +7,6 @@ from django.db import models, transaction
 from django.utils import timezone
 
 from apps.goods.models import SKU
-from apps.promotion.models import UserCoupon
 
 _SECURE_RANDOM = secrets.SystemRandom()
 

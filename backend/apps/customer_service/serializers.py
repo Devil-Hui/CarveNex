@@ -87,7 +87,7 @@ def _resolve_card_data(card_data: dict) -> dict:
 
     if spu_id:
         try:
-            from apps.goods.models import SPU, SKU
+            from apps.goods.models import SPU
             spu = SPU.objects.filter(id=spu_id, deleted_at__isnull=True).first()
             if spu:
                 resolved['product_name'] = spu.name

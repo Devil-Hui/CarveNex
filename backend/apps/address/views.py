@@ -4,7 +4,6 @@ from rest_framework import status
 
 from utils.api_base_view import BaseApiView
 from utils.response_codes import Messages
-from .models import Address
 from .serializers import (
     AddressCreateSerializer, AddressSerializer, AddressUpdateSerializer,
 )

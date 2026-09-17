@@ -1,4 +1,3 @@
-import os
 import re
 from utils.storage import media_key
 
@@ -6,7 +5,6 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -335,7 +333,6 @@ class ChangeUsernameView(BaseApiView):
             if error_key == 'USERNAME_CHANGE_COOLDOWN':
                 from django.conf import settings as s
                 from datetime import timedelta
-                from django.utils import timezone
                 profile = UserService.get_or_create_profile(request.user)
                 cfg = getattr(s, 'USERS_SETTINGS', {})
                 days = cfg.get('USERNAME_CHANGE_COOLDOWN_DAYS', 30)

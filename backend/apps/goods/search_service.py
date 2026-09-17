@@ -4,7 +4,7 @@
 import re
 import logging
 
-from django.db.models import Count, Min, Max, Q, Sum
+from django.db.models import Min, Max, Q, Sum
 
 logger = logging.getLogger('biz')
 

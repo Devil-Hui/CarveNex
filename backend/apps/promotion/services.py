@@ -6,9 +6,8 @@ from logging import getLogger
 
 from utils.cache import Cache
 from .models import (
-    Coupon, CouponScope,
-    CouponTargetAudience, DiscountType, PromoCode, UserCoupon,
-    generate_promo_code,
+    Coupon, CouponTargetAudience,
+    DiscountType, PromoCode, UserCoupon, generate_promo_code,
 )
 
 _cache = Cache('promotion')

@@ -273,7 +273,6 @@ class InsightService:
     @staticmethod
     def _fallback_product_daily(platform, spu, dates):
         """伪数据兜底：按 (平台, 商品, 日期) 做种子生成稳定数据。"""
-        from datetime import timedelta
         import hashlib
 
         items = []

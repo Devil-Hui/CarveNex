@@ -13,11 +13,9 @@
 
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
-from apps.goods.models import Category, Brand, SPU, SKU, SPUStatus, Tag
+from apps.goods.models import Category, Brand, Tag
 from apps.promotion.models import Coupon
 from django.utils import timezone
-import json
 
 User = get_user_model()
 

@@ -1,5 +1,4 @@
 from drf_spectacular.utils import extend_schema, OpenApiResponse
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 
@@ -10,11 +9,10 @@ from utils.response_codes import Messages
 from apps.rbac.permissions import HasPerm
 from .models import Coupon, PromoCode
 from .serializers import (
-    ClaimCouponSerializer, CouponSerializer,
-    GenerateCouponSerializer, UserCouponSerializer,
-    PromoCodeCreateSerializer, PromoCodeDetailSerializer, PromoCodeSerializer,
+    CouponSerializer, GenerateCouponSerializer,
+    UserCouponSerializer,
 )
-from .services import PromotionService, PromoCodeService
+from .services import PromotionService
 
 
 class CouponListView(PublicApiView):

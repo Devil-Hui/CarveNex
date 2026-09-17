@@ -24,7 +24,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from utils.health_check import HealthCheckView
 from utils.versioned_router import router
-from utils.upload_async import get_upload_status, async_upload_enabled
+from utils.upload_async import get_upload_status
 from apps.media.views import serve_db_media, serve_r2_media
 
 

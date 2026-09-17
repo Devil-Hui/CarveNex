@@ -1,16 +1,13 @@
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from rest_framework.response import Response
-from rest_framework import status
 
 from utils.api_base_view import BaseApiView
 from utils.api_base_pagination import parse_pagination, safe_int
 from utils.response_codes import Messages
-from apps.rbac.constants import Role
 from apps.rbac.permissions import HasPerm
-from apps.rbac.services import has_role
 from .serializers import NotificationSerializer
 from .services import NotificationService
-from .models import Notification, OperationLog, OperationLogCategory
+from .models import OperationLog, OperationLogCategory
 
 
 class NotificationListView(BaseApiView):

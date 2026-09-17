@@ -1,5 +1,4 @@
 """邮件模板管理 —— 管理后台可编辑发送的邮件内容"""
-from django.db.models import Q
 from rest_framework.response import Response
 
 from apps.rbac.permissions import HasPerm

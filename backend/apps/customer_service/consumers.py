@@ -12,14 +12,12 @@ import asyncio
 import json
 import logging
 import time
-import uuid
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qs
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.conf import settings
-from django.core.cache import caches
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 

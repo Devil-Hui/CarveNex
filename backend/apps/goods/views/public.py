@@ -1,5 +1,4 @@
 from decimal import Decimal
-import os
 from utils.storage import media_key
 
 from django.conf import settings

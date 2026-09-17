@@ -4,7 +4,6 @@
 """
 from django.db.models import Count, OuterRef, Q, Subquery, Sum
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
-from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
@@ -13,7 +12,7 @@ from apps.rbac.permissions import HasPerm
 from utils.api_base_view import BaseApiView
 from utils.exceptions import ErrorCodes, api_error_response
 
-from .models import AfterSale, AfterSaleStatus, Order, OrderStatus
+from .models import AfterSale, Order
 from .policies import OrderAdminAccessPolicy
 from .serializers import (
     AfterSaleSerializer,

@@ -36,7 +36,7 @@ from django.core.management.base import BaseCommand
 
 from apps.goods.models import SPU, SKU
 
-from apps.order.models import Order, OrderItem, OrderStatus, PaymentStatus, PaymentMethod
+from apps.order.models import Order, OrderItem, PaymentStatus
 
 
 class Command(BaseCommand):

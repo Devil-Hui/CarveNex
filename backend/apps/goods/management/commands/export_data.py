@@ -19,7 +19,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.core.serializers import serialize
 from django.core.serializers.json import DjangoJSONEncoder
-from apps.goods.models import Category, Brand, SPU, SKU, Tag
+from apps.goods.models import Category, Brand, Tag
 from apps.promotion.models import Coupon
 import json
 import os

@@ -18,7 +18,6 @@ import time
 import uuid
 from django.http import JsonResponse, HttpResponse
 from django.conf import settings
-from rest_framework import status as http_status
 from logging import getLogger
 
 from utils.exceptions import exception_to_envelope, build_error_envelope, ErrorCodes, ErrorCategory

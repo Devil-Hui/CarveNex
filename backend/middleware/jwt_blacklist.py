@@ -6,7 +6,6 @@ When user logs out, the access token's JTI is stored in the cache for its remain
 import logging
 import base64
 import json
-import time
 
 from django.core.cache import cache
 from django.http import JsonResponse

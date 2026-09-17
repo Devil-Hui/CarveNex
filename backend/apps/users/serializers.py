@@ -3,8 +3,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.users.models import UserProfile, validate_country_code, validate_phone
-from apps.users.email_service import EmailService
-from apps.users.validators import validate_username, validate_email, validate_password
+from apps.users.validators import validate_username, validate_password
 
 User = get_user_model()
 _cfg = getattr(settings, 'USERS_SETTINGS', {})

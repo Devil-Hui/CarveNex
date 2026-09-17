@@ -13,7 +13,7 @@ from django.db import transaction
 
 from utils.api_base_view import BaseApiView
 from utils.response_codes import Messages
-from ..models import SPU, SPUStatus, SKU
+from ..models import SPU, SPUStatus
 from apps.rbac.permissions import HasPerm
 from apps.rbac.services import has_role, has_perm
 from apps.rbac.constants import Role

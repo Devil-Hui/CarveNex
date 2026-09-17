@@ -2,7 +2,6 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.core.paginator import InvalidPage
 
-import math
 
 # 统一分页参数
 PAGE_DEFAULT = 1

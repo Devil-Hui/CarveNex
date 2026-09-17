@@ -1,5 +1,4 @@
 from django.db import transaction
-from django.core.exceptions import ValidationError
 from utils.cache import Cache
 from .models import Cart, CartItem
 

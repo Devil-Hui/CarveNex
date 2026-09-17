@@ -1,5 +1,4 @@
 import os
-import time as _time
 # media_key 统一生成对象 key（见 utils.storage）
 import logging
 
@@ -297,7 +296,7 @@ class ProductSearchView(BaseApiView):
         serializer.is_valid(raise_exception=True)
         q = serializer.validated_data['q']
 
-        from apps.goods.models import SPU, SKU
+        from apps.goods.models import SPU
 
         spus = (
             SPU.objects

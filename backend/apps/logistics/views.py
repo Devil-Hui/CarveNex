@@ -1,5 +1,3 @@
-from decimal import Decimal
-from django.db import models
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from rest_framework.response import Response
 from rest_framework import status
@@ -7,7 +5,7 @@ from rest_framework import status
 from utils.api_base_view import BaseApiView, PublicApiView
 from utils.api_base_pagination import parse_pagination
 from utils.response_codes import Messages
-from .models import Carrier, ShippingRate, Shipment
+from .models import Carrier, Shipment
 from .serializers import (
     CarrierSerializer, ShippingCostRequest, ShippingCostResponse,
     TrackShipmentRequest, ShipmentStatusSerializer,
@@ -74,7 +72,6 @@ class MyShipmentsView(BaseApiView):
     )
     @extend_schema(responses={200: OpenApiResponse(description='List or retrieve')})
     def get(self, request):
-        from apps.order.models import Order
         page, per_page = parse_pagination(request)
         shipments = Shipment.objects.select_related('carrier', 'order').filter(
             order__user=request.user,

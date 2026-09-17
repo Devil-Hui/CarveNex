@@ -22,7 +22,7 @@ Usage:
 
 from datetime import date, datetime, time
 from functools import wraps
-from typing import Any, Callable, Optional, TypeVar, Union
+from typing import Any, Callable, Optional, TypeVar
 import random
 import time as _time
 from django.conf import settings

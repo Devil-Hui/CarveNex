@@ -15,7 +15,6 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 import jwt
 from django.conf import settings
 from django.core.cache import caches
-from django.core.mail import send_mail
 from django.utils.crypto import get_random_string
 
 

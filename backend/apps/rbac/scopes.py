@@ -16,7 +16,7 @@ web/react/src/permissions/scope.ts 的 ResourceScope（all/group/category/brand�
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Literal
+from typing import Literal
 
 from apps.rbac.constants import Role
 from apps.rbac.services import has_role

@@ -1,6 +1,6 @@
 from django.db.models import ProtectedError
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from utils.api_base_view import BaseApiView
 from ..models import SPU
 from apps.rbac.permissions import HasPerm

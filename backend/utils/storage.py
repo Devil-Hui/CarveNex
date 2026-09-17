@@ -12,7 +12,6 @@ Usage:
 import logging
 import os
 import time as _time
-import traceback
 import uuid as _uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone

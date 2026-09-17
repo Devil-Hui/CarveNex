@@ -5,7 +5,6 @@ Usage: Add to permission_classes of any view handling user-owned resources:
         permission_classes = [ApiPermission, IsResourceOwner]
 """
 from rest_framework.permissions import BasePermission, SAFE_METHODS
-from django.db.models import Model
 
 
 class IsResourceOwner(BasePermission):
