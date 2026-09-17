@@ -141,12 +141,17 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--env', type=str, default='dev', help='环境标识（为兼容 setup.sh 调用，不参与逻辑）')
         parser.add_argument('--seed-dir', type=str, default='',
-                            help='数据源目录（默认 <backend>/seed_products）')
+                            help='数据源目录（默认取环境变量 SEED_PRODUCTS_DIR，'
+                                 '未设则为 <backend>/seed_products）')
         parser.add_argument('--dry-run', action='store_true', help='预览模式，不写入')
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
-        seed_dir = options['seed_dir'] or os.path.join(_backend_root(), 'seed_products')
+        # 优先级：命令行 > 环境变量 SEED_PRODUCTS_DIR（便于把数据源放到项目外，
+        # 如 /opt/apps/seed_products，不随代码/镜像分发）> 默认 <backend>/seed_products
+        seed_dir = (options['seed_dir']
+                    or os.getenv('SEED_PRODUCTS_DIR', '')
+                    or os.path.join(_backend_root(), 'seed_products'))
         xlsx_path = os.path.join(seed_dir, 'products.xlsx')
         images_root = os.path.join(seed_dir, 'images')
 

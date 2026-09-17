@@ -103,6 +103,10 @@ services:
       # import_media_dir 的并发封顶。os.cpu_count() 读到的是宿主核数（不受 cgroup 限制），
       # 不封顶的话 8 核宿主会起 7 个线程同时解码原图，足以打爆 544m 的容器
       MEDIA_IMPORT_MAX_CONCURRENCY: "2"
+      # 商品数据源目录（products.xlsx + images/）：放服务器独立目录，不随镜像分发。
+      # 改成你的实际路径，并与下面 volumes 的挂载路径保持一致。
+      # 部署前用 `python manage.py verify_media_sources` 自检来源是否就绪。
+      SEED_PRODUCTS_DIR: /opt/apps/seed_products
     env_file: [.env.prod]
     volumes:
       # 必须挂到真实的 MEDIA_ROOT：BASE_DIR(/app/project) + 'media' = /app/project/media。
@@ -111,6 +115,9 @@ services:
       - media_data:/app/project/media
       - static_data:/app/static
       - django_logs:/app/logs
+      # 商品数据源（只读挂载）：路径需与 SEED_PRODUCTS_DIR 一致。
+      # 内容为 products.xlsx + images/<商品目录>/ ；缺失会导致部署后无商品。
+      - /opt/apps/seed_products:/opt/apps/seed_products:ro
     tmpfs:
       - /tmp:size=32m,mode=1777
     depends_on:
