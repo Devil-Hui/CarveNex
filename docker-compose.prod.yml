@@ -105,7 +105,10 @@ services:
       MEDIA_IMPORT_MAX_CONCURRENCY: "2"
     env_file: [.env.prod]
     volumes:
-      - media_data:/app/media
+      # 必须挂到真实的 MEDIA_ROOT：BASE_DIR(/app/project) + 'media' = /app/project/media。
+      # 旧值 /app/media 与 MEDIA_ROOT 不一致，导致卷形同未挂载，
+      # 上传的文件落在容器可写层（且 read_only），重启即丢失。
+      - media_data:/app/project/media
       - static_data:/app/static
       - django_logs:/app/logs
     tmpfs:
