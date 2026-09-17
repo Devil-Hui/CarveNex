@@ -207,14 +207,26 @@ class CustomExceptionMiddleware:
         response['X-Content-Type-Options'] = 'nosniff'
         response['X-Frame-Options'] = 'DENY'
         response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        response['Content-Security-Policy'] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; "
-            "connect-src 'self' https:; "
-            "frame-src 'self' https://*.paypal.com https://*.stripe.com;"
-        )
+        # 不覆盖上游（CSPMiddleware）已设置的 CSP：响应阶段中间件按 MIDDLEWARE
+        # 逆序执行，若此处无条件重写，严格策略（default-src 'none'）会被降级
+        # 为宽松版，使纵深防御失效。仅在尚未设置时按响应类型补齐。
+        if 'Content-Security-Policy' not in response:
+            content_type = response.get('Content-Type', '') or ''
+            if 'text/html' in content_type:
+                # HTML（DRF 可浏览 API / 错误页）需要样式与脚本才能正常显示
+                response['Content-Security-Policy'] = (
+                    "default-src 'self'; "
+                    "script-src 'self' 'unsafe-inline'; "
+                    "style-src 'self' 'unsafe-inline'; "
+                    "img-src 'self' data: https:; "
+                    "connect-src 'self' https:; "
+                    "frame-src 'self' https://*.paypal.com https://*.stripe.com;"
+                )
+            else:
+                # JSON / API 响应无需加载任何资源，采用最严格策略
+                response['Content-Security-Policy'] = (
+                    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+                )
         if not settings.DEBUG:
             response['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
         if request_id:
