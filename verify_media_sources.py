@@ -5,7 +5,7 @@
 用法：
     python verify_media_sources.py                    # 自动按 .env 与默认路径检查
     python verify_media_sources.py --dir /opt/apps/seed_products
-    python verify_media_sources.py --env-file .env.prod
+    python verify_media_sources.py --env-file .env.production
 
 检查内容：
   1. 商品数据源目录：是否存在；products.xlsx 是否存在（建商品必需）；
@@ -237,7 +237,7 @@ def main():
     here = os.path.dirname(os.path.abspath(__file__))
     parser = argparse.ArgumentParser(description='部署前媒体来源自检')
     parser.add_argument('--dir', default='', help='覆盖数据源目录')
-    parser.add_argument('--env-file', default='', help='指定 .env 文件（默认依次尝试 .env / .env.prod）')
+    parser.add_argument('--env-file', default='', help='指定 .env 文件（默认依次尝试 .env / .env.production）')
     parser.add_argument('--media-root', default='', help='覆盖 MEDIA_ROOT')
     args = parser.parse_args()
 
@@ -246,7 +246,7 @@ def main():
         env = load_env(args.env_file)
         print(f'{INFO} 使用环境文件: {args.env_file}')
     else:
-        for name in ('.env', '.env.prod', '.env.production'):
+        for name in ('.env', '.env.production'):
             path = os.path.join(here, name)
             if os.path.isfile(path):
                 env = load_env(path)

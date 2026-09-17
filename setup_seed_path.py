@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""步骤 1（引导式）：声明产品图片与信息的位置，并写入 .env / .env.prod。
+"""步骤 1（引导式）：声明产品图片与信息的位置，并写入 .env / .env.production。
 
 目录约定：
     <第1问输入的路径，末尾为 product_pic>/
@@ -14,7 +14,7 @@
 用法：
     python setup_seed_path.py                          # 引导式输入（推荐）
     python setup_seed_path.py /data/product_pic        # 非交互：直接指定目录
-    python setup_seed_path.py --env-file .env.prod     # 写入生产环境文件
+    python setup_seed_path.py --env-file .env.production     # 写入生产环境文件
     python setup_seed_path.py --show                   # 只看当前配置
 """
 import argparse
@@ -80,7 +80,7 @@ def main():
     parser.add_argument('path', nargs='?', default='',
                         help='product_pic 目录路径（末尾为 product_pic）')
     parser.add_argument('--env-file', default='.env',
-                        help='要修改的 env 文件（默认 .env，生产用 .env.prod）')
+                        help='要修改的 env 文件（默认 .env，生产用 .env.production）')
     parser.add_argument('--xlsx', default='', help=f'Excel 文件名（默认 {DEFAULT_XLSX}）')
     parser.add_argument('--create', action='store_true', help='目录不存在时自动创建')
     parser.add_argument('--show', action='store_true', help='仅查看当前配置，不修改')
