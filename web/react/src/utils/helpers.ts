@@ -44,6 +44,11 @@ export function validatePhone(phone: string): boolean {
   return re.test(phone)
 }
 
+// 与后端 USERS_SETTINGS.PASSWORD_MIN_LENGTH 保持一致
+//（backend/project/config/settings/base.py）；前端不得放宽，否则
+// 表单校验通过但后端注册/改密被拒，造成用户困惑。
+export const PASSWORD_MIN_LENGTH = 8
+
 export function validatePassword(password: string): boolean {
-  return password.length >= 6
+  return password.length >= PASSWORD_MIN_LENGTH
 }
