@@ -3,7 +3,6 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
 import { useAdminAuth } from '../../store/AdminAuthContext'
 import { useTranslation, LanguageSwitch } from '../../i18n'
-import { post, ensureCSRFCookie } from '../../api/request'
 import { Color, Shadow } from '../../theme/tokens'
 
 /* ── 配色统一取自 theme 令牌（与商城 C 端同源，改令牌即联动）── */
@@ -62,12 +61,6 @@ const Brand = styled.h1`
   justify-content: center;
   gap: 10px;
   span { color: ${CLAY}; }
-`
-
-const Logo = styled.img`
-  width: 30px;
-  height: 30px;
-  object-fit: contain;
 `
 
 const Subtitle = styled.p`
@@ -181,7 +174,6 @@ export default function AdminLogin() {
     <Container>
       <Card>
         <Brand>
-          <Logo />
           <span>
             Carve<span>Nex</span>
           </span>
