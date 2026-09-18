@@ -108,7 +108,9 @@ def main():
     print()
 
     # ── 第 1 问：product_pic 路径 ─────────────────────────────
-    default_dir = cur_dir or args.path or os.path.join(here, 'product_pic')
+    # 统一默认到 <仓库>/backend/seed_products，与 verify_media_sources.py、
+    # seed_products 命令的默认值保持一致，避免多处路径各说各话。
+    default_dir = cur_dir or args.path or os.path.join(here, 'backend', 'seed_products')
     print('1.当前/product_pic/的路径为(包含/product_pic/),请输入：')
     typed = ask('', default_dir)
     if typed is None:

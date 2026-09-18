@@ -153,7 +153,7 @@ class Command(BaseCommand):
                     or os.getenv('SEED_PRODUCTS_DIR', '')
                     or os.path.join(_backend_root(), 'seed_products'))
         # Excel 文件名可用 SEED_XLSX_NAME 覆盖（默认 products.xlsx），
-        # 它位于数据源目录下（即 product_pic/ 内，与产品名文件夹同级）。
+        # 位于数据源目录下（统一默认 <backend>/seed_products/，与 images/ 同级）。
         xlsx_name = os.getenv('SEED_XLSX_NAME', '').strip() or 'products.xlsx'
         xlsx_path = os.path.join(seed_dir, xlsx_name)
         images_root = self._resolve_images_root(seed_dir)

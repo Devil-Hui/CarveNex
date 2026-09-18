@@ -103,11 +103,12 @@ services:
       # import_media_dir 的并发封顶。os.cpu_count() 读到的是宿主核数（不受 cgroup 限制），
       # 不封顶的话 8 核宿主会起 7 个线程同时解码原图，足以打爆 544m 的容器
       MEDIA_IMPORT_MAX_CONCURRENCY: "2"
-      # 商品数据源目录（products.xlsx + images/）：在 .env.production 中用 SEED_PRODUCTS_DIR
-      # 定义你的实际路径（如 /data/seed_products、/opt/apps/seed_products 均可），
-      # 不随镜像分发；未定义时回退下面的默认值。定义在哪，就从哪读。
-      # 部署前用 `python verify_media_sources.py` 自检来源是否就绪。
-      SEED_PRODUCTS_DIR: ${SEED_PRODUCTS_DIR:-/opt/apps/seed_products}
+      # 商品数据源目录：统一固定为仓库内的 backend/seed_products（宿主机），
+      # 只读挂载到容器内 /app/seed_products。此处刻意不使用变量插值——
+      # 一旦允许覆盖 SEED_PRODUCTS_DIR，就可能与下面的挂载目标不一致，
+      # 导致「声明的路径」与「实际挂载的位置」对不上（历史踩过的坑）。
+      # 该目录不随镜像分发（.dockerignore 已排除），避免镜像 +144MB。
+      SEED_PRODUCTS_DIR: /app/seed_products
     env_file: [.env.production]
     volumes:
       # 必须挂到真实的 MEDIA_ROOT：BASE_DIR(/app/project) + 'media' = /app/project/media。
@@ -116,9 +117,10 @@ services:
       - media_data:/app/project/media
       - static_data:/app/static
       - django_logs:/app/logs
-      # 商品数据源（只读挂载）：路径自动跟随 SEED_PRODUCTS_DIR，无需硬编码。
+      # 商品数据源（只读挂载）：固定把仓库内 backend/seed_products 挂到容器
+      # /app/seed_products，与上面的 SEED_PRODUCTS_DIR 始终一致。
       # 内容为 products.xlsx + images/<商品目录>/ ；缺失会导致部署后无商品。
-      - ${SEED_PRODUCTS_DIR:-/opt/apps/seed_products}:${SEED_PRODUCTS_DIR:-/opt/apps/seed_products}:ro
+      - ./backend/seed_products:/app/seed_products:ro
     tmpfs:
       - /tmp:size=32m,mode=1777
     depends_on:
