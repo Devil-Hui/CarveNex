@@ -96,7 +96,10 @@ SIMPLE_JWT = {
 FILE_STORAGE = os.getenv('FILE_STORAGE', 'local')  # 可选 'local' 或 'r2'
 MEDIA_PATH = os.getenv('MEDIA_PATH', 'media') or 'media'
 MEDIA_URL = f"/{MEDIA_PATH.strip('/')}/"
-MEDIA_ROOT = os.path.join(BASE_DIR, MEDIA_PATH)
+# MEDIA_ROOT 允许用环境变量直接覆盖：媒体卷常挂在容器固定路径（如 /backend/media），
+# 与 BASE_DIR 无关。不强绑定 BASE_DIR 可避免「挂载点」与「MEDIA_ROOT」错位，
+# 否则上传文件会落到容器可写层而重启丢失。
+MEDIA_ROOT = os.getenv('MEDIA_ROOT', '') or os.path.join(BASE_DIR, MEDIA_PATH)
 # 上传临时目录指向 media 数据卷（见 base.resolve_upload_temp_dir 注释：
 # 生产 /tmp 只有 32MB tmpfs，并发四尺寸上传会 ENOSPC）
 FILE_UPLOAD_TEMP_DIR = resolve_upload_temp_dir(MEDIA_ROOT) or None

@@ -84,6 +84,9 @@ services:
       DAPHNE_PORT: "8001"
       AWS_REGION: ${AWS_REGION:-auto}
       STATIC_ROOT: /app/static
+      # 媒体卷挂载点：与下面的 media_data:/app/media 保持一致。
+      # settings 中 MEDIA_ROOT 优先读取该值，不再由 BASE_DIR 推导。
+      MEDIA_ROOT: /app/media
       # 缓存/会话走 MySQL，Celery broker&result 走 MySQL（见 settings/base.py）
       # 2C4G：固定 2 个 gevent 协程 worker，极简架构
       GUNICORN_WORKERS: "2"
@@ -111,10 +114,10 @@ services:
       SEED_PRODUCTS_DIR: /app/seed_products
     env_file: [.env.production]
     volumes:
-      # 必须挂到真实的 MEDIA_ROOT：BASE_DIR(/app/project) + 'media' = /app/project/media。
-      # 旧值 /app/media 与 MEDIA_ROOT 不一致，导致卷形同未挂载，
-      # 上传的文件落在容器可写层（且 read_only），重启即丢失。
-      - media_data:/app/project/media
+      # 媒体卷挂在容器 /app/media（应用根这一层，不再深入 project/），
+      # 并通过 MEDIA_ROOT 环境变量与之对齐（settings 现已支持覆盖），
+      # 确保上传文件落到卷上而非容器可写层（web 为 read_only）。
+      - media_data:/app/media
       - static_data:/app/static
       - django_logs:/app/logs
       # 商品数据源（只读挂载）：固定把仓库内 backend/seed_products 挂到容器

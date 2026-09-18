@@ -49,7 +49,9 @@ CORS_ALLOW_CREDENTIALS = True
 FILE_STORAGE = os.getenv('FILE_STORAGE', 'local')  # 'local' 或 'r2' (Cloudflare R2)
 MEDIA_PATH = os.getenv('MEDIA_PATH', 'media') or 'media'
 MEDIA_URL = f"/{MEDIA_PATH.strip('/')}/"
-MEDIA_ROOT = os.path.join(BASE_DIR, MEDIA_PATH)
+# MEDIA_ROOT 允许用环境变量直接覆盖（同 dev.py）：媒体卷挂在与 BASE_DIR
+# 无关的容器固定路径时（如 /app/media），必须显式指定，避免挂载点错位。
+MEDIA_ROOT = os.getenv('MEDIA_ROOT', '') or os.path.join(BASE_DIR, MEDIA_PATH)
 # 上传临时目录指向 media 数据卷（见 base.resolve_upload_temp_dir 注释：
 # 生产 web 容器 /tmp 是 32MB tmpfs，而容器 rootfs 是 read_only，
 # 只有 media_data/static_data/django_logs 三个卷可写）
