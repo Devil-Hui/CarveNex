@@ -110,6 +110,13 @@ backend/media/
 # 解析出的 project/media）：同样属用户上传/生成的文件，严禁入库（约 5750 张 webp / 315MB）。
 backend/project/media/
 backend/static/
+
+# ── 前端营销视频（约 172MB，不入库）──────────────────────────
+# 已用 git filter-repo 从历史移除（.git 257MB → 13MB）。
+# 本地文件保留（被忽略）供开发使用；生产环境放到 nginx 静态目录或 CDN，
+# 前端引用路径仍为 /videos/laserpeck/... 与 /static/images/promo/promo-cover.mp4，无需改代码。
+web/react/public/videos/
+web/react/public/static/images/promo/promo-cover.mp4
 # 初始商品数据源（products.xlsx + images/，约 144MB）：不入库（体积大）。
 # 部署时放到服务器独立目录（如 /opt/apps/seed_products），通过环境变量
 # SEED_PRODUCTS_DIR 声明，由 seed_products 读取——建商品依赖 products.xlsx。
