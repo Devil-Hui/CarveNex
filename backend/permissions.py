@@ -31,6 +31,11 @@ class IsResourceOwner(BasePermission):
         return True  # Service-layer filtering handles ownership; this is defense-in-depth
 
     def has_object_permission(self, request, view, obj):
+        # 纵深防御：即便本方法被单独调用（未先经 has_permission），
+        # 也要求已认证。否则匿名场景 request.user.id 为 None，
+        # 与 obj.user_id=None 比较会出现 None == None 而误判通过。
+        if not request.user or not request.user.is_authenticated:
+            return False
         if hasattr(obj, 'user_id'):
             return obj.user_id == request.user.id
         if hasattr(obj, 'user'):
