@@ -55,7 +55,10 @@ services:
     ports: ["8000:8000", "8001:8001"]
     volumes:
       - .:/backend
-      - media_data:/backend/media
+      # 必须挂到真实的 MEDIA_ROOT：容器内代码在 /backend，BASE_DIR=/backend/project，
+      # 故 MEDIA_ROOT=/backend/project/media。旧值 /backend/media 从未被读取，
+      # 会在宿主机留下无用的空壳目录，且上传文件实际未落到卷上（重启丢失）。
+      - media_data:/backend/project/media
       - static_data:/backend/static
       # 商品媒体导入源：把本机 CarveNex/产品资料/（一级目录=产品名，内含原图/视频）
       #  挂进容器固定路径 /media_import。之后只需丢「商品名」文件夹即可再导入，无需动 Docker。
