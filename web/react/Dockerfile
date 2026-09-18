@@ -12,8 +12,13 @@ ENV VITE_GIT_COMMIT=${GIT_COMMIT}
 ENV VITE_TURNSTILE_SITE_KEY=${VITE_TURNSTILE_SITE_KEY}
 
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+COPY package*.json .npmrc ./
+# 安装加固：提高并发连接数与重试次数，避免 registry 超时触发 npm "Exit handler never called!" 崩溃
+RUN npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set maxsockets 128 \
+    && npm install
 COPY . .
 RUN npm run build
 
