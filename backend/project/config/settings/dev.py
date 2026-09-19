@@ -37,10 +37,10 @@ if _cors_env:
     CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()]
 else:
     CORS_ALLOWED_ORIGINS = [
-        "http://localhost:8000",
-        "http://localhost:8001",
-        "http://127.0.0.1:8000",
-        "http://127.0.0.1:8001",
+        "http://localhost:8090",
+        "http://localhost:8091",
+        "http://127.0.0.1:8090",
+        "http://127.0.0.1:8091",
     ]
 # 允许跨域携带 Cookie（axios withCredentials: true 需要此配置）
 CORS_ALLOW_CREDENTIALS = True

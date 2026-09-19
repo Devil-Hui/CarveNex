@@ -612,7 +612,7 @@ function useChatWebSocket(
     setWsStatus('connecting')
 
     // WS 必须走 API 域名：Cloudflare Pages 静态托管不代理 WebSocket（同源 /ws 返回 200 HTML）。
-    // 使用 VITE_WS_URL（=wss://api.carvenex.com，经 nginx /ws → daphne:8001），
+    // 使用 VITE_WS_URL（=wss://api.carvenex.com，经 nginx /ws → daphne:8091），
     // 缺失时才回退同源（本地 dev 场景）。
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const configured = (import.meta.env.VITE_WS_URL || '').replace(/\/+$/, '')

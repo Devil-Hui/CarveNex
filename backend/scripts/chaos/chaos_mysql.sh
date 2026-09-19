@@ -12,7 +12,7 @@ set -uo pipefail
 
 TEST_MYSQL=${TEST_MYSQL:-carvenex-test-mysql}
 WEB_CONTAINER=carvenex-chaos-web
-PROBE_URL="http://localhost:8001/api/v1/goods/spu"
+PROBE_URL="http://localhost:8091/api/v1/goods/spu"
 BACKEND_SRC="$(cd "$(dirname "$0")/../../.." && pwd)/backend"
 
 PASS=0; FAIL=0
@@ -32,7 +32,7 @@ docker run -d --name "$WEB_CONTAINER" --network carvenex-test-net \
   -e DJANGO_SECRET_KEY=test-only-secret-key-not-for-production \
   -e THROTTLE_RATES='{"http":"100000/hour","user":"100000/hour"}' \
   -e ENABLE_MOCK_PAYMENT=true -e FILE_STORAGE=local \
-  --entrypoint python carvenex-django:v1.0.2 manage.py runserver 0.0.0.0:8001 --noreload >/dev/null 2>&1
+  --entrypoint python carvenex-django:v1.0.2 manage.py runserver 0.0.0.0:8091 --noreload >/dev/null 2>&1
 
 for i in $(seq 1 30); do
   docker exec "$WEB_CONTAINER" python -c "import urllib.request; urllib.request.urlopen('$PROBE_URL', timeout=3)" >/dev/null 2>&1 && break

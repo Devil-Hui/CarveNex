@@ -5,7 +5,7 @@
 
 import os
 
-_port = os.getenv("PORT", "8000")
+_port = os.getenv("PORT", "8090")
 bind = f"0.0.0.0:{_port}"
 backlog = int(os.getenv("GUNICORN_BACKLOG", "512"))
 

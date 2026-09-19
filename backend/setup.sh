@@ -148,7 +148,7 @@ start_django() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Gunicorn and Daphne..."
     gunicorn -c project/gunicorn.conf.py project.wsgi:application &
     gunicorn_pid=$!
-    daphne -b 0.0.0.0 -p "${DAPHNE_PORT:-8001}" project.asgi:application &
+    daphne -b 0.0.0.0 -p "${DAPHNE_PORT:-8091}" project.asgi:application &
     daphne_pid=$!
     CHILD_PIDS=("${gunicorn_pid}" "${daphne_pid}")
 

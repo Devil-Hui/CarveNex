@@ -13,10 +13,10 @@ CarveNex 性能基线压测（Locust）
        -e DB_NAME=carvenex_test -e DB_USER=carvenex_test -e DB_PASSWORD=carvenex_test \
        -e DJANGO_SECRET_KEY=test-only-secret-key-not-for-production \
        -e 'THROTTLE_RATES={"http":"100000/hour","user":"100000/hour","admin_login":"10000/minute","admin_write":"100000/minute","admin_batch":"10000/minute"}' \
-       -p 127.0.0.1:8011:8000 \
+       -p 127.0.0.1:8011:8090 \
        --entrypoint gunicorn carvenex-django:v1.0.5 \
        project.wsgi:application --workers 2 --worker-class gevent \
-       --bind 0.0.0.0:8000 --timeout 45
+       --bind 0.0.0.0:8090 --timeout 45
   3) 压测（50 并发、60s，headless）：
      locust -f scripts/loadtest/locustfile.py --host http://127.0.0.1:8011 \
        -u 50 -r 10 -t 60s --headless --csv=carvenex-perf

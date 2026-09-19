@@ -230,7 +230,7 @@ class Command(BaseCommand):
         schema = spectacular_settings.DEFAULT_GENERATOR_CLASS().get_schema(request=None, public=True)
 
         _write_json(output_dir / 'openapi-3.1.json', schema)
-        _write_json(output_dir / 'apifox-dev.json', _apifox_environment('CarveNex 开发环境', 'http://localhost:8000'))
+        _write_json(output_dir / 'apifox-dev.json', _apifox_environment('CarveNex 开发环境', 'http://localhost:8090'))
         _write_json(
             output_dir / 'apifox-prod.json',
             _apifox_environment('CarveNex 生产环境', 'https://api.carvenex.com'),

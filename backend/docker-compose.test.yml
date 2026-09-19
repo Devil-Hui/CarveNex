@@ -7,7 +7,7 @@
 #   单元测试   无外部依赖         纯 Domain/Service 逻辑，pytest 直跑
 #   集成测试   db                测试数据库 + TestDatabase
 #   契约测试   db                依赖 DRF 的 API schema 断言
-#   端到端测试 db + r2            反向代理到 web:8000（SERVICE_TYPE=django）
+#   端到端测试 db + r2            反向代理到 web:8090（SERVICE_TYPE=django）
 #
 # 用法：
 #   docker compose -f docker-compose.test.yml up -d          # 构建依赖

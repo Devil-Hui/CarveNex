@@ -38,7 +38,7 @@ if not SECRET_KEY:
 # ALLOWED_HOSTS will be set in prod.py with a RuntimeError guard
 # to prevent missing configuration in production.
 
-DOMAIN = os.getenv('DOMAIN', 'http://127.0.0.1:8000')
+DOMAIN = os.getenv('DOMAIN', 'http://127.0.0.1:8090')
 APP_VERSION = os.getenv('APP_VERSION', 'dev')
 GIT_COMMIT = os.getenv('GIT_COMMIT', 'unknown')
 DJANGO_ENV = os.getenv('DJANGO_ENV', 'dev')
@@ -234,10 +234,10 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8000",
-    "http://localhost:8001",
-    "http://127.0.0.1:8000",
-    "http://127.0.0.1:8001",
+    "http://localhost:8090",
+    "http://localhost:8091",
+    "http://127.0.0.1:8090",
+    "http://127.0.0.1:8091",
 ]
 
 # django-cors-headers 默认允许头 + 退款幂等键头（Idempotency-Key）

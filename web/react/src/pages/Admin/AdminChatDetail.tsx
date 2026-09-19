@@ -1007,7 +1007,7 @@ export default function AdminChatDetail() {
     if (!id) return
     const convId = parseInt(id)
     // WS 必须走 API 域名：Cloudflare Pages 静态托管不代理 WebSocket（同源 /ws 返回 200 HTML）。
-    // 使用 VITE_WS_URL（=wss://api.carvenex.com，经 nginx /ws → daphne:8001），缺失时回退同源（本地 dev）。
+    // 使用 VITE_WS_URL（=wss://api.carvenex.com，经 nginx /ws → daphne:8091），缺失时回退同源（本地 dev）。
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const configured = (import.meta.env.VITE_WS_URL || '').replace(/\/+$/, '')
     const wsBase = configured || `${scheme}://${window.location.host}`

@@ -374,7 +374,7 @@ class LocalStorage(BaseStorage):
         # 否则回退 DOMAIN —— 避免 DOMAIN 为回环地址时上传返回 127.0.0.1 导致公网 Mixed Content。
         self.base_url = (
             getattr(settings, 'PUBLIC_MEDIA_URL', '')
-            or getattr(settings, 'DOMAIN', 'http://localhost:8000')
+            or getattr(settings, 'DOMAIN', 'http://localhost:8090')
         ).rstrip('/')
 
     def upload(self, file_name: str, file_content: bytes, content_type: str = None) -> dict:

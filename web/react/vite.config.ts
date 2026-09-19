@@ -8,12 +8,12 @@ import path from 'path'
 
 // Vite 仅把 .env 注入客户端 import.meta.env；server 端配置(vite.config.ts)需经
 // loadEnv 才能读到 .env / .env.local 中的变量（直接读 process.env 在 dev 下取不到
-// .env.local 的覆盖值，会回退到默认的 http://web:8001，而 host 上的 Vite 解析不到
+// .env.local 的覆盖值，会回退到默认的 http://web:8091，而 host 上的 Vite 解析不到
 // 容器内的 `web` 主机名，导致 WS 代理永久 Connecting）。
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:8000'
-  const wsProxyTarget = env.VITE_WS_PROXY_TARGET || 'http://web:8001'
+  const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:8090'
+  const wsProxyTarget = env.VITE_WS_PROXY_TARGET || 'http://web:8091'
   const proxyOptions = {
     target: proxyTarget,
     changeOrigin: false,
@@ -69,8 +69,8 @@ export default defineConfig(({ mode }) => {
     proxy: {
       '/api': proxyOptions,
       '/media': proxyOptions,
-      // WebSocket（客服实时消息）代理到 daphne(ASGI):8001，必须开启 ws:true
-      // （gunicorn:8000 是 WSGI，不支持 WebSocket）
+      // WebSocket（客服实时消息）代理到 daphne(ASGI):8091，必须开启 ws:true
+      // （gunicorn:8090 是 WSGI，不支持 WebSocket）
       '/ws': {
         target: wsProxyTarget,
         ws: true,

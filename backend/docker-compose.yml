@@ -56,7 +56,7 @@ services:
       # 商品媒体导入源根目录（import_media_dir 默认读取）；宿主机 产品资料/ → /media_import
       PRODUCT_IMAGES_ROOT: /media_import
     env_file: [../.env]
-    ports: ["8000:8000", "8001:8001"]
+    ports: ["8090:8090", "8091:8091"]
     volumes:
       - .:/backend
       # 媒体卷挂在容器 /backend/media（backend 这一层，不再深入 project/），
