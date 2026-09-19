@@ -1,0 +1,17 @@
+# =============================================================================
+# Cloudflare 静态资源响应头（Pages / Workers Static Assets 均会读取构建产物根目录的 _headers）
+# -----------------------------------------------------------------------------
+# 背景：HTML 入口若被浏览器/边缘缓存，部署后仍会加载旧 index.html → 旧 bundle，
+#       表现为「代码已上线但页面还是旧内容」。此处对 HTML 入口显式禁止缓存。
+# =============================================================================
+
+# HTML 入口（站点根）：每次都用最新的，绝不缓存
+/
+  Cache-Control: no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-store, must-revalidate
+
+# 构建产物带内容 hash，文件名变了内容才变 → 可长期强缓存
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
