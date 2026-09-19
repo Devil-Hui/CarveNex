@@ -10,6 +10,7 @@ import { UserProvider } from './store/UserContext'
 import { CurrencyProvider } from './store/CurrencyContext'
 import { routes } from './router'
 import AppErrorBoundary from './components/common/AppErrorBoundary/AppErrorBoundary'
+import RouteErrorElement from './components/common/AppErrorBoundary/RouteErrorElement'
 import ReauthModal from './components/common/ReauthModal'
 import CustomerServiceFAB from './components/common/CustomerServiceFAB'
 
@@ -44,9 +45,11 @@ function RootLayout() {
 }
 
 // 无路径布局路由包裹全部业务路由，保证浮层在所有页面渲染
+// errorElement：路由渲染出错时渲染品牌化错误页，而非 React Router 默认调试页
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
+    errorElement: <RouteErrorElement />,
     children: routes,
   },
 ])

@@ -12,7 +12,7 @@ type State = {
   hasError: boolean
 }
 
-function ErrorFallback({ onReset }: { onReset: () => void }) {
+export function ErrorFallback({ onReset }: { onReset: () => void }) {
   const { t } = useTranslation()
 
   return (
