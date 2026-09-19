@@ -55,6 +55,9 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         working-directory: web/react
         run: npm run build
+        env:
+          VITE_API_URL: https://api.carvenex.com/api/v1
+          VITE_WS_URL: wss://api.carvenex.com
 
       - name: Deploy to Cloudflare Workers
         if: steps.check.outputs.skip != 'true'
