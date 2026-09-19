@@ -1,0 +1,190 @@
+# =============================================================================
+# CarveNex — 商品分类创建接口 (Postman 可导入 OpenAPI 3.0)
+# =============================================================================
+# 单接口版：只有「创建商品分类」一个请求。
+# 环境：仅生产环境  https://api.carvenex.com
+# 认证：Bearer Token（永久有效）——登录接口 POST /api/v1/users/token/
+#       用超管账号换一次 access，填进 Postman 的 Bearer Token 后长期复用，
+#       无需再配置任何其他请求。
+# =============================================================================
+openapi: 3.0.1
+info:
+  title: CarveNex 商品分类创建
+  version: 2.0.0
+  description: |
+    # 创建商品分类（单接口）
+
+    - 完整地址：`POST https://api.carvenex.com/api/v1/goods/category/create`
+    - 认证：Bearer Token，**永久有效**（登录接口 `POST /api/v1/users/token/`
+      换取一次即可长期使用；仅当账号改密码/角色变更时需重新获取）
+    - 权限：`goods.category.write`（超管可建一级分类；组管理员仅能在管辖范围内建子分类）
+
+    ## 参数必选/可选一览
+
+    | 参数 | 必选性 | 说明 |
+    | --- | --- | --- |
+    | name | **必选** | 分类名称（默认语言），留空返回 400 |
+    | name_en | 可选 | 英文名（当前后端版本暂不写入，预留字段） |
+    | name_zh | 可选 | 中文名（当前后端版本暂不写入，预留字段） |
+    | name_ar | 可选 | 阿拉伯语名（当前后端版本暂不写入，预留字段） |
+    | parent_id | 可选 | 上级分类 ID；不传或 null = 创建一级分类 |
+    | level | 可选 | 层级 1/2/3，默认 1 |
+    | admin_group_id | 可选 | 归属管理组 ID（二级分类用，一级分类传 null） |
+servers:
+  - url: https://api.carvenex.com
+    description: 生产环境（CarveNex 正式后端）
+tags:
+  - name: 商品分类
+paths:
+  /api/v1/goods/category/create:
+    post:
+      tags:
+        - 商品分类
+      operationId: createCategory
+      summary: 创建商品分类
+      description: |
+        创建分类。超管可直接创建一级分类（parent_id 传 null）；
+        组管理员创建子分类时 parent_id 必须在其管辖范围内。
+
+        **认证**：Authorization → Bearer Token → 填入永久有效的 access token
+        （从 `POST /api/v1/users/token/` 获取一次即可）。
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                  description: "【必选】分类名称（默认语言）"
+                  example: 测试
+                name_en:
+                  type: string
+                  description: "【可选】英文名称（当前后端版本暂不写入，预留）"
+                  example: Test
+                name_zh:
+                  type: string
+                  description: "【可选】中文名称（当前后端版本暂不写入，预留）"
+                  example: 测试
+                name_ar:
+                  type: string
+                  description: "【可选】阿拉伯语名称（当前后端版本暂不写入，预留）"
+                  example: اختبار
+                parent_id:
+                  type: integer
+                  nullable: true
+                  description: "【可选】上级分类 ID；null 或不传 = 创建一级分类"
+                  example: null
+                level:
+                  type: integer
+                  minimum: 1
+                  maximum: 3
+                  default: 1
+                  description: "【可选】分类层级：1=一级 / 2=二级 / 3=三级，默认 1"
+                  example: 1
+                admin_group_id:
+                  type: integer
+                  nullable: true
+                  description: "【可选】归属管理组 ID（二级分类绑定管理组），一级分类传 null"
+                  example: null
+            examples:
+              样例-测试一级分类:
+                summary: 本次「测试」一级分类（可直接发送）
+                value:
+                  name: 测试
+                  name_en: Test
+                  name_zh: 测试
+                  name_ar: اختبار
+                  parent_id: null
+                  level: 1
+                  admin_group_id: null
+              样例-创建二级分类:
+                summary: 挂在「测试」(id=25) 下的二级分类
+                value:
+                  name: 测试子分类
+                  parent_id: 25
+                  level: 2
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, parent_id, level, status]
+                properties:
+                  id:
+                    type: integer
+                    description: 新分类 ID（建子分类时作 parent_id）
+                    example: 25
+                  name:
+                    type: string
+                    example: 测试
+                  parent_id:
+                    type: integer
+                    nullable: true
+                    example: null
+                  level:
+                    type: integer
+                    example: 1
+                  status:
+                    type: string
+                    enum: [pending, approved, rejected]
+                    description: 超管创建=approved；组管理员创建=pending 待审核
+                    example: approved
+              examples:
+                创建成功:
+                  value:
+                    id: 25
+                    name: 测试
+                    parent_id: null
+                    level: 1
+                    status: approved
+        "400":
+          description: 参数错误（name 为空）
+          content:
+            application/json:
+              examples:
+                name为空:
+                  value:
+                    detail: Name is required.
+        "401":
+          description: Token 无效（复制截断 / 改密码后需重新登录获取）
+          content:
+            application/json:
+              examples:
+                token无效:
+                  value:
+                    code: AUTH_FAILED
+                    http_status: 401
+                    status: error
+                    message: 此令牌对任何类型的令牌无效
+        "403":
+          description: 权限不足（非超管且不在管辖范围）
+          content:
+            application/json:
+              examples:
+                无权限:
+                  value:
+                    detail: 无权限执行此操作
+        "404":
+          description: 上级分类不存在
+          content:
+            application/json:
+              examples:
+                父分类不存在:
+                  value:
+                    detail: Parent category not found.
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "请求头：Authorization: Bearer <access_token>。Token 永久有效，从 POST /api/v1/users/token/ 获取一次即可长期使用。"

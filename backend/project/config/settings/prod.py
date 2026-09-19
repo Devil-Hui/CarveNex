@@ -11,9 +11,14 @@ for _logger_name in ('django', 'django.request'):
     if _logger_name in LOGGING.get('loggers', {}):
         LOGGING['loggers'][_logger_name]['level'] = LOG_LEVEL
 
-# JWT Token 有效期（生产环境 15min access / 2h refresh 空闲超时）
-SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'] = datetime.timedelta(minutes=15)
-SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'] = datetime.timedelta(hours=2)
+# JWT Token 有效期
+# 2026-09-19 应用户要求：生产 Token 改为永久有效（100 年 ≈ 永不过期），
+# 便于 Postman/Apifox 等客户端长期持有同一 Token 调试。
+# ⚠️ 安全权衡：永久 Token 泄露后长期有效，仅靠安全戳机制（改密码/角色
+#   变更旋转 security_stamp）兜底失效。与 base.py 的值保持一致。
+# 如需恢复原策略，改回：ACCESS 15 分钟 / REFRESH 2 小时。
+SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'] = datetime.timedelta(days=36500)
+SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'] = datetime.timedelta(days=36500)
 
 # 允许的域名（从环境变量获取）
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")

@@ -492,8 +492,13 @@ if not EMAIL_ACCOUNTS:
 
 # Simple JWT settings
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timezone.timedelta(minutes=15),  # 访问令牌有效期15分钟 (F-003 修复)
-    'REFRESH_TOKEN_LIFETIME': timezone.timedelta(hours=2),  # 刷新令牌 2 小时；配合 ROTATE_REFRESH_TOKENS 实现空闲超时（活跃刷新即续期，闲置>2h 自动登出）
+    # 2026-09-19 应用户要求：Token 改为永久有效（100 年 ≈ 永不过期），
+    # 便于 Postman/Apifox 等客户端长期持有同一 Token 调试。
+    # ⚠️ 安全权衡：永久 Token 一旦泄露将长期有效，仅靠安全戳机制
+    #   （改密码/角色变更旋转 security_stamp）兜底失效。
+    # 如需恢复原过期策略，改回：ACCESS 15 分钟 / REFRESH 2 小时。
+    'ACCESS_TOKEN_LIFETIME': timezone.timedelta(days=36500),  # 访问令牌永久有效（100年）
+    'REFRESH_TOKEN_LIFETIME': timezone.timedelta(days=36500),  # 刷新令牌永久有效（100年）
     'ROTATE_REFRESH_TOKENS': True,  # 刷新令牌时自动更新刷新令牌
     'BLACKLIST_AFTER_ROTATION': True,  # 刷新后将旧的刷新令牌加入黑名单
     'UPDATE_LAST_LOGIN': True,  # 更新用户最后登录时间

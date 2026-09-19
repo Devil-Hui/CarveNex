@@ -25,7 +25,11 @@ class GoodsCacheService:
         from apps.goods.models import Category
         cats = list(Category.objects.filter(is_active=True).select_related('parent'))
         data = GoodsCacheService._build_category_tree(cats)
-        _goods_cache.two_level_set('category:tree:active', data, _ttl['CATEGORY_TREE'])
+        # 仅写 L2（DB 缓存），不写 L1 进程内近缓存。原因：分类的新建/删除/
+        # 迁移是单进程内调 invalidate，无法清除其他 gunicorn worker 的 L1，
+        # 导致前端最长 300 秒（Cache.LOCAL_TTL_CAP）仍看到旧分类树 —— 即
+        # 「删除分类后要等 5 分钟才消失」。只用 L2 后失效立即可全局生效。
+        _goods_cache.set('category:tree:active', data, _ttl['CATEGORY_TREE'])
 
     @staticmethod
     def warm_brand_list():
@@ -61,6 +65,7 @@ class GoodsCacheService:
 
     @staticmethod
     def invalidate_category_tree():
+        # 分类树只走 L2（见 warm_category_tree 注释），删除 L2 即全局立即失效
         _goods_cache.delete('category:tree:active')
 
     @staticmethod
@@ -198,6 +203,11 @@ class GoodsCacheService:
             })
         visited: set = set()
 
+        # 同级分类始终按创建时间（自增主键 id）升序排列：新建分类必然追加在队尾，
+        # 不依赖上游查询顺序（即使上游改成别的排序也不会打乱展示顺序）。
+        for _pid, _nodes in by_parent.items():
+            _nodes.sort(key=lambda n: n['id'])
+
         def attach(parents):
             for node in parents:
                 if node['id'] in visited:
@@ -220,12 +230,13 @@ class GoodsQueryService:
 
     @staticmethod
     def get_category_tree():
-        # 二级缓存（L1 LocMem → L2 DB 缓存）：分类树读多写少，近缓存命中省远端往返
-        cached = _goods_cache.two_level_get('category:tree:active')
+        # 只用 L2（DB 缓存），不读 L1：保证分类新建/删除后所有 worker 立即生效
+        # （L1 是进程内缓存，失效只能清当前进程，会造成最长 5 分钟的可见延迟）。
+        cached = _goods_cache.get('category:tree:active')
         if cached:
             return cached
         GoodsCacheService.warm_category_tree()
-        return _goods_cache.two_level_get('category:tree:active', [])
+        return _goods_cache.get('category:tree:active', [])
 
     @staticmethod
     def get_brand_list():
