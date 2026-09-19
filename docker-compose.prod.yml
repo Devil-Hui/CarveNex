@@ -36,9 +36,12 @@ services:
     image: carvenex-nginx:${APP_VERSION:-v1.0.6}
     restart: unless-stopped
     logging: *default-logging
+    # 仅绑定环回：源站不对公网暴露 80/443，所有公网流量经 Cloudflare Tunnel
+    # （cloudflared 通过 127.0.0.1:443 回源 nginx）。这样彻底避免境内接入层
+    # 对 80/443 入站的拦截(webblock)/RST，也杜绝公网扫描。
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
     secrets:
       - tls_cert
       - tls_key
