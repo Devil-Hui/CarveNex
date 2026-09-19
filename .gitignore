@@ -138,3 +138,4 @@ inspect_xlsx.py
 
 # ── 运行时本地二进制/缓存（不上传）────────────────────────
 containerd/
+docker-compose.prod.yml.bak-*
