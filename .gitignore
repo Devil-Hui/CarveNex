@@ -139,3 +139,8 @@ inspect_xlsx.py
 # ── 运行时本地二进制/缓存（不上传）────────────────────────
 containerd/
 docker-compose.prod.yml.bak-*
+
+# 含超管凭据的本地调试集合，禁止提交
+category_create_postman.json
+# 本地数据库备份，禁止提交
+db_backup_*.sql
