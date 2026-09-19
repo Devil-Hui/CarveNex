@@ -1,7 +1,7 @@
 # =============================================================================
 # CarveNex 前端 — 每次提交自动部署到 Cloudflare Workers
 # -----------------------------------------------------------------------------
-# 触发：push 到 master 且改动 web/react/**（或手动 workflow_dispatch）
+# 触发：任意 push 到 master（或手动 workflow_dispatch）
 # 流程：npm ci → npm run build → wrangler deploy（Workers Static Assets）
 #
 # 需要的仓库 Secrets（Settings → Secrets and variables → Actions）：
@@ -15,9 +15,6 @@ name: Deploy Frontend to Cloudflare
 on:
   push:
     branches: [master]
-    paths:
-      - 'web/react/**'
-      - '.github/workflows/deploy-frontend.yml'
   workflow_dispatch:
 
 concurrency:
