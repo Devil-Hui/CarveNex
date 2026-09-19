@@ -18,15 +18,18 @@ import { IconArrowRight } from './ui/Icon'
  * 当前为前端效果模拟（先实现效果），尚未接真实生成接口。
  */
 
-/* ── 数据：生成结果为固定静态图（材质实拍首帧，非视频） ────── */
+/* ── 数据：生成结果为固定材质图（实拍首帧，非视频）─
+ * 海报存 R2 并通过 CDN cdn.carvenex.com 分发（Cloudflare Pages 无法直接
+ * 提供 /videos/posters 静态文件，会回退到 SPA index.html）。 */
+const VP = 'https://cdn.carvenex.com/videos/posters'
 const MATERIALS: { id: string; name: string; poster: string }[] = [
-  { id: 'wood', name: 'Wood', poster: '/videos/posters/wood.jpg' },
-  { id: 'metal', name: 'Metal', poster: '/videos/posters/metal.jpg' },
-  { id: 'glass', name: 'Glass', poster: '/videos/posters/glass.jpg' },
-  { id: 'leather', name: 'Leather', poster: '/videos/posters/leather.jpg' },
-  { id: 'fabric', name: 'Fabric', poster: '/videos/posters/fabric.jpg' },
-  { id: 'plastic', name: 'Plastic', poster: '/videos/posters/plastic.jpg' },
-  { id: 'stone', name: 'Stone', poster: '/videos/posters/stone.jpg' },
+  { id: 'wood', name: 'Wood', poster: `${VP}/wood.jpg` },
+  { id: 'metal', name: 'Metal', poster: `${VP}/metal.jpg` },
+  { id: 'glass', name: 'Glass', poster: `${VP}/glass.jpg` },
+  { id: 'leather', name: 'Leather', poster: `${VP}/leather.jpg` },
+  { id: 'fabric', name: 'Fabric', poster: `${VP}/fabric.jpg` },
+  { id: 'plastic', name: 'Plastic', poster: `${VP}/plastic.jpg` },
+  { id: 'stone', name: 'Stone', poster: `${VP}/stone.jpg` },
 ]
 
 const SCENARIOS = ['3D Embossing', 'Logo', 'Tumblers', 'Gifts', 'Apparel', 'Shoes']
