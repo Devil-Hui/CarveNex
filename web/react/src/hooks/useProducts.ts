@@ -275,6 +275,12 @@ export function useCategories() {
   const abortRef = useRef(false);
 
   useEffect(() => {
+    // 同级分类按 id（自增主键 = 创建时间）升序排列：最新添加的分类始终在队尾，
+    // 不依赖后端返回顺序（前端兜底，与后端 _build_category_tree 的排序双保险）。
+    const sortById = (nodes: CategoryItem[]): CategoryItem[] =>
+      [...nodes]
+        .sort((a, b) => a.id - b.id)
+        .map((n) => ({ ...n, children: sortById(n.children || []) }));
     const mapNode = (node: PublicCategory): CategoryItem => ({
       id: node.id,
       name: node.name,
@@ -290,7 +296,7 @@ export function useCategories() {
       .then((tree) => {
         if (abortRef.current) return;
         if (Array.isArray(tree) && tree.length > 0) {
-          setCategories(tree.map(mapNode));
+          setCategories(sortById(tree.map(mapNode)));
         }
       })
       .catch((err: any) => {
@@ -323,6 +329,8 @@ export function useFlatCategories() {
           }
         };
         if (Array.isArray(tree)) walk(tree);
+        // 与 useCategories 一致：按创建时间（id 升序）排列，最新分类在最后
+        flat.sort((a, b) => a.id - b.id);
         setCategories(flat);
       })
       .catch(() => {})
