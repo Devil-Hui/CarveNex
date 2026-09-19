@@ -14,6 +14,7 @@ import { Reveal, MaskLine } from './Reveal'
 import { FigureBox } from './ui/primitives'
 import LaserVideo, { LASER_VIDEOS } from './ui/LaserVideo'
 import { IconSparkles, IconArrowRight, IconCheck } from './ui/Icon'
+import { useTranslation } from '../../../i18n'
 
 /**
  * 收尾 — 墨黑 CTA 區（原紫色漸變）+ 實拍圖圖文同框 + 四列頁腳。
@@ -173,6 +174,7 @@ const Promises = styled.div`
 `
 
 export default function Closing() {
+  const { t } = useTranslation()
   return (
     <Section id="start">
       <Grid12>
@@ -181,33 +183,34 @@ export default function Closing() {
             <Panel>
               <PanelCopy>
                 <Badge>
-                  <IconSparkles /> No workshop. No experience. No limits.
+                  <IconSparkles /> {t('store.landing.closing.badge')}
                 </Badge>
                 <Title>
-                  <MaskLine delay={80}>Your Ideas</MaskLine>
-                  <MaskLine delay={160}>Deserve to Exist</MaskLine>
+                  <MaskLine delay={80}>{t('store.landing.closing.title1')}</MaskLine>
+                  <MaskLine delay={160}>{t('store.landing.closing.title2')}</MaskLine>
                 </Title>
-                <Sub>
-                  Join 12,000+ makers personalizing gifts, products and brands with CarveNex
-                  portable laser engravers.
-                </Sub>
+                <Sub>{t('store.landing.closing.sub')}</Sub>
                 <CtaRow>
                   <Cta href="/category">
-                    Shop the Engraver <IconArrowRight />
+                    {t('store.landing.closing.primaryCta')} <IconArrowRight />
                   </Cta>
-                  <GhostCta href="#materials">See what it can engrave</GhostCta>
+                  <GhostCta href="#materials">{t('store.landing.closing.secondaryCta')}</GhostCta>
                 </CtaRow>
                 <Promises>
                   <span>
-                    <IconCheck /> Free shipping
+                    <IconCheck /> {t('store.landing.closing.promiseShipping')}
                   </span>
                   <span>
-                    <IconCheck /> 2-year warranty
+                    <IconCheck /> {t('store.landing.closing.promiseWarranty')}
                   </span>
                 </Promises>
               </PanelCopy>
 
-              <FigureBox label="Now engraving" meta="Glass tumbler · rotary mode" flush>
+              <FigureBox
+                label={t('store.landing.closing.figureLabel')}
+                meta={t('store.landing.closing.figureMeta')}
+                flush
+              >
                 <LaserVideo src={LASER_VIDEOS.rotary} ratio="4 / 3" />
               </FigureBox>
             </Panel>

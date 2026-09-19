@@ -3,16 +3,10 @@ import { Font, Ink, Radius, Type, cardSurface, gridContainer, Rhythm, mq } from 
 import { Reveal } from './Reveal'
 import { FigureBox, SectionHead } from './ui/primitives'
 import LaserVideo, { LASER_VIDEOS } from './ui/LaserVideo'
+import { useTranslation } from '../../../i18n'
 
 /* ── 資料 ─────────────────────────────────────────────────── */
-const STEPS = [
-  { n: 1, title: 'Pick Your Design', desc: 'Choose, sketch or import a design in the CarveNex app.' },
-  { n: 2, title: 'Place & Autofocus', desc: 'Set the material down — the laser measures focus in seconds.' },
-  { n: 3, title: 'Preview & Adjust', desc: 'Project the engraving area and fine-tune size and position.' },
-  { n: 4, title: 'Engrave', desc: 'One tap and the laser does the rest — from 3s logos to deep embossing.' },
-  { n: 5, title: 'Clean & Finish', desc: 'Wipe, brush or rinse to reveal the finished piece.' },
-  { n: 6, title: 'Keep, Gift or Sell', desc: 'One-off presents today; a product line tomorrow.' },
-]
+const STEPS = [1, 2, 3, 4, 5, 6]
 
 /* ── 區塊 ─────────────────────────────────────────────────── */
 const Section = styled.section`
@@ -113,27 +107,28 @@ const AsideFigure = styled.div`
 `
 
 export default function Journey() {
+  const { t } = useTranslation()
   return (
     <Section id="journey">
       <Grid12>
         <HeadRow>
           <Reveal>
             <SectionHead
-              eyebrow="The workflow"
-              title="From idea to finished piece in minutes"
-              lead="Six steps, no experience needed. Design on your phone — the machine handles focus, preview and power."
+              eyebrow={t('store.landing.journey.eyebrow')}
+              title={t('store.landing.journey.title')}
+              lead={t('store.landing.journey.lead')}
             />
           </Reveal>
         </HeadRow>
 
         <Layout>
           <Steps>
-            {STEPS.map((s, i) => (
-              <Reveal key={s.n} delay={i * 70}>
+            {STEPS.map((n) => (
+              <Reveal key={n} delay={(n - 1) * 70}>
                 <Step>
-                  <Num>{s.n}</Num>
-                  <StepTitle>{s.title}</StepTitle>
-                  <StepDesc>{s.desc}</StepDesc>
+                  <Num>{n}</Num>
+                  <StepTitle>{t(`store.landing.journey.steps.${n}.title`)}</StepTitle>
+                  <StepDesc>{t(`store.landing.journey.steps.${n}.desc`)}</StepDesc>
                 </Step>
               </Reveal>
             ))}
@@ -142,8 +137,8 @@ export default function Journey() {
           <Reveal delay={120}>
             <AsideFigure>
               <FigureBox
-                label="Figure 05 — Fully upgraded, still portable"
-                meta="Setup → engraving, uncut"
+                label={t('store.landing.journey.figureLabel')}
+                meta={t('store.landing.journey.figureMeta')}
                 flush
               >
                 <LaserVideo src={LASER_VIDEOS.lp1} ratio="4 / 3" />

@@ -4,6 +4,7 @@ import { Font, Ink, Radius, Type, Elevation, cardSurface, gridContainer, Rhythm,
 import { Reveal } from './Reveal'
 import { Button, SectionHead } from './ui/primitives'
 import { IconArrowRight } from './ui/Icon'
+import { useTranslation } from '../../../i18n'
 
 /**
  * UseCases — AI 定制生成面板（落地页 section[3] 主体）
@@ -22,35 +23,27 @@ import { IconArrowRight } from './ui/Icon'
  * 海报存 R2 并通过 CDN cdn.carvenex.com 分发（Cloudflare Pages 无法直接
  * 提供 /videos/posters 静态文件，会回退到 SPA index.html）。 */
 const VP = 'https://cdn.carvenex.com/videos/posters'
-const MATERIALS: { id: string; name: string; poster: string }[] = [
-  { id: 'wood', name: 'Wood', poster: `${VP}/wood.jpg` },
-  { id: 'metal', name: 'Metal', poster: `${VP}/metal.jpg` },
-  { id: 'glass', name: 'Glass', poster: `${VP}/glass.jpg` },
-  { id: 'leather', name: 'Leather', poster: `${VP}/leather.jpg` },
-  { id: 'fabric', name: 'Fabric', poster: `${VP}/fabric.jpg` },
-  { id: 'plastic', name: 'Plastic', poster: `${VP}/plastic.jpg` },
-  { id: 'stone', name: 'Stone', poster: `${VP}/stone.jpg` },
+const MATERIALS: { id: string; poster: string }[] = [
+  { id: 'wood', poster: `${VP}/wood.jpg` },
+  { id: 'metal', poster: `${VP}/metal.jpg` },
+  { id: 'glass', poster: `${VP}/glass.jpg` },
+  { id: 'leather', poster: `${VP}/leather.jpg` },
+  { id: 'fabric', poster: `${VP}/fabric.jpg` },
+  { id: 'plastic', poster: `${VP}/plastic.jpg` },
+  { id: 'stone', poster: `${VP}/stone.jpg` },
 ]
 
-const SCENARIOS = ['3D Embossing', 'Logo', 'Tumblers', 'Gifts', 'Apparel', 'Shoes']
+const SCENARIO_IDS = ['embossing', 'logo', 'tumblers', 'gifts', 'apparel', 'shoes'] as const
 
 /* ── 生成结果四视图：对应 public/output/ 下的渲染图 ──────────────
  * zheng → 正视 Front ／ fu → 俯视 Top ／ ce → 侧视 Side ／ bei → 背视 Back */
-const OUTPUT_VIEWS: { key: string; label: string }[] = [
-  { key: 'zheng', label: 'Front' },
-  { key: 'fu', label: 'Top' },
-  { key: 'ce', label: 'Side' },
-  { key: 'bei', label: 'Back' },
+const OUTPUT_VIEWS: { key: string; i18nKey: string }[] = [
+  { key: 'zheng', i18nKey: 'front' },
+  { key: 'fu', i18nKey: 'top' },
+  { key: 'ce', i18nKey: 'side' },
+  { key: 'bei', i18nKey: 'back' },
 ]
 const OUTPUT_FRONT = `/output/${OUTPUT_VIEWS[0].key}.jpg`
-
-const STEPS = [
-  'Confirm material & scenario',
-  'Understand your brief',
-  'Analyze reference image',
-  'Generate product preview',
-  'Render three-view drafts',
-]
 
 const STEP_MS = 1400
 const PURPLE = '#7C3AED'
@@ -378,6 +371,8 @@ const CtaWrap = styled.div`
 `
 
 export default function UseCases() {
+  const { t } = useTranslation()
+  const STEPS = [1, 2, 3, 4, 5]
   const [material, setMaterial] = useState<string | null>(null)
   const [scenario, setScenario] = useState<string | null>(null)
   const [brief, setBrief] = useState('')
@@ -415,11 +410,10 @@ export default function UseCases() {
   }
 
   /* 高斯模糊蒙版：随任务进度逐渐清晰（22px → 0） */
-  const blur =
-    phase === 'idle' ? 0 : Math.max(0, 22 - (step / STEPS.length) * 24)
+  const blur = phase === 'idle' ? 0 : Math.max(0, 22 - (step / STEPS.length) * 24)
 
   /* 生成结果为固定四视图渲染图（与上传图无关）：主预览取正视 zheng，三视图区展示全部四张 */
-  const media = <img src={OUTPUT_FRONT} alt="Design preview" />
+  const media = <img src={OUTPUT_FRONT} alt={t('store.landing.useCases.placeholder')} />
 
   return (
     <Section id="use-cases">
@@ -427,9 +421,9 @@ export default function UseCases() {
         <HeadRow>
           <Reveal>
             <SectionHead
-              eyebrow="Real projects"
-              title="What will you make first?"
-              lead="Pick a material and a scenario, describe your idea — watch a custom preview come together, step by step."
+              eyebrow={t('store.landing.useCases.eyebrow')}
+              title={t('store.landing.useCases.title')}
+              lead={t('store.landing.useCases.lead')}
             />
           </Reveal>
         </HeadRow>
@@ -438,7 +432,7 @@ export default function UseCases() {
           {/* 左栏：配置 */}
           <Config>
             <Field>
-              <FieldLabel $color={Ink.blue}>Material</FieldLabel>
+              <FieldLabel $color={Ink.blue}>{t('store.landing.useCases.material')}</FieldLabel>
               <Chips>
                 {MATERIALS.map((m) => (
                   <Chip
@@ -450,16 +444,16 @@ export default function UseCases() {
                     $bd={Ink.blueBorder}
                     onClick={() => setMaterial(m.id)}
                   >
-                    {m.name}
+                    {t(`store.landing.useCases.materials.${m.id}`)}
                   </Chip>
                 ))}
               </Chips>
             </Field>
 
             <Field>
-              <FieldLabel $color={PURPLE}>Application</FieldLabel>
+              <FieldLabel $color={PURPLE}>{t('store.landing.useCases.application')}</FieldLabel>
               <Chips>
-                {SCENARIOS.map((s) => (
+                {SCENARIO_IDS.map((s) => (
                   <Chip
                     key={s}
                     type="button"
@@ -469,31 +463,35 @@ export default function UseCases() {
                     $bd={PURPLE_BORDER}
                     onClick={() => setScenario(s)}
                   >
-                    {s}
+                    {t(`store.landing.useCases.scenarios.${s}`)}
                   </Chip>
                 ))}
               </Chips>
             </Field>
 
             <Field>
-              <FieldLabel $color={Ink.up}>Your idea</FieldLabel>
+              <FieldLabel $color={Ink.up}>{t('store.landing.useCases.yourIdea')}</FieldLabel>
               <Brief
                 value={brief}
                 onChange={(e) => setBrief(e.target.value)}
-                placeholder="Names, dates, a quote, a logo style…"
+                placeholder={t('store.landing.useCases.ideaPlaceholder')}
                 maxLength={200}
               />
             </Field>
 
             <Field>
-              <FieldLabel $color={Ink.graphite}>Reference image</FieldLabel>
+              <FieldLabel $color={Ink.graphite}>{t('store.landing.useCases.referenceImage')}</FieldLabel>
               <UploadBox
                 type="button"
                 $hasImage={!!image}
                 onClick={() => fileInput.current?.click()}
               >
                 {image && <img src={image} alt="Reference" />}
-                <span>{image ? 'Click to replace' : '＋ Upload image'}</span>
+                <span>
+                  {image
+                    ? t('store.landing.useCases.replaceImage')
+                    : t('store.landing.useCases.uploadImage')}
+                </span>
               </UploadBox>
               <input
                 ref={fileInput}
@@ -508,7 +506,9 @@ export default function UseCases() {
             </Field>
 
             <GenerateButton type="button" disabled={!ready || phase === 'generating'} onClick={generate}>
-              {phase === 'generating' ? 'Generating…' : 'Generate Preview'}
+              {phase === 'generating'
+                ? t('store.landing.useCases.generating')
+                : t('store.landing.useCases.generatePreview')}
             </GenerateButton>
           </Config>
 
@@ -517,13 +517,16 @@ export default function UseCases() {
             <Stage>
               {phase === 'idle' ? (
                 <Placeholder>
-                  Your design preview
-                  <br />
-                  will appear here
+                  {t('store.landing.useCases.placeholder').split('\n').map((line, i) => (
+                    <span key={i}>
+                      {line}
+                      {i < 1 && <br />}
+                    </span>
+                  ))}
                 </Placeholder>
               ) : (
                 <>
-                  {phase === 'generating' && <GeneratingTag>Generating…</GeneratingTag>}
+                  {phase === 'generating' && <GeneratingTag>{t('store.landing.useCases.generating')}</GeneratingTag>}
                   <BlurMedia $blur={blur}>{media}</BlurMedia>
                 </>
               )}
@@ -536,7 +539,7 @@ export default function UseCases() {
                   return (
                     <StepRow key={label} $state={state}>
                       <StepIcon $state={state}>{state === 'done' ? '✓' : ''}</StepIcon>
-                      {label}
+                      {t(`store.landing.useCases.step${label}`)}
                     </StepRow>
                   )
                 })}
@@ -545,10 +548,10 @@ export default function UseCases() {
 
             {phase === 'done' && (
               <TriView>
-                {OUTPUT_VIEWS.filter((v) => v.key !== 'zheng').map(({ key, label }) => (
+                {OUTPUT_VIEWS.filter((v) => v.key !== 'zheng').map(({ key, i18nKey }) => (
                   <TriCell key={key}>
-                    <img src={`/output/${key}.jpg`} alt={`${label} view`} />
-                    <span>{label}</span>
+                    <img src={`/output/${key}.jpg`} alt={t(`store.landing.useCases.${i18nKey}`)} />
+                    <span>{t(`store.landing.useCases.${i18nKey}`)}</span>
                   </TriCell>
                 ))}
               </TriView>
@@ -559,7 +562,7 @@ export default function UseCases() {
         <CtaWrap>
           <Reveal delay={120}>
             <Button href="#start">
-              Start Your First Project <IconArrowRight />
+              {t('store.landing.useCases.cta')} <IconArrowRight />
             </Button>
           </Reveal>
         </CtaWrap>

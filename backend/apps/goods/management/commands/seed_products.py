@@ -45,14 +45,44 @@ XLSX_COL = {
     '服务': 'services', 'service': 'services',
 }
 
-# 英文分类树：3 个一级分类，替代原 Optimize / Automate / Launch 营销分类
+# 英文分类树：3 个一级分类，替代原 Optimize / Automate / Launch 营销分类。
+# 每个节点含三语名称（en/zh/ar）：字典 key 保持英文名不变（FOLDER_TO_CATEGORY
+# 与既有 SPU 外键依赖它），多语名写入 name_en/name_zh/name_ar 供前端 localizeCategory。
 CATEGORY_TREE = {
-    'Laser Engravers': ['LP1', 'LP2', 'LP2 Plus', 'LP4', 'LP5', 'LX2', 'LX2 40W Kit'],
-    'Accessories': ['Cutting Beds', 'Safety Enclosures', 'Rotary Systems',
-                    'Power & Filters', 'Add-ons'],
-    'Materials & Blanks': ['Material Packs', 'Wooden Blanks', 'Metal Blanks',
-                            'Jewelry Blanks', 'Leather & PU', 'Labels & Stickers',
-                            'Drinkware & Home'],
+    'Laser Engravers': {
+        'names': {'en': 'Laser Engravers', 'zh': '激光雕刻机', 'ar': 'آلات النقش بالليزر'},
+        'children': {
+            'LP1':          {'en': 'LP1',          'zh': 'LP1',          'ar': 'LP1'},
+            'LP2':          {'en': 'LP2',          'zh': 'LP2',          'ar': 'LP2'},
+            'LP2 Plus':     {'en': 'LP2 Plus',     'zh': 'LP2 Plus',     'ar': 'LP2 بلس'},
+            'LP4':          {'en': 'LP4',          'zh': 'LP4',          'ar': 'LP4'},
+            'LP5':          {'en': 'LP5',          'zh': 'LP5',          'ar': 'LP5'},
+            'LX2':          {'en': 'LX2',          'zh': 'LX2',          'ar': 'LX2'},
+            'LX2 40W Kit':  {'en': 'LX2 40W Kit',  'zh': 'LX2 40W 套件', 'ar': 'طقم LX2 40W'},
+        },
+    },
+    'Accessories': {
+        'names': {'en': 'Accessories', 'zh': '配件', 'ar': 'الملحقات'},
+        'children': {
+            'Cutting Beds':       {'en': 'Cutting Beds',      'zh': '切割垫板',   'ar': 'أسرّة القطع'},
+            'Safety Enclosures':  {'en': 'Safety Enclosures', 'zh': '安全防护罩', 'ar': 'الأغلفة الواقية'},
+            'Rotary Systems':     {'en': 'Rotary Systems',    'zh': '旋转轴系统', 'ar': 'أنظمة التدوير'},
+            'Power & Filters':    {'en': 'Power & Filters',   'zh': '电源与过滤', 'ar': 'الطاقة والمرشحات'},
+            'Add-ons':            {'en': 'Add-ons',           'zh': '扩展配件',   'ar': 'إضافات'},
+        },
+    },
+    'Materials & Blanks': {
+        'names': {'en': 'Materials & Blanks', 'zh': '材料与毛坯', 'ar': 'المواد والفراغات'},
+        'children': {
+            'Material Packs':    {'en': 'Material Packs',    'zh': '材料套组',   'ar': 'أطقم المواد'},
+            'Wooden Blanks':     {'en': 'Wooden Blanks',     'zh': '木质毛坯',   'ar': 'فراغات خشبية'},
+            'Metal Blanks':      {'en': 'Metal Blanks',      'zh': '金属毛坯',   'ar': 'فراغات معدنية'},
+            'Jewelry Blanks':    {'en': 'Jewelry Blanks',    'zh': '饰品毛坯',   'ar': 'فراغات مجوهرات'},
+            'Leather & PU':      {'en': 'Leather & PU',      'zh': '皮革与PU',   'ar': 'الجلد والـPU'},
+            'Labels & Stickers': {'en': 'Labels & Stickers', 'zh': '标签与贴纸', 'ar': 'ملصقات ولصاقات'},
+            'Drinkware & Home':  {'en': 'Drinkware & Home',  'zh': '杯具与家居', 'ar': 'أكواب ومنزل'},
+        },
+    },
 }
 
 # 图片子目录名 → (一级分类, 二级分类)
@@ -267,21 +297,41 @@ class Command(BaseCommand):
 
     # ── 分类树 ──
     def _ensure_categories(self, dry_run):
-        for root_name, children in CATEGORY_TREE.items():
+        from django.contrib.auth import get_user_model
+        admin = get_user_model().objects.filter(is_superuser=True).first()
+        for root_key, cfg in CATEGORY_TREE.items():
             if dry_run:
-                self.stdout.write(f'  [分类] (DRY) 确保: {root_name} → {", ".join(children)}')
+                names = cfg['names']
+                self.stdout.write(
+                    f'  [分类] (DRY) 确保: {root_key} '
+                    f'[{names["zh"]}/{names["ar"]}] → {", ".join(cfg["children"])}')
                 continue
-            from django.contrib.auth import get_user_model
-            admin = get_user_model().objects.filter(is_superuser=True).first()
-            root, _ = Category.objects.get_or_create(
-                name=root_name, level=1, parent=None,
-                defaults={'is_active': True, 'created_by': admin})
-            for child in children:
-                Category.objects.get_or_create(
-                    name=child, level=2, parent=root,
-                    defaults={'is_active': True, 'created_by': admin})
+            # update_or_create 以 name 匹配：已存在分类只回填三语字段，
+            # 不触碰 name 本身，避免破坏既有 SPU 的 category_id 外键。
+            root, _ = Category.objects.update_or_create(
+                name=root_key,
+                defaults={
+                    'name_en': cfg['names']['en'],
+                    'name_zh': cfg['names']['zh'],
+                    'name_ar': cfg['names']['ar'],
+                    'is_active': True,
+                    'created_by': admin,
+                })
+            Category.objects.filter(pk=root.pk).update(level=1, parent=None)
+            for child_key, child_cfg in cfg['children'].items():
+                child, _ = Category.objects.update_or_create(
+                    name=child_key,
+                    defaults={
+                        'name_en': child_cfg['en'],
+                        'name_zh': child_cfg['zh'],
+                        'name_ar': child_cfg['ar'],
+                        'is_active': True,
+                        'created_by': admin,
+                    })
+                Category.objects.filter(pk=child.pk).update(level=2, parent=root)
         if not dry_run:
-            self.stdout.write('  [分类] 确保分类树完成')
+            GoodsCacheService.invalidate_category_tree()
+            self.stdout.write('  [分类] 确保分类树完成（已回填三语名称）')
 
     # ── 单个商品导入 ──
     def _import_one(self, folder, row, brand, cat_root_name, cat_child_name,

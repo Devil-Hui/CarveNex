@@ -3,6 +3,7 @@ import { Ink, Font, Display, Type, Radius, Elevation, gridContainer, Ease, mq } 
 import { MaskLine, Reveal } from './Reveal'
 import LaserVideo, { LASER_VIDEOS } from './ui/LaserVideo'
 import { IconSparkles, IconStar, IconPlay, IconArrowRight, IconUsers } from './ui/Icon'
+import { useTranslation } from '../../../i18n'
 
 const fadeUp = keyframes`
   from { opacity: 0; transform: translateY(16px); }
@@ -289,6 +290,7 @@ const StatusLive = styled.span`
 `
 
 export default function Hero() {
+  const { t } = useTranslation()
   return (
     <Section id="top">
       <BlobA />
@@ -296,27 +298,23 @@ export default function Hero() {
       <Grid12>
         <Left>
           <Badge>
-            <IconSparkles /> Portable Laser Engraver
+            <IconSparkles /> {t('store.landing.hero.badge')}
           </Badge>
           <Title>
-            <MaskLine delay={80}>From Idea to</MaskLine>
+            <MaskLine delay={80}>{t('store.landing.hero.title1')}</MaskLine>
             <MaskLine delay={160}>
-              <em>Engraved</em> Object,
+              <em>{t('store.landing.hero.titleEm')}</em> {t('store.landing.hero.title2')}
             </MaskLine>
-            <MaskLine delay={240}>On Almost Any</MaskLine>
-            <MaskLine delay={320}>Material You Love</MaskLine>
+            <MaskLine delay={240}>{t('store.landing.hero.title3')}</MaskLine>
+            <MaskLine delay={320}>{t('store.landing.hero.title4')}</MaskLine>
           </Title>
-          <Sub>
-            CarveNex turns sketches, photos and logos into real, touchable pieces — wood, metal,
-            glass, leather and more. Design on your phone, autofocus in seconds, engrave in
-            minutes. No workshop required.
-          </Sub>
+          <Sub>{t('store.landing.hero.sub')}</Sub>
           <CtaRow>
             <PrimaryCta href="#start">
-              Shop the Engraver <IconArrowRight />
+              {t('store.landing.hero.primaryCta')} <IconArrowRight />
             </PrimaryCta>
             <GhostCta href="#materials">
-              <IconPlay /> See What It Can Engrave
+              <IconPlay /> {t('store.landing.hero.secondaryCta')}
             </GhostCta>
           </CtaRow>
           <Proof>
@@ -332,9 +330,9 @@ export default function Hero() {
                   <IconStar />
                   <IconStar />
                 </Stars>{' '}
-                4.9 · 12,000+ makers
+                {t('store.landing.hero.proofRating')}
               </strong>
-              Community across 60+ countries
+              {t('store.landing.hero.proofCommunity')}
             </ProofText>
           </Proof>
         </Left>
@@ -345,8 +343,8 @@ export default function Hero() {
               <Showcase>
                 <LaserVideo src={LASER_VIDEOS.hero} ratio="4 / 5" />
                 <Statusbar>
-                  <StatusLabel>Now engraving · Multi-material reel</StatusLabel>
-                  <StatusLive>LIVE</StatusLive>
+                  <StatusLabel>{t('store.landing.hero.statusLabel')}</StatusLabel>
+                  <StatusLive>{t('store.landing.hero.live')}</StatusLive>
                 </Statusbar>
               </Showcase>
             </Stage>

@@ -2,6 +2,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import styled, { keyframes } from 'styled-components'
 import { Ink, Font, Display, Radius, Elevation, Ease, Rhythm, gridContainer, mq } from '../editorial'
 import { SCENARIO_ROWS, type ScenarioRow, type ScenarioVideo } from '../data/scenarioGallery'
+import { galleryVideoTitles, basenameKey } from '../data/galleryLocale'
+import { useTranslation } from '../../../i18n'
 
 /**
  * 应用场景视频画廊（首页 section[2]）
@@ -21,7 +23,9 @@ import { SCENARIO_ROWS, type ScenarioRow, type ScenarioVideo } from '../data/sce
 interface GalleryItem {
   key: string
   /** 所属行类型（Materials / Applications） */
+  rowId: string
   rowName: string
+  catId: string
   catName: string
   video: ScenarioVideo
 }
@@ -30,11 +34,45 @@ const flattenRow = (row: ScenarioRow): GalleryItem[] =>
   row.categories.flatMap((c) =>
     c.videos.map((v) => ({
       key: `${row.id}/${c.id}/${v.id}`,
+      rowId: row.id,
       rowName: row.name,
+      catId: c.id,
       catName: c.name,
       video: v,
     })),
   )
+
+/** 行名三语：materials → Materials，usecases → Applications（manifest 里已是英文，直接做 key 映射） */
+const ROW_NAME_KEYS: Record<string, string> = {
+  materials: 'store.landing.gallery.rowMaterials',
+  usecases: 'store.landing.gallery.rowUseCases',
+}
+
+/** 分类名三语：manifest 中 cat.name 为英文展示名 */
+const CAT_NAME_KEYS: Record<string, string> = {
+  Featured: 'store.landing.gallery.featured',
+  Leather: 'store.landing.useCases.materials.leather',
+  Plastic: 'store.landing.useCases.materials.plastic',
+  Fabric: 'store.landing.useCases.materials.fabric',
+  Wood: 'store.landing.useCases.materials.wood',
+  Glass: 'store.landing.useCases.materials.glass',
+  Stone: 'store.landing.useCases.materials.stone',
+  Metal: 'store.landing.useCases.materials.metal',
+  '3D Embossing': 'store.landing.useCases.scenarios.embossing',
+  Logo: 'store.landing.useCases.scenarios.logo',
+  Tumblers: 'store.landing.useCases.scenarios.tumblers',
+  Gifts: 'store.landing.useCases.scenarios.gifts',
+  Apparel: 'store.landing.useCases.scenarios.apparel',
+  Shoes: 'store.landing.useCases.scenarios.shoes',
+}
+
+/** 视频标题三语：命中映射表用目标语言标题；否则回退原始 title */
+const localizedVideoTitle = (video: ScenarioVideo, lang: string): string => {
+  const entry = galleryVideoTitles[basenameKey(video.url)]
+  if (!entry) return video.title
+  const t = entry[lang as 'en' | 'zh' | 'ar']
+  return t || entry.en || video.title
+}
 
 /**
  * 读取本地文件字节以驱动真实进度条：只统计已读字节、不保留内容，
@@ -286,6 +324,20 @@ const ZoomCard = styled.div`
   }
 `
 
+/** 聚焦态播放提示：替代原 CSS ::after content（CSS 无法跟随语言切换） */
+const PlayHint = styled.span`
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  background: rgba(14, 16, 19, 0.28);
+  opacity: 0;
+  transition: opacity 0.25s ${Ease.cinema};
+`
+
 const ZoomUpper = styled.button`
   flex: 8 1 0;
   min-height: 0;
@@ -301,20 +353,7 @@ const ZoomUpper = styled.button`
     display: block;
     pointer-events: none;
   }
-  &::after {
-    content: '▶ Play';
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    color: #fff;
-    font-size: 15px;
-    font-weight: 600;
-    background: rgba(14, 16, 19, 0.28);
-    opacity: 0;
-    transition: opacity 0.25s ${Ease.cinema};
-  }
-  &:hover::after {
+  &:hover PlayHint {
     opacity: 1;
   }
 `
@@ -533,6 +572,7 @@ const ProgressFill = styled.div<{ $pct: number }>`
 
 /* ── 组件 ─────────────────────────────────────────────────── */
 export default function ScenarioGallery() {
+  const { t, lang } = useTranslation()
   const fileInput = useRef<HTMLInputElement>(null)
   const [uploads, setUploads] = useState<ScenarioVideo[]>([])
   /** 本次会话新增的视频 id：用于跑马灯/视频墙上的「NEW」区分 */
@@ -548,9 +588,14 @@ export default function ScenarioGallery() {
   const rows = useMemo<ScenarioRow[]>(() => {
     if (!uploads.length) return SCENARIO_ROWS
     const [first, ...rest] = SCENARIO_ROWS
-    const cat = { id: 'uploads', name: 'Uploads', desc: 'Fresh local uploads', videos: uploads }
+    const cat = {
+      id: 'uploads',
+      name: t('store.landing.gallery.uploadsCat'),
+      desc: t('store.landing.gallery.uploadsDesc'),
+      videos: uploads,
+    }
     return [{ ...first, categories: [cat, ...first.categories.filter((c) => c.id !== 'uploads')] }, ...rest]
-  }, [uploads])
+  }, [uploads, t])
 
   const expandRow = useMemo(
     () => (focus ? rows.find((r) => r.id === focus.rowId) ?? null : null),
@@ -612,15 +657,15 @@ export default function ScenarioGallery() {
   }, [focus])
 
   return (
-    <Section aria-label="Real-World Scenarios">
+    <Section aria-label={t('store.landing.gallery.title')}>
       <Head>
         <div>
-          <Eyebrow>SCENARIOS</Eyebrow>
-          <Title>Real-World Scenarios</Title>
-          <Sub>Tap any card to play</Sub>
+          <Eyebrow>{t('store.landing.gallery.eyebrow')}</Eyebrow>
+          <Title>{t('store.landing.gallery.title')}</Title>
+          <Sub>{t('store.landing.gallery.sub')}</Sub>
         </div>
         <AddButton type="button" onClick={() => fileInput.current?.click()}>
-          + Add Videos
+          {t('store.landing.gallery.addVideos')}
         </AddButton>
         <input
           ref={fileInput}
@@ -639,26 +684,31 @@ export default function ScenarioGallery() {
       {rows.map((row, rowIdx) => {
         const items = flattenRow(row)
         const doubled = [...items, ...items]
+        const rowName = ROW_NAME_KEYS[row.id] ? t(ROW_NAME_KEYS[row.id]) : row.name
         return (
           <Fragment key={row.id}>
-            <RowLabel>{row.name}</RowLabel>
-            <MarqueeRow aria-label={row.name}>
+            <RowLabel>{rowName}</RowLabel>
+            <MarqueeRow aria-label={rowName}>
               <Track data-track $dur={Math.max(items.length * 5, 24)} $reverse={rowIdx % 2 === 1}>
-                {doubled.map((item, i) => (
-                  <Card
-                    key={`${item.key}-${i}`}
-                    type="button"
-                    aria-hidden={i >= items.length}
-                    tabIndex={i >= items.length ? -1 : 0}
-                    title={item.video.title}
-                    $isNew={newIds.has(item.video.id)}
-                    onClick={() => setFocus({ rowId: row.id, item })}
-                  >
-                    <AutoVideo src={item.video.url} />
-                    {newIds.has(item.video.id) && <NewBadge>NEW</NewBadge>}
-                    <CardChip>{item.catName}</CardChip>
-                  </Card>
-                ))}
+                {doubled.map((item, i) => {
+                  const title = localizedVideoTitle(item.video, lang)
+                  const catName = CAT_NAME_KEYS[item.catName] ? t(CAT_NAME_KEYS[item.catName]) : item.catName
+                  return (
+                    <Card
+                      key={`${item.key}-${i}`}
+                      type="button"
+                      aria-hidden={i >= items.length}
+                      tabIndex={i >= items.length ? -1 : 0}
+                      title={title}
+                      $isNew={newIds.has(item.video.id)}
+                      onClick={() => setFocus({ rowId: row.id, item })}
+                    >
+                      <AutoVideo src={item.video.url} />
+                      {newIds.has(item.video.id) && <NewBadge>{t('store.landing.gallery.new')}</NewBadge>}
+                      <CardChip>{catName}</CardChip>
+                    </Card>
+                  )
+                })}
               </Track>
             </MarqueeRow>
           </Fragment>
@@ -670,22 +720,23 @@ export default function ScenarioGallery() {
         <>
           <Scrim onClick={closeFocus} />
           <ZoomLayer>
-            <ZoomCard role="dialog" aria-label={focus.item.video.title}>
+            <ZoomCard role="dialog" aria-label={localizedVideoTitle(focus.item.video, lang)}>
               <ZoomUpper type="button" onClick={() => setPlaying(focus.item.video)}>
                 <AutoVideo src={focus.item.video.url} />
+                <PlayHint>▶ {t('store.landing.gallery.play')}</PlayHint>
               </ZoomUpper>
               <ZoomLower>
                 <ZoomName>
-                  {focus.item.rowName}
+                  {ROW_NAME_KEYS[focus.item.rowId] ? t(ROW_NAME_KEYS[focus.item.rowId]) : focus.item.rowName}
                   <ZoomSep aria-hidden="true">|</ZoomSep>
-                  {focus.item.catName}
+                  {CAT_NAME_KEYS[focus.item.catName] ? t(CAT_NAME_KEYS[focus.item.catName]) : focus.item.catName}
                 </ZoomName>
                 <div style={{ display: 'flex', gap: 10, flex: 'none' }}>
                   <GhostButton type="button" onClick={closeFocus}>
-                    Back
+                    {t('store.landing.gallery.back')}
                   </GhostButton>
                   <SolidButton type="button" onClick={() => setExpanded(true)}>
-                    Expand
+                    {t('store.landing.gallery.expand')}
                   </SolidButton>
                 </div>
               </ZoomLower>
@@ -696,9 +747,9 @@ export default function ScenarioGallery() {
 
       {/* ③ 展开态：本行卡片按分类网格排布 */}
       {focus && expanded && expandRow && (
-        <ExpandLayer role="dialog" aria-label={`${expandRow.name} list`}>
+        <ExpandLayer role="dialog" aria-label={t('store.landing.gallery.listAria', { name: expandRow.name })}>
           <ExpandBar>
-            <h3>{expandRow.name}</h3>
+            <h3>{ROW_NAME_KEYS[expandRow.id] ? t(ROW_NAME_KEYS[expandRow.id]) : expandRow.name}</h3>
             <ExpandActions>
               <GhostButton
                 type="button"
@@ -706,40 +757,50 @@ export default function ScenarioGallery() {
                 aria-checked={showNotes}
                 onClick={() => setShowNotes((v) => !v)}
               >
-                Captions: {showNotes ? 'On' : 'Off'}
+                {showNotes
+                  ? t('store.landing.gallery.captionsOn')
+                  : t('store.landing.gallery.captionsOff')}
               </GhostButton>
               <SolidButton type="button" onClick={() => setExpanded(false)}>
-                Back
+                {t('store.landing.gallery.back')}
               </SolidButton>
             </ExpandActions>
           </ExpandBar>
           <ExpandBody>
-            {expandRow.categories.map((cat) => (
-              <CatBlock key={cat.id}>
-                {showNotes && (
-                  <CatNote>
-                    <strong>{cat.name}</strong>
-                    {cat.desc}
-                  </CatNote>
-                )}
-                <Grid>
-                  {cat.videos.map((v) => (
-                    <div key={v.id}>
-                      <GridCard
-                        type="button"
-                        title={v.title}
-                        $isNew={newIds.has(v.id)}
-                        onClick={() => setPlaying(v)}
-                      >
-                        <AutoVideo src={v.url} />
-                        {newIds.has(v.id) && <NewBadge>NEW</NewBadge>}
-                      </GridCard>
-                      <GridLabel>{v.title}</GridLabel>
-                    </div>
-                  ))}
-                </Grid>
-              </CatBlock>
-            ))}
+            {expandRow.categories.map((cat) => {
+              const catName = CAT_NAME_KEYS[cat.name] ? t(CAT_NAME_KEYS[cat.name]) : cat.name
+              return (
+                <CatBlock key={cat.id}>
+                  {showNotes && (
+                    <CatNote>
+                      <strong>{catName}</strong>
+                      {t(`store.landing.gallery.descs.${cat.desc}`) !== `store.landing.gallery.descs.${cat.desc}`
+                        ? t(`store.landing.gallery.descs.${cat.desc}`)
+                        : cat.desc}
+                    </CatNote>
+                  )}
+                  <Grid>
+                    {cat.videos.map((v) => {
+                      const title = localizedVideoTitle(v, lang)
+                      return (
+                        <div key={v.id}>
+                          <GridCard
+                            type="button"
+                            title={title}
+                            $isNew={newIds.has(v.id)}
+                            onClick={() => setPlaying(v)}
+                          >
+                            <AutoVideo src={v.url} />
+                            {newIds.has(v.id) && <NewBadge>{t('store.landing.gallery.new')}</NewBadge>}
+                          </GridCard>
+                          <GridLabel>{title}</GridLabel>
+                        </div>
+                      )
+                    })}
+                  </Grid>
+                </CatBlock>
+              )
+            })}
           </ExpandBody>
         </ExpandLayer>
       )}
@@ -748,7 +809,7 @@ export default function ScenarioGallery() {
       {playing && (
         <PlayerLayer onClick={() => setPlaying(null)}>
           <PlayerClose type="button" onClick={() => setPlaying(null)}>
-            Close
+            {t('store.landing.gallery.close')}
           </PlayerClose>
           <PlayerBox onClick={(e) => e.stopPropagation()}>
             <video src={playing.url} controls autoPlay playsInline />
@@ -760,7 +821,12 @@ export default function ScenarioGallery() {
       {adding && (
         <ProgressToast role="status" aria-live="polite">
           <ProgressLabel>
-            <span>正在添加视频 {Math.min(adding.done + 1, adding.total)}/{adding.total}</span>
+            <span>
+              {t('store.landing.gallery.addingVideos', {
+                done: Math.min(adding.done + 1, adding.total),
+                total: adding.total,
+              })}
+            </span>
             <span>{Math.round(adding.pct * 100)}%</span>
           </ProgressLabel>
           <ProgressTrack>
