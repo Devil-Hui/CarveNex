@@ -2,14 +2,13 @@ import styled from 'styled-components'
 import { Ink } from '../../editorial'
 
 /**
- * 落地页视频基础组件 —— 实拍场景视频统一走 public/videos/laserpeck/（同源静态资源，
- * 符合 CSP default-src 'self' 约束，禁止外链）。
- * 该目录是「应用场景」视频的唯一副本（原 public/videos/laser 的改名副本已删除），
- * 下方每个 key 均指向该目录中的原件（原先的 16 个改名文件与其字节完全一致）。
+ * 落地页视频基础组件 —— 实拍场景视频在 Cloudflare R2/CDN（cdn.carvenex.com）。
+ * 前端托管于 Cloudflare Pages，同源 /videos/ 会命中 SPA fallback（返回 index.html
+ * 而非视频），故必须引用 CDN 绝对路径。下述 key 均指向 CDN 上的原件。
  * 自动播放（静音 + 循环 + playsInline），object-fit: cover 保证任何视口不变形，
  * preload="metadata" 控制首屏外流量开销。
  */
-const VP = '/videos/laserpeck'
+const VP = 'https://cdn.carvenex.com/videos/laserpeck'
 /** 逐段编码，与 gen-scenario-manifest.cjs 生成的 URL 规则保持一致 */
 const v = (p: string) => `${VP}/${p.split('/').map(encodeURIComponent).join('/')}`
 

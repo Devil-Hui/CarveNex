@@ -14,8 +14,10 @@ const path = require('path')
 const SCENARIO_VIDEO_DIR =
   process.env.SCENARIO_VIDEO_DIR || path.join(__dirname, 'public', 'videos', 'laserpeck')
 
-/** 唯一 URL 前缀：与 SCENARIO_VIDEO_DIR 在 public 下的相对位置严格一致 */
-const SCENARIO_VIDEO_URL = '/videos/laserpeck'
+/** 唯一 URL 前缀：视频已上传到 Cloudflare R2/CDN（cdn.carvenex.com），
+ * 直接引用 CDN 绝对路径。前端部署在 Cloudflare Pages，同源 /videos/ 会命中
+ * SPA fallback（返回 index.html 而非视频），故必须走 CDN。 */
+const SCENARIO_VIDEO_URL = process.env.SCENARIO_VIDEO_URL || 'https://cdn.carvenex.com/videos/laserpeck'
 
 /** 唯一画廊清单：由 gen-scenario-manifest.cjs 生成、ScenarioGallery.tsx 消费 */
 const SCENARIO_MANIFEST = path.join(__dirname, 'src', 'pages', 'Home', 'data', 'scenarioGallery.ts')
