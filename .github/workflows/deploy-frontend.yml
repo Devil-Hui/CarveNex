@@ -1,0 +1,69 @@
+# =============================================================================
+# CarveNex 前端 — 每次提交自动部署到 Cloudflare Workers
+# -----------------------------------------------------------------------------
+# 触发：push 到 master 且改动 web/react/**（或手动 workflow_dispatch）
+# 流程：npm ci → npm run build → wrangler deploy（Workers Static Assets）
+#
+# 需要的仓库 Secrets（Settings → Secrets and variables → Actions）：
+#   CLOUDFLARE_API_TOKEN  — 权限：Account → Workers Scripts → Edit
+#   CLOUDFLARE_ACCOUNT_ID — 281948ce6c98dd6f
+#
+# 未配置 secret 时本 workflow 会跳过部署（不报错），仅提示 warning。
+# =============================================================================
+name: Deploy Frontend to Cloudflare
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'web/react/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check secrets
+        id: check
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN 未配置，跳过 Cloudflare 部署"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/react/package-lock.json
+
+      - name: Install dependencies
+        if: steps.check.outputs.skip != 'true'
+        working-directory: web/react
+        run: npm ci
+
+      - name: Build
+        if: steps.check.outputs.skip != 'true'
+        working-directory: web/react
+        run: npm run build
+
+      - name: Deploy to Cloudflare Workers
+        if: steps.check.outputs.skip != 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web/react
+          command: deploy
