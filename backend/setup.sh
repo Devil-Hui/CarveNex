@@ -120,6 +120,10 @@ init_system() {
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Seeding demo data (orders/reviews/favorites/carts/etc.)..."
         python manage.py seed_demo_data || echo "[WARN] seed_demo_data 执行失败，请检查"
     fi
+    # 推广投放模块初始数据（幂等：5 个投放平台 / 对比指标 / 热搜词 / 热榜商品）。
+    # 必须在 seed_daily_metrics 之前执行：后者依赖 ads_platform 已有启用平台。
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Seeding ads data (platforms/metrics/hot searches)..."
+    python manage.py seed_ads || echo "[WARN] seed_ads 执行失败，请检查"
     # 广告投放每日指标（幂等：bulk_create ignore_conflicts + 固定种子）。
     # 放到 seed 分支之外，确保【首次创建】和【每次更新/重启】都会自动刷新
     # 过去 7 天数据（同一天同一平台/商品数据不变，重复执行不产生重复行）。
