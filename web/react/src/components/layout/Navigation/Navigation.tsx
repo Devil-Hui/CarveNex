@@ -1,6 +1,6 @@
 // CarveNex Navigation — Main site header with category mega menu and cart dropdown
 import { Color, Radius, Shadow, Spacing, FontSize, Transition } from '../../../theme/tokens'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../../../store/CartContext'
 import { useUser } from '../../../store/UserContext'
@@ -502,6 +502,21 @@ export default function Navigation({ forceFullNav = false }: { forceFullNav?: bo
   const { categories: shopCategories } = useCategories()
   const [showLangMenu, setShowLangMenu] = useState(false)
 
+  // ── 导航顺序：推广精投 = 新旧分类分界线 ──────────────────────────
+  // 目标顺序：[旧分类(创建早)] [推广精投] [新分类(后创建)]。
+  // 现有旧一级分类 id <= 15（Laser Engravers / Accessories / Materials & Blanks），
+  // 此后在后台新建的分类 id 更大，按创建先后排到「推广精投」之后。
+  // 用 LEGACY_CATEGORY_ID_LIMIT 作为锚点：旧分类在此值之前，新分类在此值之后。
+  const LEGACY_CATEGORY_ID_LIMIT = 15
+  const legacyCategories = useMemo(
+    () => shopCategories.filter(c => c.id <= LEGACY_CATEGORY_ID_LIMIT).sort((a, b) => a.id - b.id),
+    [shopCategories],
+  )
+  const freshCategories = useMemo(
+    () => shopCategories.filter(c => c.id > LEGACY_CATEGORY_ID_LIMIT).sort((a, b) => a.id - b.id),
+    [shopCategories],
+  )
+
   // Nickname modal state
   const [showNicknameModal, setShowNicknameModal] = useState(false)
   const [newNickname, setNewNickname] = useState('')
@@ -602,8 +617,9 @@ export default function Navigation({ forceFullNav = false }: { forceFullNav?: bo
 
         <MainNav $force={forceFullNav}>
           {/* 商城分类：一级标题 = 商城大类，子项 = 二级分类，前瞻性设计 */}
-          {shopCategories.map(cat => (
-            <NavItem key={cat.id}>
+          {/* 旧分类（创建早，id <= 15）排在最前 */}
+          {legacyCategories.map(cat => (
+            <NavItem key={`legacy-${cat.id}`}>
               <NavLink
                 href={`/category?cat_id=${cat.id}`}
                 onClick={e => {
@@ -632,7 +648,7 @@ export default function Navigation({ forceFullNav = false }: { forceFullNav?: bo
               )}
             </NavItem>
           ))}
-          {/* 固定入口：推广精投（展示页） */}
+          {/* 固定入口：推广精投（展示页）— 新旧分类的分界线 */}
           <NavItem>
             <NavLink
               href="/promo-precision"
@@ -644,6 +660,37 @@ export default function Navigation({ forceFullNav = false }: { forceFullNav?: bo
               {t('store.nav.promoPrecision')}
             </NavLink>
           </NavItem>
+          {/* 新分类（后创建，id > 15）排在推广精投之后 */}
+          {freshCategories.map(cat => (
+            <NavItem key={`fresh-${cat.id}`}>
+              <NavLink
+                href={`/category?cat_id=${cat.id}`}
+                onClick={e => {
+                  e.preventDefault()
+                  navigate(`/category?cat_id=${cat.id}`)
+                }}
+              >
+                {localizeCategory(lang, cat)}
+                {cat.children && cat.children.length > 0 && <NavCaret>▾</NavCaret>}
+              </NavLink>
+              {cat.children && cat.children.length > 0 && (
+                <SubMenu className="nav-submenu">
+                  {cat.children.map(child => (
+                    <SubItem
+                      key={child.id}
+                      href={`/category?cat_id=${child.id}`}
+                      onClick={e => {
+                        e.preventDefault()
+                        navigate(`/category?cat_id=${child.id}`)
+                      }}
+                    >
+                      {localizeCategory(lang, child)}
+                    </SubItem>
+                  ))}
+                </SubMenu>
+              )}
+            </NavItem>
+          ))}
         </MainNav>
 
         <NavActions>

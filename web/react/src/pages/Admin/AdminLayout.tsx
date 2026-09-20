@@ -530,7 +530,6 @@ function useMenuItems() {
         { to: '/admin/ads', label: t('admin.layout.menu.adsPrecision'), icon: 'trending' },
         { to: '/admin/categories', label: t('admin.layout.menu.categories'), icon: 'grid' },
         { to: '/admin/brands', label: t('admin.layout.menu.brands'), icon: 'brand' },
-        { to: '/admin/tags', label: t('admin.layout.menu.tags'), icon: 'tag' },
         { to: '/admin/media-import', label: t('admin.layout.menu.mediaImport'), icon: 'upload' },
       ],
     },
