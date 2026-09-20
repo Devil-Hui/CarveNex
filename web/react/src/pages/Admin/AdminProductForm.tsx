@@ -1842,7 +1842,8 @@ export default function AdminProductForm() {
             }
             setUploadState((s) => ({ ...s, uploaded: s.uploaded + 1, percent: 0 }))
           } else if (item.mediaType === 'video' && item.videoBlob) {
-            // 视频：/goods/media/spu/{id}/video/upload（与编辑模式同一端点）。
+            // 视频：>90MB 走 R2 分片直传（绕开 CF 100MB 边缘限制）；
+            // ≤90MB 走原经代理上传，一次到位。
             // 新建模式下 SPU 刚创建，暂存区视频必须在此上传，否则保存后被清空丢失。
             const videoFile = new File(
               [item.videoBlob],
@@ -1850,9 +1851,13 @@ export default function AdminProductForm() {
               { type: item.videoBlob.type || 'video/mp4' },
             )
             try {
-              await adminAPI.uploadVideo(spuId, videoFile, (p) => {
+              const onUp = (p: number) =>
                 setUploadState((s) => ({ ...s, percent: p, fileName: item.fileName }))
-              }, item.videoFrameThumb)
+              if (videoFile.size > 90 * 1024 * 1024) {
+                await adminAPI.uploadVideoDirect(spuId, videoFile, onUp, item.videoFrameThumb)
+              } else {
+                await adminAPI.uploadVideo(spuId, videoFile, onUp, item.videoFrameThumb)
+              }
               if (item.id != null) await deleteStagedItem(item.id)
             } catch (e) {
               console.warn('[AdminProductForm] 上传视频媒体失败 spu=%s:', spuId, e)

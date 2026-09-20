@@ -627,9 +627,11 @@ export default function MediaManager({
             try {
               // 首帧：弹窗已提取（1 张 WebP 缩略图），随视频一并上传，
               // 后端写入 video_thumb_url，列表/详情即以该首帧作为显示图。
-              await adminAPI.uploadVideo(spuId, videoFile, (percent) => {
-                setUploadQueue((q) => ({ ...q, percent }))
-              }, item.videoFrameThumb)
+              // >90MB 走 R2 分片直传（绕开 CF 100MB 边缘限制），否则原经代理上传。
+              const uploader = videoFile.size > 90 * 1024 * 1024
+                ? adminAPI.uploadVideoDirect(spuId, videoFile, (percent) => setUploadQueue((q) => ({ ...q, percent })), item.videoFrameThumb)
+                : adminAPI.uploadVideo(spuId, videoFile, (percent) => setUploadQueue((q) => ({ ...q, percent })), item.videoFrameThumb)
+              await uploader
               setUploadQueue({ ...INITIAL_QUEUE, status: 'done' })
               // 刷新已保存媒体列表（视频默认置于队列首位）
               const fresh = await adminAPI.getMediaBySPU(spuId)

@@ -1,9 +1,11 @@
 """媒体管理 API —— 列表 / 删除 / 排序 / 信息更新 / 编辑模式上传"""
 
 import os
+import json
 from utils.storage import media_key
 import logging
 from io import BytesIO
+import uuid
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -677,6 +679,261 @@ class MediaVideoCreateView(BaseApiView):
             sort_order=MediaService.get_next_sort_order(spu_id, 'video'),
             status='active',
             file_size=video.size,
+        )
+        GoodsCacheService.invalidate_media_list(spu_id)
+        GoodsCacheService.invalidate_spu(spu_id)
+        GoodsCacheService.invalidate_spu_list()
+        return Response(_serialize_media(media), status=status.HTTP_201_CREATED)
+
+
+def _r2_client():
+    """构造指向 Cloudflare R2 的 boto3 S3 client（仅当生产启用 R2）。
+
+    依赖 django-storages 的 S3Boto3Storage 配置（AWS_* 环境变量已在 settings.prod
+    注入）。未配置 R2 时返回 None，调用方应降级报错。
+    """
+    if getattr(settings, 'FILE_STORAGE', 'local') != 'r2':
+        return None
+    account_id = getattr(settings, 'R2_ACCOUNT_ID', '')
+    if not account_id:
+        return None
+    import boto3
+    return boto3.client(
+        's3',
+        endpoint_url=f'https://{account_id}.r2.cloudflarestorage.com',
+        aws_access_key_id=getattr(settings, 'R2_ACCESS_KEY_ID', ''),
+        aws_secret_access_key=getattr(settings, 'R2_SECRET_ACCESS_KEY', ''),
+        region_name='auto',
+    )
+
+
+_VIDEO_ALLOWED_EXT = {'.mp4', '.webm', '.mov'}
+
+
+
+class MediaVideoChunkInitView(BaseApiView):
+    """分片上传第 1 步：申请 R2 multipart upload。
+
+    路由: POST /goods/media/spu/<spu_id>/video/chunk-init
+    请求体: {"file_name": "demo.mp4", "content_type": "video/mp4", "file_size": 12345678}
+    响应: { "key": "...", "upload_id": "...", "chunk_size": 8388608, "chunks": 12 }
+    """
+
+    permission_classes = [HasPerm('goods.media.write')]
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiResponse(description='Multipart init')})
+    def post(self, request, spu_id):
+        try:
+            spu = SPU.objects.get(id=spu_id, deleted_at__isnull=True)
+        except SPU.DoesNotExist:
+            return Response({'detail': 'SPU 不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not can_operate_spu(request.user, spu):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        client = _r2_client()
+        if client is None:
+            return Response({'detail': '服务端未启用 R2，无法分片上传。请改用普通视频上传。'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file_name = str(request.data.get('file_name', '') or '').strip()
+        content_type = str(request.data.get('content_type', '') or '').lower().strip()
+        file_size = int(request.data.get('file_size') or 0)
+        if not file_name or not content_type:
+            return Response({'detail': '缺少 file_name 或 content_type'}, status=status.HTTP_400_BAD_REQUEST)
+        if content_type not in {'video/mp4', 'video/webm', 'video/quicktime'}:
+            return Response({'detail': f'不支持的文件类型: {content_type}'}, status=status.HTTP_400_BAD_REQUEST)
+        ext = os.path.splitext(file_name)[1].lower() or '.mp4'
+        if ext not in _VIDEO_ALLOWED_EXT:
+            return Response({'detail': f'不支持的扩展名: {ext}'}, status=status.HTTP_400_BAD_REQUEST)
+        max_bytes = getattr(settings, 'MEDIA_MAX_VIDEO_SIZE_MB', 200) * 1024 * 1024
+        if file_size > max_bytes:
+            return Response(
+                {'detail': f'视频过大（> {settings.MEDIA_MAX_VIDEO_SIZE_MB}MB）'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        key = media_key('products/video', ext)
+        chunk_size = int(getattr(settings, 'R2_CHUNK_SIZE', 8)) * 1024 * 1024
+        chunks = max(1, -(-file_size // chunk_size)) if file_size else 1
+        try:
+            created = client.create_multipart_upload(
+                Bucket=getattr(settings, 'R2_BUCKET', ''),
+                Key=key,
+                ContentType=content_type,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception('创建 R2 分片上传失败 spu=%s', spu_id)
+            return Response({'detail': f'创建分片上传失败：{type(exc).__name__}'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({
+            'key': key,
+            'upload_id': created['UploadId'],
+            'chunk_size': chunk_size,
+            'chunks': chunks,
+        })
+
+
+class MediaVideoChunkUploadView(BaseApiView):
+    """分片上传第 2 步：上传单个分片。
+
+    路由：POST /gw/media/spu/<spu_id>/video/chunk-upload
+    multipart/form-data: upload_id + key + part_number + part(文件)
+    """
+
+    permission_classes = [HasPerm('goods.media.write')]
+
+    def post(self, request, spu_id):
+        try:
+            spu = SPU.objects.get(id=spu_id, deleted_at__isnull=True)
+        except SPU.DoesNotExist:
+            return Response({'detail': 'SPU 不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not can_operate_spu(request.user, spu):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        client = _r2_client()
+        if client is None:
+            return Response({'detail': '服务端未启用 R2'}, status=status.HTTP_400_BAD_REQUEST)
+
+        upload_id = str(request.data.get('upload_id', '') or '').strip()
+        part_number = int(request.data.get('part_number') or 0)
+        key = str(request.data.get('key', '') or '').strip()
+        chunk = request.FILES.get('part')
+        if not upload_id or not key or not part_number or not chunk:
+            return Response({'detail': '缺少 upload_id/key/part_number/part'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            chunk_bytes = chunk.read()
+            resp = client.upload_part(
+                Bucket=getattr(settings, 'R2_BUCKET', ''),
+                Key=key,
+                UploadId=upload_id,
+                PartNumber=part_number,
+                Body=chunk_bytes,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception('分片上传失败 spu=%s part=%s', spu_id, part_number)
+            return Response({'detail': f'分片上传失败：{type(exc).__name__}'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({'etag': resp.get('ETag', '')})
+
+
+class MediaVideoChunkCompleteView(BaseApiView):
+    """分片上传第 3 步：完成 multipart —— 合并对象并建立 ProductMedia(video)。
+
+    请求体: {"key":..., "upload_id":..., "parts": [{"part_number":1,"etag":"..."},...],
+              "content_type": "video/mp4", "file_size": 12345678}
+    可选 thumb: 视频头帧 WebP（multipart file）。
+    """
+
+    permission_classes = [HasPerm('goods.media.write')]
+
+    def post(self, request, spu_id):
+        try:
+            spu = SPU.objects.get(id=spu_id, deleted_at__isnull=True)
+        except SPU.DoesNotExist:
+            return Response({'detail': 'SPU 不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not can_operate_spu(request.user, spu):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not MediaService.validate_media_count(spu_id, 'video'):
+            return Response(
+                {'detail': f'视频数量已达上限 ({settings.MEDIA_MAX_VIDEOS_PER_SPU} 条)'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        client = _r2_client()
+        if client is None:
+            return Response({'detail': '服务端未启用 R2'}, status=status.HTTP_400_BAD_REQUEST)
+
+        key = str(request.data.get('key', '') or '').strip()
+        upload_id = str(request.data.get('upload_id', '') or '').strip()
+        raw_parts = request.data.get('parts') or []
+        # multipart/form-data 传 JSON 字符串；JSON body 时已是 list
+        if isinstance(raw_parts, str) and raw_parts.strip():
+            try:
+                raw_parts = json.loads(raw_parts)
+            except (ValueError, TypeError):
+                raw_parts = []
+        content_type = str(request.data.get('content_type', '') or '').strip().lower()
+        file_size = int(request.data.get('file_size') or 0)
+        if not key or not upload_id or not raw_parts:
+            return Response({'detail': '缺少 key/upload_id/parts'}, status=status.HTTP_400_BAD_REQUEST)
+        if not key.startswith('products/video/'):
+            return Response({'detail': '非法的对象 key'}, status=status.HTTP_400_BAD_REQUEST)
+
+        parts = []
+        seen = set()
+        for p in raw_parts:
+            try:
+                num = int(p.get('part_number'))
+                etag = (p.get('etag') or '').strip()
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if not num or not etag or num in seen:
+                continue
+            seen.add(num)
+            parts.append({'PartNumber': num, 'ETag': etag})
+        if not parts:
+            return Response({'detail': 'parts 必须含 part_number + etag'}, status=status.HTTP_400_BAD_REQUEST)
+        parts.sort(key=lambda x: x['PartNumber'])
+
+        try:
+            client.complete_multipart_upload(
+                Bucket=getattr(settings, 'R2_BUCKET', ''),
+                Key=key,
+                UploadId=upload_id,
+                MultipartUpload={'Parts': parts},
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception('分片合并失败 spu=%s key=%s', spu_id, key)
+            try:
+                client.abort_multipart_upload(
+                    Bucket=getattr(settings, 'R2_BUCKET', ''),
+                    Key=key,
+                    UploadId=upload_id,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            return Response({'detail': f'分片合并失败：{type(exc).__name__}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if not file_size:
+            try:
+                head = client.head_object(
+                    Bucket=getattr(settings, 'R2_BUCKET', ''),
+                    Key=key,
+                )
+                file_size = int(head.get('ContentLength') or 0)
+            except Exception:  # noqa: BLE001
+                file_size = 0
+        max_bytes = getattr(settings, 'MEDIA_MAX_VIDEO_SIZE_MB', 200) * 1024 * 1024
+        if file_size > max_bytes:
+            return Response(
+                {'detail': f'视频过大（> {settings.MEDIA_MAX_VIDEO_SIZE_MB}MB）'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        video_url = f"{getattr(settings, 'R2_PUBLIC_URL', '').rstrip('/') or 'https://cdn.carvenex.com'}/{key}"
+
+        video_thumb_url = ''
+        thumb = request.FILES.get('thumb')
+        if thumb:
+            try:
+                thumb_path = default_storage.save(
+                    media_key('products/video_thumb', '.webp'),
+                    thumb,
+                )
+                video_thumb_url = default_storage.url(thumb_path)
+            except Exception as exc:  # noqa: BLE001 - 首帧保存失败不影响主视频
+                _logger.warning('SPU %s 视频首帧保存失败: %s', spu_id, exc)
+
+        media = ProductMedia.objects.create(
+            spu=spu,
+            media_type='video',
+            video_url=video_url,
+            video_thumb_url=video_thumb_url,
+            sort_order=MediaService.get_next_sort_order(spu_id, 'video'),
+            status='active',
+            file_size=file_size,
         )
         GoodsCacheService.invalidate_media_list(spu_id)
         GoodsCacheService.invalidate_spu(spu_id)

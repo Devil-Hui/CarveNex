@@ -433,6 +433,78 @@ export const adminAPI = {
     );
   },
 
+  /** 1.3 视频分片直传：绕开 Cloudflare 100MB 边缘限制。
+   *  流程：chunk-init 申请 R2 multipart → 按 8MB 分片逐块经 api 上传（每片远小于
+   *  CF 限制）→ chunk-complete 合并并新建 ProductMedia。无需配置 bucket CORS。 */
+  async uploadVideoDirect(
+    spuId: number,
+    file: File,
+    onProgress?: (percent: number) => void,
+    thumbFile?: Blob | null,
+  ): Promise<ProductMediaItem> {
+    const content_type = file.type || 'video/mp4'
+    const file_size = file.size
+
+    // ① 申请分片上传
+    const init = await post<{
+      key: string;
+      upload_id: string;
+      chunk_size: number;
+      chunks: number;
+    }>(`/goods/media/spu/${spuId}/video/chunk-init`, {
+      file_name: file.name,
+      content_type,
+      file_size,
+    })
+    const { key, upload_id, chunk_size } = init
+    const totalChunks = Math.max(1, Math.ceil(file_size / chunk_size))
+    const parts: { part_number: number; etag: string }[] = []
+
+    // ② 逐块上传
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunk_size
+      const end = Math.min(start + chunk_size, file_size)
+      const blob = file.slice(start, end)
+      const fd = new FormData()
+      fd.append('upload_id', upload_id)
+      fd.append('key', key)
+      fd.append('part_number', String(i + 1))
+      fd.append('part', blob, 'chunk.bin')
+      // 逐块同步（避免 CF 并发限速 / 内存峰值）；失败重试 3 次
+      let etag = ''
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const res = await postWithProgress<{ etag: string }>(
+            `/goods/media/spu/${spuId}/video/chunk-upload`, fd,
+          )
+          etag = res.etag
+          break
+        } catch (e) {
+          if (attempt === 2) throw e
+          await new Promise((r) => setTimeout(r, 800))
+        }
+      }
+      parts.push({ part_number: i + 1, etag })
+      if (onProgress) {
+        onProgress(Math.round(((i + 1) / totalChunks) * 100))
+      }
+    }
+
+    // ③ 合并并建立记录
+    const completeFd = new FormData()
+    completeFd.append('key', key)
+    completeFd.append('upload_id', upload_id)
+    completeFd.append('content_type', content_type)
+    completeFd.append('file_size', String(file_size))
+    completeFd.append('parts', JSON.stringify(parts))
+    if (thumbFile) {
+      completeFd.append('thumb', thumbFile, 'frame.webp')
+    }
+    return postWithProgress<ProductMediaItem>(
+      `/goods/media/spu/${spuId}/video/chunk-complete`, completeFd,
+    );
+  },
+
   // Notification（统一走通用通知中心 /notification/，含客服消息 cs_* 通知）
   getNotifications: (params?: { page?: number; per_page?: number }) =>
     get<PaginatedData<NotificationItem>>('/notification/', params),

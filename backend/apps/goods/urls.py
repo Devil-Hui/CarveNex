@@ -34,7 +34,7 @@ from .views import (
     # Admin Import/Export
     ImportProductsView, ExportProductsView, ImportProductMediaZipView,
     # Admin Media
-    MediaListBySPUView, MediaDeleteView, MediaReorderView, MediaUpdateView, MediaCreateView, MediaReplaceView, MediaVideoCreateView,
+    MediaListBySPUView, MediaDeleteView, MediaReorderView, MediaUpdateView, MediaCreateView, MediaReplaceView, MediaVideoCreateView, MediaVideoChunkInitView, MediaVideoChunkUploadView, MediaVideoChunkCompleteView,
 )
 
 urlpatterns = [
@@ -121,6 +121,9 @@ urlpatterns = [
     path('media/spu/<int:spu_id>', MediaListBySPUView.as_view(), name='media-spu-list'),
     path('media/spu/<int:spu_id>/upload', MediaCreateView.as_view(), name='media-create'),
     path('media/spu/<int:spu_id>/video/upload', MediaVideoCreateView.as_view(), name='media-video-create'),
+    path('media/spu/<int:spu_id>/video/chunk-init', MediaVideoChunkInitView.as_view(), name='media-video-chunk-init'),
+    path('media/spu/<int:spu_id>/video/chunk-upload', MediaVideoChunkUploadView.as_view(), name='media-video-chunk-upload'),
+    path('media/spu/<int:spu_id>/video/chunk-complete', MediaVideoChunkCompleteView.as_view(), name='media-video-chunk-complete'),
     path('media/<int:media_id>/delete', MediaDeleteView.as_view(), name='media-delete'),
     path('media/<int:media_id>/update', MediaUpdateView.as_view(), name='media-update'),
     path('media/<int:media_id>/replace', MediaReplaceView.as_view(), name='media-replace'),
