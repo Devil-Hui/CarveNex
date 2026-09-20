@@ -48,9 +48,12 @@ services:
     volumes:
       - static_data:/var/www/static:ro
       - media_data:/var/www/media:ro
+      # client body 缓冲目录：上传请求体（视频可达上百 MB）会先落盘到
+      # /var/cache/nginx/client_temp，16MB tmpfs 会写满 → ENOSPC → nginx 500。
+      # 改用持久卷（磁盘不限 16MB），大视频上传不再被缓冲区卡死。
+      - nginx_cache:/var/cache/nginx
     tmpfs:
       - /tmp:size=4m,mode=1777
-      - /var/cache/nginx:size=16m,uid=101,gid=101
       - /var/log/nginx:size=8m,uid=101,gid=101
     depends_on:
       web:
@@ -123,12 +126,13 @@ services:
       - media_data:/app/media
       - static_data:/app/static
       - django_logs:/app/logs
+      # Django 解析大 multipart（视频上传）时先把文件写到 /tmp 再入库。
+      # 原 32MB tmpfs 对 >32MB 的请求体会 ENOSPC → 上传失败。改用持久卷。
+      - web_tmp:/tmp
       # 商品数据源（只读挂载）：固定把仓库内 backend/seed_products 挂到容器
       # /app/seed_products，与上面的 SEED_PRODUCTS_DIR 始终一致。
       # 内容为 products.xlsx + images/<商品目录>/ ；缺失会导致部署后无商品。
       - ./backend/seed_products:/app/seed_products:ro
-    tmpfs:
-      - /tmp:size=32m,mode=1777
     depends_on:
       db:
         condition: service_healthy
@@ -195,6 +199,10 @@ volumes:
   media_data:
   static_data:
   django_logs:
+  # nginx client body 缓冲（大文件上传落盘）；非 tmpfs，避免 16MB 写满
+  nginx_cache:
+  # Django 大 multipart 临时文件目录（替换原 32MB tmpfs）
+  web_tmp:
 
 secrets:
   tls_cert:
