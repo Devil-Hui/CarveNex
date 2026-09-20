@@ -18,6 +18,7 @@ interface CategoryNode {
   level: number;
   is_active: boolean;
   children: CategoryNode[];
+  kind?: 'product' | 'showcase';
 }
 
 const Container = styled.div`
@@ -175,6 +176,7 @@ export default function AdminCategories() {
   const [formParentId, setFormParentId] = useState<number | null>(null);
   const [formLevel, setFormLevel] = useState(1);
   const [formActive, setFormActive] = useState(true);
+  const [formKind, setFormKind] = useState<'product' | 'showcase'>('product');
   const [migrateFromId, setMigrateFromId] = useState<number | null>(null);
   const [migrateToId, setMigrateToId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -220,6 +222,7 @@ export default function AdminCategories() {
     setFormParentId(node.parent_id);
     setFormLevel(node.level);
     setFormActive(node.is_active);
+    setFormKind(node.kind === 'showcase' ? 'showcase' : 'product');
     if (String(selectedId) !== String(node.id)) setSelectedId(String(node.id));
   };
 
@@ -231,6 +234,7 @@ export default function AdminCategories() {
     setFormParentId(null);
     setFormLevel(1);
     setFormActive(true);
+    setFormKind('product');
     // 清除 URL 中的 id，避免「回放选中」effect 把 mode 重置回 view，导致新建表单一闪而过
     setSelectedId('');
   };
@@ -246,12 +250,14 @@ export default function AdminCategories() {
           name: formName.trim(),
           parent_id: formParentId,
           level: formLevel,
+          kind: formKind,
         });
         showToast('success', t('admin.categories.createSuccess'));
       } else if (mode === 'edit' && selected) {
         await adminAPI.updateCategory(selected.id, {
           name: formName.trim(),
           is_active: formActive,
+          kind: formKind,
         });
         showToast('success', t('admin.categories.updateSuccess'));
       }
@@ -390,6 +396,10 @@ export default function AdminCategories() {
                   </StatusBadge>
                 </DetailRow>
                 <DetailRow>
+                  <DetailLabel>{t('admin.categories.kindLabel')}</DetailLabel>
+                  <DetailValue>{selected.kind === 'showcase' ? t('admin.categories.kindShowcase') : t('admin.categories.kindProduct')}</DetailValue>
+                </DetailRow>
+                <DetailRow>
                   <DetailLabel>{t('admin.categories.childCountLabel')}</DetailLabel>
                   <DetailValue>{t('admin.categories.childCount').replace('{count}', String(selected.children?.length || 0))}</DetailValue>
                 </DetailRow>
@@ -415,6 +425,13 @@ export default function AdminCategories() {
                   <Select value={formActive ? '1' : '0'} onChange={(e) => setFormActive(e.target.value === '1')}>
                     <option value="1">{t('admin.categories.enabled')}</option>
                     <option value="0">{t('admin.categories.disabled')}</option>
+                  </Select>
+                </FormGroup>
+                <FormGroup>
+                  <Label>{t('admin.categories.kindLabel')}</Label>
+                  <Select value={formKind} onChange={(e) => setFormKind(e.target.value as 'product' | 'showcase')}>
+                    <option value="product">{t('admin.categories.kindProduct')}</option>
+                    <option value="showcase">{t('admin.categories.kindShowcase')}</option>
                   </Select>
                 </FormGroup>
                 
@@ -464,6 +481,13 @@ export default function AdminCategories() {
                     <option value="1">{t('admin.categories.level1')}</option>
                     <option value="2">{t('admin.categories.level2')}</option>
                     <option value="3">{t('admin.categories.level3')}</option>
+                  </Select>
+                </FormGroup>
+                <FormGroup>
+                  <Label>{t('admin.categories.kindLabel')}</Label>
+                  <Select value={formKind} onChange={(e) => setFormKind(e.target.value as 'product' | 'showcase')}>
+                    <option value="product">{t('admin.categories.kindProduct')}</option>
+                    <option value="showcase">{t('admin.categories.kindShowcase')}</option>
                   </Select>
                 </FormGroup>
                 

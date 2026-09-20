@@ -121,6 +121,12 @@ class CategoryStatus(models.TextChoices):
     REJECTED = 'rejected', '已驳回'
 
 
+class CategoryKind(models.TextChoices):
+    """分类类型：普通商品 vs 作品展示（非商品）"""
+    PRODUCT = 'product', '商品'
+    SHOWCASE = 'showcase', '作品展示'
+
+
 class Category(models.Model):
     name = models.CharField(
         max_length=100,
@@ -166,6 +172,13 @@ class Category(models.Model):
         verbose_name='创建人',
     )
     is_active = models.BooleanField(default=True, verbose_name='启用')
+    kind = models.CharField(
+        max_length=20,
+        choices=CategoryKind.choices,
+        default=CategoryKind.PRODUCT,
+        verbose_name='分类类型',
+        help_text='product=普通商品分类 / showcase=作品展示（非商品，无价格不售卖）',
+    )
     status = models.CharField(
         max_length=20,
         choices=CategoryStatus.choices,

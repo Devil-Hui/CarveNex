@@ -78,6 +78,7 @@ interface CategoryNode {
   level: number
   is_active: boolean
   children: CategoryNode[]
+  kind?: 'product' | 'showcase'
 }
 
 interface SKUFormItem {
@@ -1202,6 +1203,17 @@ const NotTrackingText = styled.span`
   font-style: italic;
 `
 
+const ShowcaseHint = styled.div`
+  margin: 12px 0;
+  padding: 14px 16px;
+  font-size: ${FontSize.sm}px;
+  color: ${Color.text.secondary};
+  background: ${Color.primaryLight};
+  border: 1px solid ${Color.border.light};
+  border-radius: ${Radius.sm}px;
+  line-height: 1.6;
+`
+
 // ── Tag Styles ──
 
 const TagList = styled.div`
@@ -1228,11 +1240,11 @@ const TagChip = styled.button<{ $selected: boolean; $color?: string }>`
 
 // ── Helpers ──
 
-function flattenTree(nodes: CategoryNode[], prefix = ''): { id: number; label: string; level: number }[] {
-  const result: { id: number; label: string; level: number }[] = []
+function flattenTree(nodes: CategoryNode[], prefix = ''): { id: number; label: string; level: number; kind?: 'product' | 'showcase' }[] {
+  const result: { id: number; label: string; level: number; kind?: 'product' | 'showcase' }[] = []
   for (const node of nodes) {
     if (!node.is_active) continue
-    result.push({ id: node.id, label: `${prefix}${node.name}`, level: node.level })
+    result.push({ id: node.id, label: `${prefix}${node.name}`, level: node.level, kind: node.kind })
     if (node.children?.length) {
       result.push(...flattenTree(node.children, `${prefix}${'  '.repeat(node.level)}├ `))
     }
@@ -1422,6 +1434,9 @@ export default function AdminProductForm() {
   }, [id, isEdit, t])
 
   const flatCategories = flattenTree(categories)
+
+  // 选中分类的 kind：作品展示（非商品）分类下隐藏价格/SKU/库存，仅保留图文与视频
+  const isShowcaseCategory = flatCategories.find((c) => String(c.id) === categoryId)?.kind === 'showcase'
 
   // ── Spec Handlers ──
 
@@ -1673,13 +1688,14 @@ export default function AdminProductForm() {
         await adminAPI.updateSPU(Number(id), spuData)
         spuId = Number(id)
 
-        // 对比原始 SKU id，删除已被用户移除的 SKU
+        // 对比原始 SKU id，删除已被用户移除的 SKU（作品展示分类跳过 SKU 同步）
         const currentSkuIds = skus.map((s) => s.id).filter((x): x is number => x != null)
         const removedSkuIds = originalSkuIds.filter((oid) => !currentSkuIds.includes(oid))
         for (const removedId of removedSkuIds) {
           await adminAPI.deleteSKU(removedId)
         }
 
+        if (!isShowcaseCategory) {
         for (const sku of skus) {
           if (sku.id) {
             await adminAPI.updateSKU(sku.id, {
@@ -1709,6 +1725,7 @@ export default function AdminProductForm() {
               }],
             })
           }
+        }
         }
 
         // 编辑模式：上传「新裁剪、尚未提交」的暂存媒体（IndexedDB）到该 SPU。
@@ -1756,7 +1773,8 @@ export default function AdminProductForm() {
       } else {
         // ── 新建模式 ──
         // 先校验所有 SKU 价格，避免 createSPU 之后才发现价格缺失而产生空壳商品
-        if (skus.length > 0) {
+        // （作品展示（非商品）分类无需价格/库存，跳过校验）
+        if (skus.length > 0 && !isShowcaseCategory) {
           const invalidSkus = skus.filter(s => !s.price || s.price === '' || Number(s.price) <= 0)
           if (invalidSkus.length > 0) {
             setError(t('admin.productForm.priceRequired'))
@@ -1853,7 +1871,7 @@ export default function AdminProductForm() {
           throw new Error(buildMediaFailureMessage(t, mediaFailures))
         }
 
-        if (skus.length > 0) {
+        if (skus.length > 0 && !isShowcaseCategory) {
           await adminAPI.batchCreateSKU({
             spu_id: spuId,
             skus: skus.map((s) => ({
@@ -1906,7 +1924,7 @@ export default function AdminProductForm() {
     // 名称在任意语言列填写即视为完成（中文 / 英文 / 阿拉伯语）
     if (key === 'basic') return (name.trim() || nameEn.trim() || nameAr.trim()) ? 'done' : 'todo'
     if (key === 'orgSku') return (brandId && categoryId) ? 'done' : 'todo'
-    if (key === 'media') return productKind === 'virtual' ? 'optional' : 'todo'
+    if (key === 'media') return (productKind === 'virtual' || isShowcaseCategory) ? 'optional' : 'todo'
     return 'done'
   }
 
@@ -2117,7 +2135,16 @@ export default function AdminProductForm() {
                 </Field>
                 <Field>
                   <Label>{t('admin.productForm.category')} *</Label>
-                  <Select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); markDirty() }} required>
+                  <Select value={categoryId} onChange={(e) => {
+                      setCategoryId(e.target.value)
+                      // 作品展示（非商品）分类：自动切成虚拟类型，无需图片即可提交
+                      const chosen = flatCategories.find((c) => String(c.id) === e.target.value)
+                      if (chosen?.kind === 'showcase') {
+                        setProductKind('virtual')
+                        setRequiresShipping(false)
+                      }
+                      markDirty()
+                    }} required>
                     <option value="">{t('admin.productForm.selectCategory')}</option>
                     {flatCategories.map((c) => (
                       <option key={c.id} value={c.id} style={{ paddingLeft: `${c.level * 12}px` }}>
@@ -2143,6 +2170,12 @@ export default function AdminProductForm() {
                   ))}
                 </TagList>
               </Field>
+              {isShowcaseCategory ? (
+                <Field>
+                  <ShowcaseHint>{t('admin.productForm.showcaseHint')}</ShowcaseHint>
+                </Field>
+              ) : (
+              <>
               <SubHead>{t('admin.productForm.skuManagement')}</SubHead>
               <SectionDesc style={{ marginTop: 6, marginBottom: 10 }}>
                 {t('admin.productForm.skuDesc')}
@@ -2343,6 +2376,8 @@ export default function AdminProductForm() {
                 })}
               </VariantCardList>
               <VariantAddBtn type="button" onClick={addSKU}>+ {t('admin.productForm.addSku')}</VariantAddBtn>
+              </>
+              )}
             </SectionBody>
           </SectionCard>
 

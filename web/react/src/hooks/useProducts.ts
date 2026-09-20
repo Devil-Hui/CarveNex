@@ -29,6 +29,8 @@ export interface Product {
   badge?: string;
   originalPrice?: number;
   promo_tags?: PromoTag[];
+  /** 分类为作品展示（非商品）时返回 true，前端隐藏价格/购买/优惠券 */
+  is_showcase?: boolean;
 }
 
 export interface CategoryItem {
@@ -40,6 +42,8 @@ export interface CategoryItem {
   icon: string;
   level: number;
   children?: CategoryItem[];
+  /** 分类类型：product=普通商品 / showcase=作品展示（非商品） */
+  kind?: 'product' | 'showcase';
 }
 
 // ── 数据映射 ──────────────────────────────────────────────────
@@ -59,6 +63,7 @@ function mapSPUToProduct(spu: PublicSPU): Product {
     rating: 0,
     reviews: 0,
     promo_tags: spu.promo_tags || [],
+    is_showcase: spu.is_showcase,
   };
 }
 
@@ -289,6 +294,7 @@ export function useCategories() {
       name_ar: node.name_ar,
       icon: '',
       level: node.level,
+      kind: node.kind,
       children: node.children?.map(mapNode) || [],
     });
     abortRef.current = false;
@@ -311,8 +317,10 @@ export function useCategories() {
 
 // ── Hook: 扁平分类列表 ────────────────────────────────────────
 
+export type FlatCategory = { id: number; name: string; name_en?: string; name_zh?: string; name_ar?: string; kind?: 'product' | 'showcase' }
+
 export function useFlatCategories() {
-  const [categories, setCategories] = useState<{ id: number; name: string; name_en?: string; name_zh?: string; name_ar?: string }[]>([]);
+  const [categories, setCategories] = useState<FlatCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const abortRef = useRef(false);
 
@@ -321,10 +329,10 @@ export function useFlatCategories() {
     publicAPI.getCategoryTree()
       .then((tree) => {
         if (abortRef.current) return;
-        const flat: { id: number; name: string; name_en?: string; name_zh?: string; name_ar?: string }[] = [];
+        const flat: FlatCategory[] = [];
         const walk = (nodes: PublicCategory[]) => {
           for (const node of nodes) {
-            flat.push({ id: node.id, name: node.name, name_en: node.name_en, name_zh: node.name_zh, name_ar: node.name_ar });
+            flat.push({ id: node.id, name: node.name, name_en: node.name_en, name_zh: node.name_zh, name_ar: node.name_ar, kind: node.kind });
             if (node.children) walk(node.children);
           }
         };

@@ -207,6 +207,14 @@ const BrandTag = styled.span`
   margin-bottom: 10px;
 `
 
+const ShowcaseDesc = styled.p`
+  margin: 0 0 16px;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: ${Color.text.secondary};
+  max-width: 96%;
+`
+
 const ProductName = styled.h1`
   font-size: 1.25rem;
   font-weight: 600;
@@ -945,9 +953,12 @@ export default function ProductDetail() {
                     <StageVideo
                       src={activeItem.src}
                       poster={activeItem.thumb || undefined}
+                      autoPlay
+                      muted
+                      loop
                       controls
-                      preload="metadata"
                       playsInline
+                      preload="metadata"
                     />
                   ) : (
                     <SmartImage src={activeItem.src} alt={localizedName} />
@@ -963,6 +974,29 @@ export default function ProductDetail() {
               {product.brand_name && <BrandTag>{product.brand_name}</BrandTag>}
               <ProductName>{localizedName}</ProductName>
 
+              {product.is_showcase ? (
+                <>
+                  {localizedDescription && (
+                    <ShowcaseDesc>{localizedDescription}</ShowcaseDesc>
+                  )}
+                  {product.tags && product.tags.length > 0 && (
+                    <PromiseRow>
+                      {product.tags.map((tg) => {
+                        const visual = resolveTagVisual(tg.name, tg.color)
+                        return (
+                          <PromiseTag key={tg.id}>
+                            <PromiseIcon $accent={visual.accent}>
+                              <Icon name={visual.icon} size={13} />
+                            </PromiseIcon>
+                            {tg.name}
+                          </PromiseTag>
+                        )
+                      })}
+                    </PromiseRow>
+                  )}
+                </>
+              ) : (
+                <>
               <PriceRow>
                 {hasActivity && <ActivityBadge>{t('store.product.activityPrice')}</ActivityBadge>}
                 <PriceValue>{format(Number(price))}</PriceValue>
@@ -1061,6 +1095,8 @@ export default function ProductDetail() {
                     )
                   })}
                 </PromiseRow>
+              )}
+              </>
               )}
             </ParamCol>
           </PdpGrid>

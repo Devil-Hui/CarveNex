@@ -41,6 +41,8 @@ export interface PublicSPU {
   total_stock?: number;
   main_image?: string;
   created_at?: string;
+  /** 分类为作品展示（非商品）时返回 true，前端隐藏价格/购买/优惠券 */
+  is_showcase?: boolean;
   /** 活动标签：活动价(primary) / 可领券(secondary) */
   promo_tags?: PromoTag[];
 }
@@ -85,6 +87,8 @@ export interface PublicSPUDetail {
   skus: PublicSKU[];
   media?: PublicProductMedia[];
   tags?: ProductTag[];
+  /** 分类为作品展示（非商品）时返回 true，前端隐藏价格/购买/优惠券 */
+  is_showcase?: boolean;
   /** 活动标签：活动价(primary) / 可领券(secondary) */
   promo_tags?: PromoTag[];
   submitted_by_name?: string;
@@ -118,6 +122,8 @@ export interface PublicCategory {
   level: number;
   parent_id?: number;
   children?: PublicCategory[];
+  /** 分类类型：product=普通商品 / showcase=作品展示（非商品） */
+  kind?: 'product' | 'showcase';
 }
 
 /** 后台品牌 */

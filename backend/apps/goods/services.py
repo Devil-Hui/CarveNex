@@ -199,6 +199,7 @@ class GoodsCacheService:
                 'parent_id': cat.parent_id,
                 'level': cat.level,
                 'is_active': cat.is_active,
+                'kind': getattr(cat, 'kind', 'product'),
                 'children': [],
             })
         visited: set = set()
@@ -256,9 +257,11 @@ class GoodsQueryService:
             return None
         cached = _goods_cache.two_level_get(f'spu:{spu_id}')
         if cached is not None:
-            spu = SPU.objects.filter(id=spu_id).only('id', 'category_id', 'brand_id').first()
+            spu = SPU.objects.select_related('category').filter(id=spu_id).only('id', 'category_id', 'brand_id').first()
             if spu:
-                cached['promo_tags'] = GoodsQueryService.compute_promo_tags(
+                is_showcase = getattr(spu.category, 'kind', 'product') == 'showcase'
+                cached['is_showcase'] = is_showcase
+                cached['promo_tags'] = [] if is_showcase else GoodsQueryService.compute_promo_tags(
                     [{'id': spu.id, 'category_id': spu.category_id, 'brand_id': spu.brand_id}]
                 ).get(spu_id, [])
             return cached
@@ -311,7 +314,9 @@ class GoodsQueryService:
             for rel in spu.tag_relations.select_related('tag').filter(tag__is_active=True)
         ]
         _goods_cache.two_level_set(f'spu:{spu_id}', data, _ttl['SPU_DETAIL'])
-        data['promo_tags'] = GoodsQueryService.compute_promo_tags(
+        data['is_showcase'] = getattr(spu.category, 'kind', 'product') == 'showcase'
+        # 作品展示不参与活动/优惠券标签
+        data['promo_tags'] = [] if data['is_showcase'] else GoodsQueryService.compute_promo_tags(
             [{'id': spu.id, 'category_id': spu.category_id, 'brand_id': spu.brand_id}]
         ).get(spu_id, [])
         return data
@@ -392,8 +397,26 @@ class GoodsQueryService:
                     sku_prices[p['spu_id']] = p
 
             results = []
+            # 作品展示项若未设置主图，用视频头帧作为封面（列表卡片仍需可摸到的封面）。
+            showcase_spu_ids = [
+                s.id for s in spus
+                if getattr(s.category, 'kind', 'product') == 'showcase' and not s.main_image
+            ]
+            showcase_covers = {}
+            if showcase_spu_ids:
+                from apps.goods.models import ProductMedia
+                covers = ProductMedia.objects.filter(
+                    spu_id__in=showcase_spu_ids,
+                    media_type='video',
+                ).exclude(video_thumb_url='').values_list('spu_id', 'video_thumb_url').order_by('spu_id', 'sort_order', 'id')
+                for _sid, _thumb in covers:
+                    if _sid not in showcase_covers:
+                        showcase_covers[_sid] = _thumb
             for spu in spus:
                 prices = sku_prices.get(spu.id, {})
+                # 作品展示（非商品）分类下的 SPU：不返回价格，避免前端显示 ¥0
+                is_showcase = getattr(spu.category, 'kind', 'product') == 'showcase'
+                cover = showcase_covers.get(spu.id) or ''
                 results.append({
                     'id': spu.id,
                     'name': spu.name,
@@ -402,14 +425,15 @@ class GoodsQueryService:
                     'description': spu.description or '',
                     'description_en': spu.description_en or '',
                     'description_ar': spu.description_ar or '',
-                    'main_image': spu.main_image,
+                    'main_image': spu.main_image or cover,
                     'status': spu.status,
                     'brand_name': spu.brand.name if spu.brand_id else '',
                     'category_name': spu.category.name if spu.category_id else '',
                     'category_path': '',
                     'sku_count': spu.sku_count,
-                    'min_price': str(prices.get('min_price', '')),
-                    'max_price': str(prices.get('max_price', '')),
+                    'is_showcase': is_showcase,
+                    'min_price': '' if is_showcase else str(prices.get('min_price', '')),
+                    'max_price': '' if is_showcase else str(prices.get('max_price', '')),
                     'created_at': spu.created_at.isoformat() if spu.created_at else '',
                 })
             promo_map = GoodsQueryService.compute_promo_tags([
@@ -417,7 +441,8 @@ class GoodsQueryService:
                 for s in spus
             ])
             for r in results:
-                r['promo_tags'] = promo_map.get(r['id'], [])
+                # 作品展示不参与活动/优惠券标签
+                r['promo_tags'] = [] if r['is_showcase'] else promo_map.get(r['id'], [])
             return {'results': results, 'total': total, 'page': page, 'size': size}
 
         return _goods_cache.get_or_set_with_lock(

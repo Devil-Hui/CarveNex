@@ -29,9 +29,13 @@ class CategoryAdminCreateView(BaseApiView):
         parent_id = request.data.get('parent_id')
         level = request.data.get('level', 1)
         admin_group_id = request.data.get('admin_group_id')
+        kind = request.data.get('kind', 'product')
 
         if not name:
             return Response({'detail': 'Name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if kind not in ('product', 'showcase'):
+            return Response({'detail': 'Invalid kind. Must be "product" or "showcase".'}, status=status.HTTP_400_BAD_REQUEST)
 
         parent = None
         if parent_id:
@@ -49,7 +53,7 @@ class CategoryAdminCreateView(BaseApiView):
                 return Response({'detail': Messages.PERMISSION_DENIED}, status=status.HTTP_403_FORBIDDEN)
 
         category = Category.objects.create(
-            name=name, parent=parent, level=level,
+            name=name, parent=parent, level=level, kind=kind,
             admin_group_id=admin_group_id,
             created_by=request.user,
             # 非超管创建的分类需要审核
@@ -65,13 +69,13 @@ class CategoryAdminCreateView(BaseApiView):
                 action='category_submitted',
                 resource_type='category',
                 resource_id=category.id,
-                changes={'name': name, 'level': level, 'parent_id': parent_id},
+                changes={'name': name, 'level': level, 'parent_id': parent_id, 'kind': kind},
             )
 
         return Response({
             'id': category.id, 'name': category.name,
             'parent_id': category.parent_id, 'level': category.level,
-            'status': category.status,
+            'status': category.status, 'kind': category.kind,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -99,11 +103,21 @@ class CategoryAdminUpdateView(BaseApiView):
             category.name = request.data['name']
         if 'is_active' in request.data:
             category.is_active = request.data['is_active']
+        if 'kind' in request.data:
+            if request.data['kind'] not in ('product', 'showcase'):
+                return Response({'detail': 'Invalid kind. Must be "product" or "showcase".'}, status=status.HTTP_400_BAD_REQUEST)
+            # 类型变更会影响该分类下 SPU 的价格/优惠券可见性，需一并失效商品缓存
+            if request.data['kind'] != getattr(category, 'kind', 'product'):
+                GoodsCacheService.invalidate_spu_list()
+                spu_ids = list(SPU.objects.filter(category_id__in=Category.get_all_subcategory_ids(category.id)).values_list('id', flat=True))
+                for _sid in spu_ids:
+                    GoodsCacheService.invalidate_spu(_sid)
+            category.kind = request.data['kind']
         if 'admin_group_id' in request.data:
             category.admin_group_id = request.data['admin_group_id']
         category.save()
         GoodsCacheService.invalidate_category_tree()
-        return Response({'id': category.id, 'name': category.name, 'is_active': category.is_active})
+        return Response({'id': category.id, 'name': category.name, 'is_active': category.is_active, 'kind': category.kind})
 
 
 class CategoryAdminDeleteView(BaseApiView):

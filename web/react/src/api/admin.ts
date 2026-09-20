@@ -79,6 +79,8 @@ export interface CategoryNode {
   level: number;
   is_active: boolean;
   children: CategoryNode[];
+  /** 分类类型：product=普通商品 / showcase=作品展示（非商品） */
+  kind?: 'product' | 'showcase';
 }
 
 export interface BrandItem {
@@ -350,7 +352,7 @@ export const adminAPI = {
     get<CategoryNode[]>('/goods/category/tree'),
   getCategorySubtree: () =>
     get<CategoryNode[]>('/goods/category/subtree'),
-  createCategory: (data: { name: string; parent_id: number | null; level: number; admin_group_id?: number }) =>
+  createCategory: (data: { name: string; parent_id: number | null; level: number; admin_group_id?: number; kind?: 'product' | 'showcase' }) =>
     post<CategoryNode>('/goods/category/create', data),
   updateCategory: (id: number, data: Record<string, unknown>) =>
     put<CategoryNode>(`/goods/category/${id}/update`, data),

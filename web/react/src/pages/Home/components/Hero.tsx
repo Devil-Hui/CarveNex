@@ -88,7 +88,7 @@ const Title = styled.h1`
   font-family: ${Font.display};
   font-size: ${Display.hero};
   font-weight: 800;
-  line-height: 1.03;
+  line-height: 1.14;
   ${Type.tighter}
   color: ${Ink.black};
   margin: 0 0 1.1rem;

@@ -1,5 +1,5 @@
 // TypeScript strict mode enabled
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PromoTags } from '../../components/business/PromoTags'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import PageLayout from '../../components/layout/PageLayout/PageLayout'
@@ -344,6 +344,31 @@ const ProductBadge = styled.div`
   }
 `
 
+/* 作品展示（非商品）徽标：覆盖在图片左上角，区别于普通商品促销标签 */
+const ShowcaseBadgeOverlay = styled.div`
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  background: rgba(14, 16, 19, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: ${Radius.xs}px;
+  color: ${Color.bg.card};
+  font-size: ${FontSize.xs}px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  z-index: ${zIndex.base};
+  white-space: nowrap;
+`
+
+/* 作品卡片标题下方的辅助说明（无价格/无按钮时替代底部栏） */
+const ShowcaseTitle = styled.div`
+  font-size: ${FontSize.xs}px;
+  color: ${Color.text.muted};
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+`
+
 const ProductImage = styled.div`
   width: 100%;
   aspect-ratio: 1;
@@ -498,7 +523,7 @@ const ListItemActions = styled.div`
   gap: 0.8vw;
 `
 
-type TreeItem = { id: number; name: string; name_en?: string; name_zh?: string; name_ar?: string; level?: number; children?: TreeItem[] }
+type TreeItem = { id: number; name: string; name_en?: string; name_zh?: string; name_ar?: string; level?: number; children?: TreeItem[]; kind?: 'product' | 'showcase' }
 
 function CategoryTree({
   nodes,
@@ -576,6 +601,21 @@ export default function Category() {
   const [activeFilters, setActiveFilters] = useState<{ [key: string]: string[] }>({})
   const [favorites, setFavorites] = useState<number[]>([])
   const [favBusyId, setFavBusyId] = useState<number | null>(null)
+
+  // 判断当前分类是否为「作品展示（非商品）」：沿分类树向上找 kind，子分类继承一级分类的类型
+  const isShowcaseCategory = useMemo(() => {
+    if (!catId) return false
+    const target = Number(catId)
+    const walk = (nodes: TreeItem[], parentKind?: 'product' | 'showcase'): boolean => {
+      for (const node of nodes) {
+        const nodeKind = (node as TreeItem & { kind?: 'product' | 'showcase' }).kind ?? parentKind ?? 'product'
+        if (node.id === target) return nodeKind === 'showcase'
+        if (node.children?.length && walk(node.children, nodeKind)) return true
+      }
+      return false
+    }
+    return walk(categoryTree)
+  }, [catId, categoryTree])
 
   const activeCategory = catId ? categories.find(c => String(c.id) === catId) : null
 
@@ -674,6 +714,7 @@ export default function Category() {
               onPick={(id) => navigate(`/category?cat_id=${id}`)}
             />
           </SidebarSection>
+          {!isShowcaseCategory && (
           <SidebarSection>
             <SidebarTitle>{t('store.category.priceRange')}</SidebarTitle>
             <FilterButton onClick={() => {
@@ -691,6 +732,7 @@ export default function Category() {
             </PriceTrack>
             <PriceLabel>{format(minPrice)} - {format(maxPrice)}</PriceLabel>
           </SidebarSection>
+          )}
         </Sidebar>
 
         <ProductList>
@@ -732,7 +774,11 @@ export default function Category() {
                     <span>{product.badge}</span>
                   </ProductBadge>
                 )}
-                <PromoTags tags={product.promo_tags} onClick={() => navigate('/profile?tab=coupons')} />
+                {product.is_showcase ? (
+                  <ShowcaseBadgeOverlay>{t('store.category.showcaseBadge')}</ShowcaseBadgeOverlay>
+                ) : (
+                  <PromoTags tags={product.promo_tags} onClick={() => navigate('/profile?tab=coupons')} />
+                )}
                 <ProductImage>
                   {optionalMediaUrl(product.image) && (
                     <SmartImage src={optionalMediaUrl(product.image)} alt={localizedName} loading="lazy" decoding="async" />
@@ -740,6 +786,9 @@ export default function Category() {
                 </ProductImage>
                 <ProductInfo>
                   <ProductTitle>{localizedName}</ProductTitle>
+                  {product.is_showcase ? (
+                    <ShowcaseTitle>{t('store.category.showcaseBadge')}</ShowcaseTitle>
+                  ) : (
                   <CardFooter>
                     <CardPrice>
                       {format(Number(product.price))}
@@ -758,7 +807,8 @@ export default function Category() {
                       <CardAction onClick={(e) => openQuickAdd(e, product.id)}><img src="/static/images/icons/JoinShoppingCar.svg" alt="cart" style={{ width: '20px', height: '20px' }} /></CardAction>
                     </CardActions>
                   </CardFooter>
-                  <CardBuyBtn>{t('store.category.buy')}</CardBuyBtn>
+                  )}
+                  {!product.is_showcase && <CardBuyBtn>{t('store.category.buy')}</CardBuyBtn>}
                 </ProductInfo>
               </ProductCard>
               )
@@ -781,7 +831,11 @@ export default function Category() {
                     <span>{product.badge}</span>
                   </ProductBadge>
                 )}
-                <PromoTags tags={product.promo_tags} onClick={() => navigate('/profile?tab=coupons')} />
+                {product.is_showcase ? (
+                  <ShowcaseBadgeOverlay>{t('store.category.showcaseBadge')}</ShowcaseBadgeOverlay>
+                ) : (
+                  <PromoTags tags={product.promo_tags} onClick={() => navigate('/profile?tab=coupons')} />
+                )}
                 <ProductImage style={{ width: 200, height: 200, flexShrink: 0 }}>
                   {optionalMediaUrl(product.image) && (
                     <SmartImage src={optionalMediaUrl(product.image)} alt={localizedName} loading="lazy" decoding="async" />
@@ -789,6 +843,10 @@ export default function Category() {
                 </ProductImage>
                 <ListItemInfo>
                   <ListItemTitle>{localizedName}</ListItemTitle>
+                  {product.is_showcase ? (
+                    <ListItemDesc>{localizedDescription}</ListItemDesc>
+                  ) : (
+                  <>
                   <ListItemPrice>
                     {format(Number(product.price))}
                     {product.originalPrice && (
@@ -807,6 +865,8 @@ export default function Category() {
                     </CardAction>
                     <CardAction onClick={(e) => openQuickAdd(e, product.id)}><img src="/static/images/icons/JoinShoppingCar.svg" alt="cart" style={{ width: '20px', height: '20px' }} /></CardAction>
                   </ListItemActions>
+                  </>
+                  )}
                 </ListItemInfo>
               </ListItem>
               )
