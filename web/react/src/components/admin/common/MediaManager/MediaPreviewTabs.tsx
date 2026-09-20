@@ -66,8 +66,15 @@ export default function MediaPreviewTabs({ items }: Props) {
         activeImage.previewDataUrl
       )
     : ''
+  // 视频：previewDataUrl 若是 blob:（session 级，IndexedDB 持久化后刷新即失效），
+  // 必须用 videoBlob 重新生成 object URL，否则渲染成死 blob → net::ERR_FILE_NOT_FOUND。
   const videoSrc = videos[0]
-    ? optionalMediaUrl(videos[0].previewDataUrl || (videos[0].videoBlob ? URL.createObjectURL(videos[0].videoBlob) : undefined))
+    ? optionalMediaUrl(
+        (videos[0].videoBlob ? URL.createObjectURL(videos[0].videoBlob) : undefined) ||
+        (videos[0].previewDataUrl && !videos[0].previewDataUrl.startsWith('blob:')
+          ? videos[0].previewDataUrl
+          : undefined)
+      )
     : ''
 
   return (

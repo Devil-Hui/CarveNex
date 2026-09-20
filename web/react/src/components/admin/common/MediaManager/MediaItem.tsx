@@ -49,9 +49,19 @@ export default function MediaItem({ item, index, onRemove, onEdit, onRecrop, onP
     src = resolveMediaUrl(rawUrl) || rawUrl
   } else {
     const stagedItem = item as StagedMediaItem
-    src = stagedItem.mediaType === 'image'
-      ? (stagedItem.previewDataUrl || (stagedItem.listBlob ? URL.createObjectURL(stagedItem.listBlob) : (stagedItem.thumbBlob ? URL.createObjectURL(stagedItem.thumbBlob) : '')))
-      : (stagedItem.previewDataUrl || (stagedItem.videoBlob ? URL.createObjectURL(stagedItem.videoBlob) : ''))
+    if (stagedItem.mediaType === 'image') {
+      src = stagedItem.previewDataUrl || ''
+    } else {
+      // 视频：previewDataUrl 若是 blob:（VideoUploadDialog 写入的 session 级 blob URL），
+      // 持久化到 IndexedDB 后刷新页面即失效 → net::ERR_FILE_NOT_FOUND。
+      // 因此一律用 videoBlob（File 会随 IndexedDB 持久化）重新生成 object URL。
+      const videoBlobUrl = stagedItem.videoBlob
+        ? URL.createObjectURL(stagedItem.videoBlob)
+        : ''
+      src = stagedItem.previewDataUrl?.startsWith('blob:')
+        ? videoBlobUrl || ''
+        : stagedItem.previewDataUrl || videoBlobUrl
+    }
   }
 
   const handlePreviewClick = () => {
