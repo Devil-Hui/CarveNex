@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Outlet, useNavigate, useLocation, NavLink } from 'react-router-dom'
 import styled from 'styled-components'
 import { Color, Radius, Shadow, Spacing, FontSize, FontWeight, Transition, FluidSpace } from '../../theme/tokens'
@@ -6,7 +6,6 @@ import { ZIndex } from '../../theme/zIndex'
 import { useAdminAuth } from '../../store/AdminAuthContext'
 import { useTranslation, LanguageSwitch } from '../../i18n'
 import { adminAPI, type SPUItem } from '../../api/admin'
-import { orderAPI, type OrderSummary } from '../../api/order'
 import { useAllowedMenuPaths } from '../../components/admin/ProtectedRoute'
 import { useIsMobile } from '../../hooks/useBreakpoint'
 import { Icon } from '../../components/admin/common/Icon'
@@ -537,9 +536,8 @@ function useMenuItems() {
     },
     {
       section: t('admin.layout.sidebar.fulfillment'),
-      items: [
-        { to: '/admin/orders', label: t('admin.layout.menu.orders'), icon: 'box' },
-      ],
+      // 订单模块暂时下线，入口已断开（后端保留）
+      items: [],
     },
     {
       section: t('admin.layout.sidebar.communication'),
@@ -557,8 +555,7 @@ function useMenuItems() {
     {
       section: t('admin.layout.sidebar.systemMgmt'),
       items: [
-        // 管理组（组长/组员）已删除，不复用 Groups 菜单
-        { to: '/admin/recycle-bin', label: t('admin.layout.menu.recycleBin'), icon: 'trash' },
+        // 管理组（组长/组员）已删除，不复用 Groups 菜单；回收站暂时下线（后端保留）
         { to: '/admin/email-templates', label: t('admin.layout.menu.emailTemplates'), icon: 'mail' },
       ],
     },
@@ -620,14 +617,6 @@ function useActionBar() {
       left: [
         { label: t('admin.layout.action.newProduct'), to: '/admin/products/create', primary: true },
         { label: t('admin.layout.action.bulkImport'), to: '/admin/import' },
-        { label: t('admin.layout.action.recycleBin'), to: '/admin/recycle-bin' },
-      ],
-    },
-    {
-      match: /^\/admin\/orders/,
-      moduleKey: 'orders',
-      left: [
-        { label: t('admin.layout.action.orders'), to: '/admin/orders', primary: true },
       ],
     },
     {
@@ -690,7 +679,6 @@ export default function AdminLayout() {
   const [searchText, setSearchText] = useState('')
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchProducts, setSearchProducts] = useState<SPUItem[]>([])
-  const [searchOrders, setSearchOrders] = useState<OrderSummary[]>([])
   const searchRef = useRef<HTMLInputElement>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -750,22 +738,17 @@ export default function AdminLayout() {
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
-  // 全局搜索：防抖 300ms，并联查询商品/订单
+  // 全局搜索：防抖 300ms，查询商品
   useEffect(() => {
     const kw = searchText.trim()
-    if (kw.length < 2) { setSearchProducts([]); setSearchOrders([]); return }
+    if (kw.length < 2) { setSearchProducts([]); return }
     setSearchLoading(true)
     if (searchTimer.current) clearTimeout(searchTimer.current)
     searchTimer.current = setTimeout(async () => {
       try {
-        const [spuRes, orderRes] = await Promise.allSettled([
-          adminAPI.getSPUs({ search: kw, page: 1, size: 5 }),
-          orderAPI.adminList({ search: kw, page: 1, size: 5 }),
-        ])
-        const spu = spuRes.status === 'fulfilled' ? (spuRes.value as { results?: SPUItem[] }) : {}
-        const ord = orderRes.status === 'fulfilled' ? (orderRes.value as { results?: OrderSummary[] }) : {}
+        const spuRes = await adminAPI.getSPUs({ search: kw, page: 1, size: 5 })
+        const spu = (spuRes ?? {}) as { results?: SPUItem[] }
         setSearchProducts(spu?.results ?? [])
-        setSearchOrders(ord?.results ?? [])
       } finally {
         setSearchLoading(false)
       }
@@ -792,9 +775,7 @@ export default function AdminLayout() {
       items: [
         { id: 'act-product', label: t('admin.layout.action.newProduct'), icon: <Icon name="package" size={16} />, keywords: 'create product', onSelect: () => { setPaletteOpen(false); navigate('/admin/products/create') } },
         { id: 'act-coupon', label: t('admin.layout.action.createCoupon'), icon: <Icon name="tag" size={16} />, keywords: 'coupon create', onSelect: () => { setPaletteOpen(false); navigate('/admin/coupons') } },
-        { id: 'act-order', label: t('admin.layout.action.viewOrders'), icon: <Icon name="box" size={16} />, keywords: 'orders', onSelect: () => { setPaletteOpen(false); navigate('/admin/orders') } },
         { id: 'act-chat', label: t('admin.layout.action.chatWorkbench'), icon: <Icon name="message-circle" size={16} />, keywords: 'chat support', onSelect: () => { setPaletteOpen(false); navigate('/admin/chat') } },
-        { id: 'act-recycle', label: t('admin.layout.action.recycleBin'), icon: <Icon name="trash" size={16} />, keywords: 'trash recycle', onSelect: () => { setPaletteOpen(false); navigate('/admin/recycle-bin') } },
       ],
     },
   ]
@@ -909,7 +890,7 @@ export default function AdminLayout() {
                 {searchOpen && (searchText.trim().length >= 2 || searchLoading) && (
                   <SearchDropdown>
                     {searchLoading && <BellEmpty>{t('admin.layout.search.searching')}</BellEmpty>}
-                    {!searchLoading && searchProducts.length === 0 && searchOrders.length === 0 && (
+                    {!searchLoading && searchProducts.length === 0 && (
                       <BellEmpty>{t('admin.layout.search.noResults')}</BellEmpty>
                     )}
                     {!searchLoading && searchProducts.length > 0 && (
@@ -921,20 +902,6 @@ export default function AdminLayout() {
                             <span style={{ flex: 1, minWidth: 0 }}>
                               <div className="t" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                               <div className="s">{p.status_display ?? ''}</div>
-                            </span>
-                          </SearchItem>
-                        ))}
-                      </>
-                    )}
-                    {!searchLoading && searchOrders.length > 0 && (
-                      <>
-                        <GroupTitle>{t('admin.layout.search.orders')}</GroupTitle>
-                        {searchOrders.map(o => (
-                          <SearchItem key={o.order_no} onClick={() => { navigate('/admin/orders'); setSearchOpen(false) }}>
-                            <span className="s" style={{ fontSize: 13 }}><Icon name="card" size={15} /></span>
-                            <span style={{ flex: 1, minWidth: 0 }}>
-                              <div className="t">{o.order_no}</div>
-                              <div className="s">{o.channel_name ?? ''}</div>
                             </span>
                           </SearchItem>
                         ))}

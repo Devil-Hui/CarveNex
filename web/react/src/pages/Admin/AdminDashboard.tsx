@@ -167,24 +167,20 @@ export default function AdminDashboard() {
   )
 
   const pendingItems = [
-    { key: 'aftersales', label: t('admin.dashboard.pending.aftersales'), count: stats.pendingAfterSales, to: '/admin/orders?tab=aftersale&status=pending' },
     { key: 'notifications', label: t('admin.dashboard.pending.notifications'), count: stats.unreadNotifications, to: '/admin/notifications' },
   ]
   const pendingTotal = pendingItems.reduce((s, i) => s + i.count, 0)
 
   const statsCards = [
     { label: t('admin.dashboard.stats.products'), value: stats.productCount },
-    { label: t('admin.dashboard.stats.orders'), value: stats.orderCount },
     { label: t('admin.dashboard.stats.runningTasks'), value: stats.runningTasks },
     { label: t('admin.dashboard.stats.todos'), value: pendingTotal, hot: pendingTotal > 0 },
   ]
 
   const quickActions = [
     { icon: <Icon name="package" size={18} />, label: t('admin.layout.action.newProduct'), to: '/admin/products/create' },
-    { icon: <Icon name="box" size={18} />, label: t('admin.layout.action.viewOrders'), to: '/admin/orders' },
     { icon: <Icon name="tag" size={18} />, label: t('admin.layout.action.createCoupon'), to: '/admin/coupons' },
     { icon: <Icon name="message-circle" size={18} />, label: t('admin.layout.action.chatWorkbench'), to: '/admin/chat' },
-    { icon: <Icon name="trash" size={18} />, label: t('admin.layout.action.recycleBin'), to: '/admin/recycle-bin' },
   ]
 
   return (
