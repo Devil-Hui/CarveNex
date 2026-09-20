@@ -98,6 +98,10 @@ class SPUCreateRequestSerializer(serializers.Serializer):
     product_kind = serializers.ChoiceField(
         choices=['physical', 'virtual'], required=False, default='physical',
     )
+    # 创建时状态：仅超管可传（草稿 draft / 上架 on_sale）。缺省按「保存」按钮语义默认草稿。
+    status = serializers.ChoiceField(
+        choices=['draft', 'on_sale'], required=False, default='draft',
+    )
 
 
 class SPUUpdateRequestSerializer(serializers.Serializer):

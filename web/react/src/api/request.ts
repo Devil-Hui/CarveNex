@@ -190,7 +190,9 @@ function readCSRFCookie(): string | null {
 
 // 上传类请求单独放宽超时：axios 实例的 15s 对大图/视频远远不够，
 // 而 XHR 默认 timeout=0（永不超时）—— 一旦连接挂死，保存流程会永久卡在上传态。
-const UPLOAD_TIMEOUT_MS = 120_000
+// 视频分片（8MB/片）在跨境慢网络上单片可能远超 120s（实测用户报过 Request timeout），
+// 放宽到 600s：宁可让用户等，也不在慢网上中途把整批媒体判失败。
+const UPLOAD_TIMEOUT_MS = 600_000
 
 function xhrUpload<T>(
   url: string,

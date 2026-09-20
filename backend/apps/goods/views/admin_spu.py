@@ -205,12 +205,14 @@ class SPUAdminCreateView(BaseApiView):
                 return Response({'detail': Messages.ADMIN_SPU_NOT_IN_GROUP},
                                 status=status.HTTP_403_FORBIDDEN)
 
-        # 需求调整：超管创建商品即直接上架（ON_SALE），前台实时可见，无需审核流程。
-        initial_status = (
-            SPUStatus.ON_SALE
-            if has_role(request.user, Role.SUPERADMIN.value)
-            else SPUStatus.DRAFT
-        )
+        # 需求调整：由前端「保存/保存并上架」双按钮语义决定初始状态。
+        # 默认保存为草稿（DRAFT）；仅超管创建时可显式传 status=on_sale 直接上架，
+        # 非超管（组员/组长）一律草稿走提审流程，不受该参数影响。
+        requested_status = (request.data.get('status') or 'draft').strip().lower()
+        if has_role(request.user, Role.SUPERADMIN.value) and requested_status == SPUStatus.ON_SALE:
+            initial_status = SPUStatus.ON_SALE
+        else:
+            initial_status = SPUStatus.DRAFT
         spu = SPU.objects.create(
             name=name, brand=brand, category=category,
             description=description, name_en=name_en, description_en=description_en,

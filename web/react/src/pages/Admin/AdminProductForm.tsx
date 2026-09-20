@@ -535,6 +535,19 @@ const AlertBar = styled.div`
   font-size: ${FontSize.sm}px;
 `
 
+const SuccessBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: ${Spacing.lg}px;
+  padding: 12px 14px;
+  background: rgba(22, 163, 74, 0.06);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+  border-radius: ${Radius.md}px;
+  color: ${Color.status.success};
+  font-size: ${FontSize.sm}px;
+`
+
 // ── Fields (reused across sections) ──
 
 const Field = styled.div`
@@ -1321,6 +1334,7 @@ export default function AdminProductForm() {
   // State
   const [_loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [isDirty, setIsDirty] = useState(false)
 
   // 新建模式：提交时图片上传进度（逐张 XHR 进度聚合）
@@ -1649,7 +1663,7 @@ export default function AdminProductForm() {
 
   // ── Submit ──
 
-  const doSubmit = async () => {
+  const doSubmit = async (publish = false) => {
     // 名称 / 描述支持「任意语言列填写」：中文 / 英文 / 阿拉伯语任一列有值即可保存。
     // 主字段（name / description）为空时用已填写的那份兜底——后端 name 必填，
     // 且前台 localizedText 也会回退到主字段，兜底后各语言站展示都不会空白。
@@ -1661,6 +1675,7 @@ export default function AdminProductForm() {
 
     setLoading(true)
     setError('')
+    setSuccess('')
     try {
       const validSpecs = specs.filter(s => s.name.trim() && s.values.length > 0)
       const spuData = {
@@ -1680,6 +1695,9 @@ export default function AdminProductForm() {
         requires_shipping: requiresShipping,
         taxable: taxable,
         product_kind: productKind,
+        // 新建商品：由「保存 / 保存并上架」按钮决定初始状态（超管创建不再默认上架）
+        // 编辑模式该字段被后端忽略（update 不改变状态）。
+        status: (publish ? 'on_sale' : 'draft') as 'draft' | 'on_sale',
       }
 
       let spuId: number
@@ -1905,11 +1923,23 @@ export default function AdminProductForm() {
         })
       }
 
-      // 保存真正完成：清空「重试复用」标记，下次新建仍走 createSPU
-      createdSpuIdRef.current = null
-
-      // 编辑即上架：保存后商品直接可见，无需提交/审核流程
-      navigate('/admin/products')
+      if (publish) {
+        // 「保存并上架」：显式上架（幂等：已是 on_sale 也不报错），随后跳转列表
+        try {
+          await adminAPI.shelfSPU(spuId, { action: 'put_on_sale' })
+        } catch (e) {
+          // 上架失败不影响保存：商品已存为草稿，用户可去列表页手动上架
+          console.warn('[AdminProductForm] 保存后上架失败 spu=%s:', spuId, e)
+        }
+        // 保存完成：清空「重试复用」标记，下次新建仍走 createSPU
+        createdSpuIdRef.current = null
+        navigate('/admin/products')
+      } else {
+        // 「保存」：留在当前页，展示成功提示，用户可继续编辑或再点「保存并上架」
+        // 关键：保留 createdSpuIdRef 以便再次保存时 update 同一草稿，而不是重复建 SPU。
+        setSuccess(t('admin.productForm.saveSuccess'))
+        setIsDirty(false)
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('common.operationFailed'))
     }
@@ -1917,7 +1947,12 @@ export default function AdminProductForm() {
   }
 
   const { execute: handleSave, isPending: isSaving } = useDebounceSubmit(
-    async () => { await doSubmit() },
+    async () => { await doSubmit(false) },
+    800,
+  )
+  // 「保存并上架」用独立 pending 状态，避免与「保存」互锁导致两个按钮同时禁用
+  const { execute: handleSaveAndPublish, isPending: isPublishing } = useDebounceSubmit(
+    async () => { await doSubmit(true) },
     800,
   )
 
@@ -1997,8 +2032,13 @@ export default function AdminProductForm() {
           <Title>{isEdit ? t('admin.productForm.editTitle') : t('admin.productForm.createTitle')}</Title>
         </HeaderLeft>
         <HeaderActions>
-          <HeaderBtnPrimary type="button" disabled={isSaving} onClick={handleSave}>
-            {isSaving ? <><SpinIcon><Icon name="refresh" size={12} /></SpinIcon> {t('admin.productForm.saveAndOnSale')}</> : t('admin.productForm.saveAndOnSale')}
+          {/* 「保存：保存当前编辑（新建默认草稿），留在当前页」 */}
+          <HeaderBtnSecondary type="button" disabled={isSaving || isPublishing} onClick={handleSave}>
+            {isSaving ? <><SpinIcon><Icon name="refresh" size={12} /></SpinIcon> {t('common.saving')}</> : t('admin.productForm.save')}
+          </HeaderBtnSecondary>
+          {/* 「保存并上架：保存并立即在商城可见，随后跳转列表」 */}
+          <HeaderBtnPrimary type="button" disabled={isSaving || isPublishing} onClick={handleSaveAndPublish}>
+            {isPublishing ? <><SpinIcon><Icon name="refresh" size={12} /></SpinIcon> {t('admin.productForm.savingAndOnSale')}</> : t('admin.productForm.saveAndOnSale')}
           </HeaderBtnPrimary>
           <HeaderBtnText type="button" onClick={() => navigate('/admin/products')}>
             {t('common.cancel')}
@@ -2016,6 +2056,12 @@ export default function AdminProductForm() {
               <Icon name="alert" size={16} />
               {error}
             </AlertBar>
+          )}
+          {success && (
+            <SuccessBar>
+              <Icon name="check" size={16} />
+              {success}
+            </SuccessBar>
           )}
 
           {/* ── 基础信息 ── */}

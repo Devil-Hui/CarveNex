@@ -33,6 +33,8 @@ export interface SPUFormData {
   category_id: number;
   main_image?: string;
   description?: string;
+  /** 创建时初始状态：draft（保存）/ on_sale（保存并上架）。仅超管创建时生效。 */
+  status?: 'draft' | 'on_sale';
   /** 多语言商品名称/描述（英文 / 阿拉伯语） */
   name_en?: string;
   description_en?: string;
@@ -457,36 +459,48 @@ export const adminAPI = {
       file_size,
     })
     const { key, upload_id, chunk_size } = init
-    const totalChunks = Math.max(1, Math.ceil(file_size / chunk_size))
+    // 自适应分片：某一片超时时把该片切成一半重传（慢网络 8MB 未能在 600s 内传完时兜底），
+    // 每次减半，最低降到 1MB。R2 要求除最后一片外每片 ≥5MB —— 但减半仅发生在上传中途
+    // 的超时重试（此时该片并未上到 R2，只是浏览器端超时），合并时该部分用最终成功的小片。
+    // 注意：所有最终上传的片（除最后一片）会经 chunk-complete 交给 R2，必须满足 ≥5MB，
+    // 因此减半下限设为 5MB；1 片 8MB→4MB 不再允许，若仍超时直接报错由用户处理网络。
     const parts: { part_number: number; etag: string }[] = []
+    const MIN_CHUNK = 5 * 1024 * 1024
 
-    // ② 逐块上传
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * chunk_size
-      const end = Math.min(start + chunk_size, file_size)
-      const blob = file.slice(start, end)
+    // ② 逐块上传；timeout/网络错误时当前块减半递归重传，避免慢网整批失败
+    let partNumber = 1
+    let offset = 0
+    let curChunk = chunk_size
+    while (offset < file_size) {
+      const sliceEnd = Math.min(offset + curChunk, file_size)
+      const blob = file.slice(offset, sliceEnd)
       const fd = new FormData()
       fd.append('upload_id', upload_id)
       fd.append('key', key)
-      fd.append('part_number', String(i + 1))
+      fd.append('part_number', String(partNumber))
       fd.append('part', blob, 'chunk.bin')
-      // 逐块同步（避免 CF 并发限速 / 内存峰值）；失败重试 3 次
-      let etag = ''
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const res = await postWithProgress<{ etag: string }>(
-            `/goods/media/spu/${spuId}/video/chunk-upload`, fd,
-          )
-          etag = res.etag
-          break
-        } catch (e) {
-          if (attempt === 2) throw e
-          await new Promise((r) => setTimeout(r, 800))
+      try {
+        const res = await postWithProgress<{ etag: string }>(
+          `/goods/media/spu/${spuId}/video/chunk-upload`, fd,
+        )
+        parts.push({ part_number: partNumber, etag: res.etag })
+        offset = sliceEnd
+        partNumber += 1
+        // 成功后按需恢复分片大小（避免整批被网络探测压低）
+        if (curChunk < chunk_size) curChunk = chunk_size
+        if (onProgress) {
+          onProgress(Math.round((offset / file_size) * 100))
         }
-      }
-      parts.push({ part_number: i + 1, etag })
-      if (onProgress) {
-        onProgress(Math.round(((i + 1) / totalChunks) * 100))
+      } catch (e) {
+        // 超时/网络错误：分片减半重试（≥5MB），保持同一 part_number 覆盖该片
+        if (curChunk > MIN_CHUNK) {
+          curChunk = Math.floor(curChunk / 2)
+          // 压缩到完整 5MB 以上（对齐 MIN_CHUNK 下限）
+          if (curChunk < MIN_CHUNK) curChunk = MIN_CHUNK
+          if (onProgress) onProgress(Math.round((offset / file_size) * 100))
+        } else {
+          throw e
+        }
       }
     }
 
