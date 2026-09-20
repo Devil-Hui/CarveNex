@@ -35,4 +35,4 @@ from .admin_notification import (
 )
 from .admin_stats import AdminStatsView
 from .admin_import_export import ImportProductsView, ExportProductsView, ImportProductMediaZipView
-from .admin_media import MediaListBySPUView, MediaDeleteView, MediaReorderView, MediaUpdateView, MediaCreateView, MediaReplaceView, MediaVideoCreateView
+from .admin_media import MediaListBySPUView, MediaDeleteView, MediaReorderView, MediaUpdateView, MediaCreateView, MediaReplaceView, MediaVideoCreateView, MediaVideoChunkInitView, MediaVideoChunkUploadView, MediaVideoChunkCompleteView
