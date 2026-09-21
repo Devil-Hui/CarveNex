@@ -4,6 +4,7 @@ Admin 分类视图 — 分类 CRUD + 子树查询 + 批量迁移
 
 from rest_framework import status
 from rest_framework.response import Response
+from django.db.models import ProtectedError
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiTypes
 
 from utils.api_base_view import BaseApiView
@@ -142,7 +143,14 @@ class CategoryAdminDeleteView(BaseApiView):
 
         if category.children.exists():
             return Response({'detail': Messages.ADMIN_CATEGORY_HAS_CHILDREN}, status=status.HTTP_400_BAD_REQUEST)
-        # 含软删 SPU：软删商品仍持有外键引用，直接 delete 会触发 ProtectedError -> 500
+        # 回收站中的软删 SPU（deleted_at 非空）仅剩外键占位，会阻止分类硬删（ProtectedError -> 500）；
+        # 用户视角它们已删除，故删除分类时一并硬删，保证分类能被真正删除。
+        try:
+            SPU.objects.filter(category=category, deleted_at__isnull=False).delete()
+        except ProtectedError:
+            # 仍被订单快照等引用，无法硬删；此时不删分类，提示先清理引用
+            return Response({'detail': Messages.ADMIN_CATEGORY_HAS_SPUS}, status=status.HTTP_400_BAD_REQUEST)
+        # 仍有未删除的商品（草稿/下架/在售）时不允许删除分类
         if SPU.objects.filter(category=category).exists():
             return Response({'detail': Messages.ADMIN_CATEGORY_HAS_SPUS}, status=status.HTTP_400_BAD_REQUEST)
 
