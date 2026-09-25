@@ -535,8 +535,9 @@ function useMenuItems() {
     },
     {
       section: t('admin.layout.sidebar.fulfillment'),
-      // 订单模块暂时下线，入口已断开（后端保留）
-      items: [],
+      items: [
+        { to: '/admin/orders', label: t('admin.layout.menu.orders'), icon: 'box' },
+      ],
     },
     {
       section: t('admin.layout.sidebar.communication'),
